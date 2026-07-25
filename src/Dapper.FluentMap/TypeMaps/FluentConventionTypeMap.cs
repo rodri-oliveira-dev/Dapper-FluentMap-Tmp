@@ -25,7 +25,7 @@ namespace Dapper.FluentMap.TypeMaps
 
         private static PropertyInfo GetPropertyInfo(Type type, string columnName)
         {
-            var cacheKey = $"{type.FullName};{columnName}";
+            var cacheKey = $"FluentConventionTypeMap;{type.FullName};{columnName}";
             if (TypePropertyMapCache.TryGetValue(cacheKey, out var info))
             {
                 return info;
@@ -71,15 +71,5 @@ namespace Dapper.FluentMap.TypeMaps
             return null;
         }
 
-        private static bool MatchColumnNames(IPropertyMap map, string columnName)
-        {
-            var comparison = StringComparison.Ordinal;
-            if (!map.CaseSensitive)
-            {
-                comparison = StringComparison.OrdinalIgnoreCase;
-            }
-
-            return string.Equals(map.ColumnName, columnName, comparison);
-        }
     }
 }

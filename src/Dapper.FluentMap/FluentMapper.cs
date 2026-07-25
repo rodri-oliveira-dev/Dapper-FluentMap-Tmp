@@ -60,7 +60,7 @@ namespace Dapper.FluentMap
         /// <typeparam name="TEntity">The type of the entity.</typeparam>
         internal static void AddConventionTypeMap<TEntity>()
         {
-            SqlMapper.SetTypeMap(typeof(TEntity), new FluentConventionTypeMap<TEntity>());
+            AddTypeMap<TEntity>();
         }
 
         /// <summary>
@@ -69,8 +69,7 @@ namespace Dapper.FluentMap
         /// <param name="entityType">The type of the entity.</param>
         internal static void AddConventionTypeMap(Type entityType)
         {
-            var instance = (SqlMapper.ITypeMap)Activator.CreateInstance(typeof(FluentConventionTypeMap<>).MakeGenericType(entityType));
-            SqlMapper.SetTypeMap(entityType, instance);
+            AddTypeMap(entityType);
         }
     }
 }
