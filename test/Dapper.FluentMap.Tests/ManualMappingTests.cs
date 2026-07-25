@@ -149,8 +149,7 @@ namespace Dapper.FluentMap.Tests
 
         private static void PreTest()
         {
-            FluentMapper.EntityMaps.Clear();
-            FluentMapper.TypeConventions.Clear();
+            FluentMapper.Reset(typeof(TestEntity), typeof(DerivedTestEntity), typeof(ValueObjectTestEntity));
         }
 
         private class IgnoreMap : EntityMap<TestEntity>

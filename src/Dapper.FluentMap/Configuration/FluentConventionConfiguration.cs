@@ -35,8 +35,7 @@ namespace Dapper.FluentMap.Configuration
             var type = typeof(T);
             MapProperties(type);
 
-            FluentMapper.TypeConventions.AddOrUpdate(type, _convention);
-            FluentMapper.AddConventionTypeMap<T>();
+            FluentMapper.Registry.AddConvention(type, _convention);
             return this;
         }
 
@@ -62,8 +61,7 @@ namespace Dapper.FluentMap.Configuration
                 }
 
                 MapProperties(type);
-                FluentMapper.TypeConventions.AddOrUpdate(type, _convention);
-                FluentMapper.AddConventionTypeMap(type);
+                FluentMapper.Registry.AddConvention(type, _convention);
             }
 
             return this;
@@ -92,8 +90,7 @@ namespace Dapper.FluentMap.Configuration
                 }
 
                 MapProperties(type);
-                FluentMapper.TypeConventions.AddOrUpdate(type, _convention);
-                FluentMapper.AddConventionTypeMap(type);
+                FluentMapper.Registry.AddConvention(type, _convention);
             }
 
             return this;

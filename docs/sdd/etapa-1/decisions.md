@@ -20,6 +20,17 @@ Registre aqui apenas decisoes que afetem entregas posteriores.
 
 - A baseline de integracao usa SQLite in-memory via `Microsoft.Data.Sqlite` apenas no projeto de testes principal.
 - Os testes de integracao devem validar materializacao observavel por `Dapper.Query<T>`, nao detalhes internos de `ITypeMap`.
-- Enquanto o estado global nao for redesenhado, testes que alteram `FluentMapper` devem limpar `EntityMaps`, `TypeConventions` e os type maps do Dapper para os tipos tocados.
-- O paralelismo da suite permanece desabilitado porque `FluentMapper`, `SqlMapper.SetTypeMap` e o cache estatico de `MultiTypeMap` compartilham estado global.
-- A Entrega 4 deve considerar um mecanismo definido de registry/reset/invalidation para evitar dependencia de tipos unicos por teste e reduzir risco de cache stale.
+- Testes que alteram `FluentMapper` devem usar o reset interno definido na Entrega 4 para limpar registry, cache e type maps do Dapper dos tipos tocados.
+- O paralelismo da suite permanece desabilitado porque `FluentMapper`, `SqlMapper.SetTypeMap` e os dicionarios publicos mutaveis ainda compartilham estado global.
+
+## MappingRegistry E Cache
+
+- `MappingRegistry` passa a ser o dono interno de entity maps, conventions, cache de propriedades e instalacao de type maps no Dapper.
+- `FluentMapper.EntityMaps` e `FluentMapper.TypeConventions` permanecem publicos por compatibilidade, mas apontam para o storage do registry.
+- O cache ativo de resolucao usa chave estruturada com tipo, nome de coluna ordinal e opcoes de estrategia (`FluentMap` ou `ConventionOnly`), substituindo as chaves por concatenacao de strings.
+- Case sensitivity continua sendo propriedade de cada `IPropertyMap`; a chave diferencia o nome de coluna recebido e a invalidacao por tipo cobre mudancas de configuracao.
+- Reconfiguracoes feitas pela API do FluentMap invalidam o cache do tipo afetado e reinstalam o type map composto no Dapper.
+- O reset interno de testes limpa entity maps, conventions, cache e type maps do Dapper para os tipos informados.
+- `SqlMapper.SetTypeMap` continua como estado global necessario porque e o contrato publico de extensibilidade do Dapper.
+- O membro protegido legado `MultiTypeMap.TypePropertyMapCache` nao e mais usado pelo core, mas foi preservado para evitar quebra de compatibilidade.
+- Etapa 2 deve tratar qualquer tentativa de reduzir a mutabilidade publica dos dicionarios como mudanca de compatibilidade planejada.

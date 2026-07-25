@@ -148,13 +148,7 @@ namespace Dapper.FluentMap.Tests
 
         private static void PreTest(params Type[] types)
         {
-            FluentMapper.EntityMaps.Clear();
-            FluentMapper.TypeConventions.Clear();
-
-            foreach (var type in types)
-            {
-                SqlMapper.SetTypeMap(type, null);
-            }
+            FluentMapper.Reset(types);
         }
 
         private class ExplicitOnlyEntity

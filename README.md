@@ -158,3 +158,10 @@ FluentMapper.Initialize(config =>
         config.ForDommel();
     });
 ```
+
+## Resultado da Etapa 1
+
+- Capacidades estabilizadas: parsing de expressoes por membro real, composicao mapping explicito/convention/fallback do Dapper, testes de integracao com materializacao real e cache interno estruturado.
+- Principais decisoes: `FluentMapper` permanece como fachada publica; `MappingRegistry` e o dono interno de mappings/cache; `SqlMapper.SetTypeMap` continua como integracao global necessaria com o Dapper.
+- Dividas transferidas: dicionarios publicos mutaveis preservados por compatibilidade, consumo direto pelo Dommel, paralelismo da suite ainda desabilitado, MemberPath/nested objects/Value Objects fora desta etapa.
+- Relatorios: `docs/sdd/etapa-1/01-reflection-helper.md`, `docs/sdd/etapa-1/02-mapping-composition.md`, `docs/sdd/etapa-1/03-dapper-integration-tests.md`, `docs/sdd/etapa-1/04-mapping-registry-cache.md`.
