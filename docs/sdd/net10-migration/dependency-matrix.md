@@ -61,6 +61,30 @@ Latest stable versions were identified with `dotnet list package --outdated --in
 |---|---|---:|---:|---|
 | 05 | `xunit` / `xunit.v3` | `xunit 2.9.3` | `xunit.v3` alternative reported by NuGet | xUnit 3 migration is intentionally isolated. |
 
+## Delivery 04 Validation Findings
+
+No direct package version changed in Delivery 04.
+
+Validation commands confirmed:
+
+- restore succeeds with the current package graph.
+- Debug and Release builds succeed.
+- Release package generation succeeds.
+- no direct package downgrade is reported.
+- no vulnerable packages are reported in `src/`.
+- both `src` packages are emitted under `lib/netstandard2.0`.
+- both `net10.0` test projects consume the `netstandard2.0` source projects through `ProjectReference`.
+
+NuGet still reports only deferred items already known from earlier deliveries:
+
+- `SQLitePCLRaw.lib.e_sqlite3 2.1.11` is a vulnerable transitive in `Dapper.FluentMap.Tests`.
+- `xunit 2.9.3` is reported as legacy with `xunit.v3` as the alternative.
+- `xunit.analyzers 1.18.0` remains a transitive outdated package tied to xUnit 2.
+- `Microsoft.Bcl.AsyncInterfaces 10.0.8` remains Dapper's resolved `netstandard2.0` dependency floor.
+- `Microsoft.NETCore.Platforms 1.1.0` remains part of the `NETStandard.Library` restore graph.
+
+Delivery 04 did not force transitive overrides because none are required to validate the .NET 10 migration and package contents.
+
 ## Packages Whose Latest Version Does Not Support `netstandard2.0`
 
 No direct production dependency updated in Delivery 03 was blocked by `netstandard2.0`.

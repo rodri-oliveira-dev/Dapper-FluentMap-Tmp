@@ -49,3 +49,44 @@ The update was intentionally limited to direct production dependencies. Transiti
 - `SQLitePCLRaw.*` remains test-only and should be covered by Delivery 04 or a dedicated dependency-hardening task.
 
 Delivery 04 should pack and inspect the published packages to confirm the final dependency groups and package contents.
+
+## Delivery 04 Validation and CI
+
+Delivery 04 validated the final migration state without changing production code, public API, target frameworks, package versions, or package metadata.
+
+Final target matrix:
+
+- `src/Dapper.FluentMap`: `netstandard2.0`
+- `src/Dapper.FluentMap.Dommel`: `netstandard2.0`
+- `test/Dapper.FluentMap.Tests`: `net10.0`
+- `test/Dapper.FluentMap.Dommel.Tests`: `net10.0`
+
+No `global.json` was created. CI installs/selects .NET 10 explicitly, while the repository avoids pinning a short-lived exact SDK in source control.
+
+CI policy:
+
+- run restore, Release build, Release tests and Release pack.
+- store `.nupkg` files only as CI artifacts.
+- do not run `dotnet nuget push`.
+- do not configure NuGet API keys, publish tokens, package feeds, release uploads, or `continue-on-error`.
+- do not add a framework matrix because tests only target `net10.0`.
+
+Package inspection confirms both published packages contain only `lib/netstandard2.0` assemblies/XML docs plus package metadata. Existing `licenseUrl` metadata produces NU5125 and package README is recommended by NuGet, but both are deferred because this delivery must avoid unrelated metadata modernization.
+
+## Delivery 05 Handoff
+
+The test runner remains VSTest with xUnit 2:
+
+- `Microsoft.NET.Test.Sdk 18.8.1`
+- `xunit 2.9.3`
+- `xunit.runner.visualstudio 3.1.5`
+- no Microsoft Testing Platform runner in `global.json`
+- no `<TestingPlatformDotnetTestSupport>` property
+- test assemblies disable parallel execution with `[assembly: CollectionBehavior(DisableTestParallelization = true)]` because the suite uses global FluentMapper/Dapper state
+
+Patterns that Delivery 05 should preserve unless deliberately changed:
+
+- keep the xUnit 3 migration isolated from production dependency updates.
+- do not re-enable test parallelism unless global-state isolation is solved.
+- keep meaningful assertions and do not skip, weaken, or remove tests to satisfy runner migration.
+- keep Dapper materialization and Dommel resolver tests active as compatibility proof.

@@ -75,9 +75,10 @@ Commands documented in `AGENTS.md` for packaging:
 dotnet pack ./src/Dapper.FluentMap/Dapper.FluentMap.csproj --configuration Release --no-build --output ./artifacts/packages
 ```
 
-CI files currently found:
+CI files after Delivery 04:
 
-- `.appveyor.yml`: runs `dotnet test` on Visual Studio 2019 image.
-- `.travis.yml`: uses `dotnet: 3.1` and runs `dotnet test`.
+- `.github/workflows/ci.yml`: installs .NET SDK `10.0.x` GA, runs restore, Release build, Release tests, Release pack, and uploads `.nupkg` artifacts.
+- `.appveyor.yml`: installs .NET SDK 10 GA on Visual Studio 2022 image, runs restore, Release build, Release tests, Release pack, and stores `.nupkg` artifacts.
+- `.travis.yml`: uses `dotnet: 10.0` on `jammy`, runs restore, Release build, Release tests, and Release pack.
 
-No `.github/workflows/`, `global.json`, `Directory.Build.props`, `Directory.Packages.props`, or `.editorconfig` files were found during Delivery 01.
+No `global.json`, `Directory.Build.props`, `Directory.Packages.props`, or `.editorconfig` files are present after Delivery 04.
