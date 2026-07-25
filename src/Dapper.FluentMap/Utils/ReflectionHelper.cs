@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -17,6 +16,11 @@ namespace Dapper.FluentMap.Utils
         /// <returns>A <see cref="MemberInfo"/> object for the member in the specified lambda expression.</returns>
         public static MemberInfo GetMemberInfo(LambdaExpression lambda)
         {
+            if (lambda == null)
+            {
+                throw new ArgumentNullException(nameof(lambda));
+            }
+
             Expression expr = lambda;
             while (true)
             {
@@ -33,44 +37,16 @@ namespace Dapper.FluentMap.Utils
                     case ExpressionType.MemberAccess:
                         var memberExpression = (MemberExpression)expr;
                         var member = memberExpression.Member;
-                        Type paramType;
 
-                        while (memberExpression != null)
+                        if (member is PropertyInfo propertyInfo)
                         {
-                            paramType = memberExpression.Type;
-
-                            // Find the member on the base type of the member type
-                            // E.g. EmailAddress.Value
-                            var baseMember = paramType.GetMembers().FirstOrDefault(m => m.Name == member.Name);
-                            if (baseMember != null)
-                            {
-                                // Don't use the base type if it's just the nullable type of the derived type
-                                // or when the same member exists on a different type
-                                // E.g. Nullable<decimal> -> decimal
-                                // or:  SomeType { string Length; } -> string.Length
-                                if (baseMember is PropertyInfo baseProperty && member is PropertyInfo property)
-                                {
-                                    if (baseProperty.DeclaringType == property.DeclaringType &&
-                                        baseProperty.PropertyType != Nullable.GetUnderlyingType(property.PropertyType))
-                                    {
-                                        return baseMember;
-                                    }
-                                }
-                                else
-                                {
-                                    return baseMember;
-                                }
-                            }
-
-                            memberExpression = memberExpression.Expression as MemberExpression;
+                            return propertyInfo;
                         }
 
-                        // Make sure we get the property from the derived type.
-                        paramType = lambda.Parameters[0].Type;
-                        return paramType.GetMember(member.Name)[0];
+                        throw new ArgumentException($"Expression '{lambda}' refers to member '{member.Name}', which is not a property.", nameof(lambda));
 
                     default:
-                        return null;
+                        throw new ArgumentException($"Expression '{lambda}' must resolve to a property.", nameof(lambda));
                 }
             }
         }
