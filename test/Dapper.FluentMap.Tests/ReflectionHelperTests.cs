@@ -32,7 +32,8 @@ namespace Dapper.FluentMap.Tests
             var memberInfo = ReflectionHelper.GetMemberInfo(expression);
 
             // Assert
-            Assert.Equal(typeof(DerivedTestEntity).GetProperty("Id"), memberInfo);
+            Assert.Equal(typeof(TestEntity).GetProperty("Id"), memberInfo);
+            Assert.Equal(typeof(TestEntity), memberInfo.DeclaringType);
             Assert.Equal(typeof(int), ((PropertyInfo)memberInfo).PropertyType);
         }
 

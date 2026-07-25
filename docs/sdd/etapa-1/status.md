@@ -4,5 +4,5 @@
 |---|---|---|
 | 01 - ReflectionHelper | Concluido | fix: resolve ambiguous property expressions |
 | 02 - Composicao de mappings | Concluido | fix: compose explicit mappings and conventions |
-| 03 - Testes de integracao | Pendente | - |
+| 03 - Testes de integracao | Concluido | test: add Dapper integration coverage |
 | 04 - MappingRegistry e cache | Pendente | - |
