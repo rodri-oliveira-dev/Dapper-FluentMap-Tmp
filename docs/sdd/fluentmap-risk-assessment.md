@@ -54,7 +54,8 @@ Current risk count:
 - Medium: 10
 - Low: 5
 - Open: 9
-- Mitigated: 7
+- Mitigated: 6
+- Resolved: 1
 - Unknown: 2
 
 Overall, FluentMap is not in a critical architectural state. The main runtime contract is well protected by SDD decisions, integration tests, fail-fast validation, `MemberPath`, cache keys, and query-scoped profiles. The largest remaining risks come from intentionally preserved global/static compatibility surfaces, trimming/AOT constraints, and the fact that the new materializer is runtime/reflection-based rather than generated.
@@ -83,7 +84,7 @@ Overall, FluentMap is not in a critical architectural state. The main runtime co
 | FM-RISK-009 | Mapping profiles do not apply to `Dapper.Query<T>` or Dapper multi-mapping | MEDIUM | Medium | Profiles, API Design | Etapa 5 / Entrega 04 | OPEN |
 | FM-RISK-010 | Legacy `ApplyMapsFromAssemblies` keeps older reflection/discovery behavior | MEDIUM | Low | Reflection, Maintainability | Etapa 2 / Entrega 02; Etapa 3 / Entrega 01 | MITIGATED |
 | FM-RISK-011 | Constructor overload ambiguity and optional parameters remain delegated to Dapper | MEDIUM | Low | Materialization, Correctness | Etapa 3 / Entrega 02 | OPEN |
-| FM-RISK-012 | `IgnoredPropertyInfo` sentinel throws `NotImplementedException` if inspected outside the intended path | MEDIUM | Low | Correctness, Maintainability | Etapa 2 / Entrega 02 | MITIGATED |
+| FM-RISK-012 | Throwing `IgnoredPropertyInfo` sentinel was removed from ignored/nested mapping paths | MEDIUM | Low | Correctness, Maintainability | Etapa 2 / Entrega 02; Etapa 6 / Entrega 03 | RESOLVED |
 | FM-RISK-013 | Dommel behavior for profiles/nested materialization is intentionally unreviewed | MEDIUM | Low | Dommel, Extensibility | Etapa 5 / Entrega 04 | UNKNOWN |
 | FM-RISK-014 | Analyzer and generator coverage is intentionally partial | LOW | High | Developer Experience, Testing | Etapa 4 / Entrega 01-03 | MITIGATED |
 | FM-RISK-015 | Async `QueryMapped*` overloads are asymmetric: profile async exists, default async does not | LOW | Medium | API Design | Etapa 5 / Entrega 04 | OPEN |
@@ -384,23 +385,25 @@ Related to FM-RISK-004, FM-RISK-007 and Etapa 5 P2 factory-method follow-up.
 **Categoria:** Compatibility, Reflection, Value Objects, Maintainability
 **Origem:** Etapa 5 / Entrega 03
 **Detectado em:** implementation review
-**Componentes afetados:** `NestedMaterializationPlan.CreateTypeHandlerConverter`
+**Componentes afetados:** `DapperTypeHandlerAdapter`, `NestedMaterializationPlan`
 
 ### Descricao
 
-The runtime materializer detects a Dapper type handler with `SqlMapper.HasTypeHandler`, but then calls Dapper's nested `TypeHandlerCache<T>.Parse` using reflection. This couples the implementation to a Dapper type/cache shape that may change across Dapper versions.
+The runtime materializer detects a Dapper type handler with `SqlMapper.HasTypeHandler`. Dapper `2.1.79` does not expose a public API to convert one arbitrary `object` through the registered handler, so FluentMap still calls Dapper's nested `TypeHandlerCache<T>.Parse` using reflection. The reflection is now isolated behind an internal compatibility adapter instead of living in the materialization plan.
 
 ### Evidencias
 
 - `docs/sdd/etapa-5/01-nested-materialization-spike.md`: records that conversions should respect TypeHandlers without copying Dapper internals.
 - `docs/sdd/etapa-5/03-value-objects.md`: states TypeHandler support is preserved for scalar Value Object properties.
-- `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`: `CreateTypeHandlerConverter` uses `typeof(SqlMapper).GetNestedType("TypeHandlerCache`1", BindingFlags.Public | BindingFlags.NonPublic)`, `MakeGenericType` and reflection to call `Parse`.
-- `test/Dapper.FluentMap.Tests/ValueObjectMaterializationTests.cs`: verifies `QueryMappedShouldUseDapperTypeHandlerForScalarValueObjectProperty`.
+- `src/Dapper.FluentMap/Compatibility/DapperTypeHandlerAdapter.cs`: centralizes `TypeHandlerCache<T>.Parse(object)` reflection and fails with `FluentMapConfigurationException` if the expected Dapper shape is missing.
+- `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`: delegates TypeHandler detection/invocation to `DapperTypeHandlerAdapter`.
+- `test/Dapper.FluentMap.Tests/DapperCompatibilityAdapterTests.cs`: verifies registered handler conversion, nullable handler null semantics, no-handler fallback and diagnostic failure when the compatibility boundary cannot resolve the Dapper cache shape.
+- `test/Dapper.FluentMap.Tests/ValueObjectMaterializationTests.cs`: continues to verify `QueryMappedShouldUseDapperTypeHandlerForScalarValueObjectProperty`.
 - `src/Dapper.FluentMap/Dapper.FluentMap.csproj`: Dapper is pinned to `2.1.79`, reducing immediate drift.
 
 ### Cenario de impacto
 
-A future Dapper update removes, renames or changes `TypeHandlerCache<T>.Parse`. FluentMap still sees `HasTypeHandler == true`, but cannot call the handler through this reflective path and falls back to conversion behavior that may not support the Value Object.
+A future Dapper update removes, renames or changes `TypeHandlerCache<T>.Parse`. FluentMap still sees `HasTypeHandler == true`, but the adapter cannot call the handler through this reflective path and throws a diagnostic compatibility exception during plan creation.
 
 ### Impacto
 
@@ -412,11 +415,11 @@ Baixa. The current dependency is pinned and covered by tests, but the risk rises
 
 ### Workaround atual
 
-Keep Dapper upgrade tasks isolated and run `ValueObjectMaterializationTests`. Consumers can use Dapper `Query<T>` for scalar TypeHandler paths outside `QueryMapped*`.
+Keep Dapper upgrade tasks isolated and run `DapperCompatibilityAdapterTests` plus `ValueObjectMaterializationTests`. Consumers can use Dapper `Query<T>` for scalar TypeHandler paths outside `QueryMapped*`.
 
 ### Recomendacao
 
-Investigate a public Dapper-supported handler invocation path. If none exists, wrap this behavior behind a small compatibility adapter with targeted tests and explicit Dapper-version review notes.
+Investigate a public Dapper-supported handler invocation path during future Dapper upgrades. If none exists, keep the adapter small, fail diagnosticably and do not spread reflection into materialization code.
 
 ### Relacoes
 
@@ -599,49 +602,51 @@ Do not reimplement Dapper constructor selection casually. If demand appears, add
 
 Related to FM-RISK-004 and FM-RISK-006.
 
-## FM-RISK-012 - `IgnoredPropertyInfo` sentinel throws `NotImplementedException` if inspected outside the intended path
+## FM-RISK-012 - Throwing `IgnoredPropertyInfo` sentinel was removed from ignored/nested mapping paths
 
 **Severidade:** MEDIUM
-**Status:** MITIGATED
+**Status:** RESOLVED
 **Categoria:** Correctness, Maintainability, Technical Debt
-**Origem:** Etapa 2 / Entrega 02
+**Origem:** Etapa 2 / Entrega 02; Etapa 6 / Entrega 03
 **Detectado em:** implementation review
-**Componentes afetados:** `IgnoredPropertyInfo`, `MultiTypeMap`, `MappingRegistry.MappingCacheEntry`
+**Componentes afetados:** `DapperIgnoredMemberMap`, `DapperFluentPropertyTypeMap`, `MultiTypeMap`
 
 ### Descricao
 
-Ignored and nested mappings use an internal `IgnoredPropertyInfo` sentinel to prevent Dapper fallback. The sentinel overrides many `PropertyInfo` members by throwing `NotImplementedException`. The current `MultiTypeMap` recognizes the sentinel and returns `null`, but misuse or a Dapper behavior change could inspect it.
+Ignored and nested mappings previously used an internal `IgnoredPropertyInfo` sentinel to prevent Dapper fallback. The sentinel overrode many `PropertyInfo` members by throwing `NotImplementedException`. Etapa 6 / Entrega 03 removed that sentinel and replaced it with an explicit internal `IMemberMap` marker that has safe null members.
 
 ### Evidencias
 
 - `docs/sdd/etapa-2/02-configuration-validation.md`: catalogs `IgnoredPropertyInfo` throwing `NotImplementedException` as partially detectable and outside the delivery scope.
-- `src/Dapper.FluentMap/TypeMaps/IgnoredPropertyInfo.cs`: most members throw `NotImplementedException`.
-- `src/Dapper.FluentMap/MappingRegistry.cs`: `MappingCacheEntry` assigns `IgnoredPropertyInfo` for ignored maps and nested maps when returning a `PropertyInfo` to Dapper's simple type-map pipeline.
-- `src/Dapper.FluentMap/TypeMaps/MultiTypeMap.cs`: explicitly checks `result is IgnoredPropertyInfo || result.Property is IgnoredPropertyInfo` and returns `null`.
+- `src/Dapper.FluentMap/TypeMaps/IgnoredPropertyInfo.cs`: removed.
+- `src/Dapper.FluentMap/Compatibility/DapperFluentPropertyTypeMap.cs`: returns `DapperIgnoredMemberMap` for ignored mappings and FluentMap-controlled nested paths.
+- `src/Dapper.FluentMap/Compatibility/DapperIgnoredMemberMap.cs`: implements `SqlMapper.IMemberMap` without throwing `PropertyInfo` members.
+- `src/Dapper.FluentMap/TypeMaps/MultiTypeMap.cs`: recognizes `DapperIgnoredMemberMap` and returns `null` without falling back to `DefaultTypeMap`.
+- `test/Dapper.FluentMap.Tests/DapperCompatibilityAdapterTests.cs`: verifies ignored root mapping, ignored nested path, Dapper fallback for unrelated members and direct type-map access without `NotImplementedException`.
 
 ### Cenario de impacto
 
-A future Dapper version inspects more of the returned `PropertyInfo` before FluentMap can intercept it, or an external mapper uses the sentinel unexpectedly. A `NotImplementedException` escapes from a materialization path.
+Previously, a future Dapper version could inspect more of the returned `PropertyInfo` before FluentMap intercepted it. That path no longer exists because ignored/nested markers no longer expose a throwing `PropertyInfo`.
 
 ### Impacto
 
-Unexpected runtime failure in ignored/nested mapping paths.
+Resolved for the known sentinel path. Ignored/nested mappings now use an explicit internal `IMemberMap` marker.
 
 ### Probabilidade
 
-Baixa. Current tests exercise ignored behavior, and the sentinel is internal. The risk is mostly future compatibility and maintainability.
+Baixa for future Dapper fallback behavior, but the specific `NotImplementedException` sentinel risk is resolved.
 
 ### Workaround atual
 
-None for consumers except staying on tested Dapper versions and using documented APIs.
+None needed for this issue.
 
 ### Recomendacao
 
-Replace the sentinel with an explicit `IMemberMap` or strategy result that never exposes a throwing `PropertyInfo`, if this can be done without breaking Dapper behavior.
+Keep `DapperCompatibilityAdapterTests` in the Dapper upgrade checklist to verify ignored mappings still block fallback.
 
 ### Relacoes
 
-Related to FM-RISK-007 and future Dapper compatibility work.
+Related to FM-RISK-007 and future Dapper compatibility work, but no longer tracked as active technical debt.
 
 ## FM-RISK-013 - Dommel behavior for profiles/nested materialization is intentionally unreviewed
 
@@ -935,7 +940,6 @@ Related to FM-RISK-016.
 | FM-RISK-018 | README maintenance-status inconsistency | README/SDD | Consumer confusion | P2 |
 | FM-RISK-017 | Remote CI evidence missing | .NET 10 migration | Release confidence | P2 |
 | FM-RISK-010 | Legacy assembly scanning API behavior | Etapa 3 | Maintenance/diagnostic debt | P3 |
-| FM-RISK-012 | Throwing sentinel `IgnoredPropertyInfo` | Etapa 2 | Future compatibility debt | P3 |
 | FM-RISK-014 | Partial analyzer/generator coverage | Etapa 4 | Compile-time feedback gaps | P3 |
 | FM-RISK-011 | Dapper-delegated constructor edge cases | Etapa 3 | Edge-case diagnostics | P3 |
 | FM-RISK-013 | Dommel profile/nested review missing | Etapa 5 | Extension clarity | P3 |
@@ -985,7 +989,7 @@ Related to FM-RISK-016.
 7. Run a dedicated Dommel profile/nested review and document whether integration is intentionally unsupported.
 8. Modernize NuGet metadata and README status in a documentation/packaging-only delivery.
 9. Record remote CI outcomes after the next push.
-10. Revisit lower-level compatibility debt: `IgnoredPropertyInfo`, reflective TypeHandler adapter and legacy scanning API.
+10. Revisit lower-level compatibility debt: reflective TypeHandler adapter and legacy scanning API.
 
 ## 13. Architectural Health Assessment
 

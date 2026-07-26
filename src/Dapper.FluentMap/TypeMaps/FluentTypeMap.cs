@@ -1,5 +1,5 @@
 using System;
-using System.Reflection;
+using Dapper.FluentMap.Compatibility;
 using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap.TypeMaps
@@ -19,7 +19,7 @@ namespace Dapper.FluentMap.TypeMaps
         public FluentMapTypeMap()
             : base(
                 new FluentConstructorTypeMap(typeof(TEntity), GetPropertyMap),
-                new CustomPropertyTypeMap(typeof(TEntity), GetPropertyInfo),
+                new DapperFluentPropertyTypeMap(typeof(TEntity), GetPropertyMap),
                 new DefaultTypeMap(typeof(TEntity)))
         {
         }
@@ -29,9 +29,5 @@ namespace Dapper.FluentMap.TypeMaps
             return FluentMapper.Registry.GetFluentPropertyMap(type, columnName);
         }
 
-        private static PropertyInfo GetPropertyInfo(Type type, string columnName)
-        {
-            return FluentMapper.Registry.GetFluentPropertyInfo(type, columnName);
-        }
     }
 }

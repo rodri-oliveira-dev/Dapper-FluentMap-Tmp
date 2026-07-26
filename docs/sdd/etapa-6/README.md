@@ -12,15 +12,15 @@ Esta etapa preserva a compatibilidade publica existente do core `Dapper.FluentMa
 |---|---|---|---|
 | 01 | Configuration Lifecycle | COMPLETED | Lifecycle suportado e mutacoes de runtime formalizados. |
 | 02 | Mapping State Encapsulation | COMPLETED | Snapshots read-only adicionados e superficie mutavel legada documentada. |
-| 03 | Dapper Compatibility Adapters | NEXT | Isolar contratos de compatibilidade com Dapper. |
-| 04 | Generated Materializer Spike | PENDING | Investigar materializer gerado para `DbDataReader`. |
+| 03 | Dapper Compatibility Adapters | COMPLETED | Compatibility boundary interno adicionado; TypeHandler reflection isolada; ignored sentinel removido. |
+| 04 | Generated Materializer Spike | NEXT | Investigar materializer gerado para `DbDataReader`. |
 
 ## Delivery List
 
 01 Configuration Lifecycle -> COMPLETED
 02 Mapping State Encapsulation -> COMPLETED
-03 Dapper Compatibility Adapters -> NEXT
-04 Generated Materializer Spike -> PENDING
+03 Dapper Compatibility Adapters -> COMPLETED
+04 Generated Materializer Spike -> NEXT
 
 ## Sources Of Truth
 
@@ -35,6 +35,6 @@ Esta etapa preserva a compatibilidade publica existente do core `Dapper.FluentMa
 
 ## Current Focus
 
-Delivery 01 defined the supported configuration lifecycle without removing public APIs and without introducing premature runtime sealing.
+Delivery 03 isolated Dapper compatibility details behind internal adapters. Residual TypeHandler reflection remains, but only in `DapperTypeHandlerAdapter`; `IgnoredPropertyInfo` was removed.
 
-Delivery 02 should use this lifecycle contract as the boundary for planning state encapsulation.
+Delivery 04 should investigate a generated `DbDataReader` materializer while preserving lifecycle, profiles, `MemberPath`, TypeHandler behavior and ignored mapping semantics.

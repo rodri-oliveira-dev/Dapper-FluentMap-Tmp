@@ -83,3 +83,45 @@ Dapper integration
 ```
 
 Mutacoes diretas nos campos legados continuam possiveis, podem ignorar invariantes e exigem migracao futura de major version para serem removidas ou substituidas por propriedades read-only.
+
+## E6-D005 - Dapper Compatibility Boundary
+
+Entrega 03 cria uma fronteira interna explicita para detalhes de compatibilidade com Dapper no namespace `Dapper.FluentMap.Compatibility`.
+
+Essa fronteira concentra:
+
+- invocacao de TypeHandlers registrados no Dapper por `DapperTypeHandlerAdapter`;
+- exposicao de property mappings ao Dapper por `DapperFluentPropertyTypeMap`;
+- `IMemberMap` seguro para propriedades simples por `DapperPropertyMemberMap`;
+- marker seguro para ignored/nested por `DapperIgnoredMemberMap`.
+
+Nenhuma API publica foi adicionada. O objetivo e manter detalhes Dapper-specific fora do materializer e reduzir o numero de pontos onde uma mudanca interna do Dapper pode afetar o FluentMap.
+
+## E6-D006 - Residual TypeHandler Reflection
+
+Nao foi encontrada no Dapper `2.1.79` uma API publica que converta um `object` usando o TypeHandler registrado para um tipo arbitrario.
+
+Por isso, a reflection residual para `SqlMapper.TypeHandlerCache<T>.Parse(object)` permanece, mas fica isolada em `DapperTypeHandlerAdapter`. Se a shape esperada nao existir em uma versao futura do Dapper, o FluentMap deve falhar com `FluentMapConfigurationException` diagnosticavel em vez de cair silenciosamente para `Convert.ChangeType`.
+
+Esse risco fica `MITIGATED`, nao `RESOLVED`, ate existir alternativa publica suportada pelo Dapper ou ate o FluentMap deixar de precisar invocar handlers no materializer runtime.
+
+## E6-D007 - Ignored Mapping Without Throwing PropertyInfo Sentinel
+
+Entrega 03 remove `IgnoredPropertyInfo`.
+
+Mappings ignored e nested deixam de passar por `CustomPropertyTypeMap` para retornar um `PropertyInfo` falso. O caminho atual retorna um `DapperIgnoredMemberMap`, que implementa `SqlMapper.IMemberMap` com propriedades seguras e nulas. `MultiTypeMap` reconhece esse marker e retorna `null` sem continuar para `DefaultTypeMap`, preservando o bloqueio de fallback.
+
+Com isso, `FM-RISK-012` fica `RESOLVED`: nao ha mais sentinel `PropertyInfo` interno com membros que lancam `NotImplementedException`.
+
+## E6-D008 - Dapper Upgrade Checklist
+
+Qualquer upgrade futuro de Dapper deve revisar explicitamente:
+
+- `SqlMapper.ITypeMap`;
+- `SqlMapper.IMemberMap`;
+- `DefaultTypeMap` constructor/member behavior;
+- `SqlMapper.SetTypeMap` global state;
+- `SqlMapper.HasTypeHandler`;
+- `SqlMapper.TypeHandlerCache<T>.Parse(object)`;
+- comportamento de fallback quando um mapper retorna `null`;
+- testes `DapperCompatibilityAdapterTests`, `ValueObjectMaterializationTests`, `ConstructorMappingTests`, `NestedMaterializationSpikeTests`, `DapperIntegrationTests` e Dommel.

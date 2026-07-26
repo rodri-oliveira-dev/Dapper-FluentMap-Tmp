@@ -776,19 +776,9 @@ namespace Dapper.FluentMap
                 if (!propertyMap.Ignored)
                 {
                     var memberPath = PropertyMapIdentity.GetMemberPath(propertyMap);
-                    PropertyInfo = memberPath.IsNested
-#if !NETSTANDARD1_3
-                        ? new IgnoredPropertyInfo()
-#else
-                        ? null
-#endif
-                        : propertyMap.PropertyInfo;
+                    PropertyInfo = memberPath.IsNested ? null : propertyMap.PropertyInfo;
                     return;
                 }
-
-#if !NETSTANDARD1_3
-                PropertyInfo = new IgnoredPropertyInfo();
-#endif
             }
 
             internal IPropertyMap PropertyMap { get; }

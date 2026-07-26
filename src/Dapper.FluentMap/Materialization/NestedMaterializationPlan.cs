@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using Dapper.FluentMap.Compatibility;
 using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap.Materialization
@@ -148,40 +149,12 @@ namespace Dapper.FluentMap.Materialization
         private static Func<object, object> CreateConverter(Type targetType)
         {
             var conversionType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-            if (SqlMapper.HasTypeHandler(conversionType))
+            if (DapperTypeHandlerAdapter.HasTypeHandler(conversionType))
             {
-                return CreateTypeHandlerConverter(conversionType);
+                return DapperTypeHandlerAdapter.CreateConverter(targetType);
             }
 
             return value => ConvertValue(value, targetType);
-        }
-
-        private static Func<object, object> CreateTypeHandlerConverter(Type targetType)
-        {
-            var value = Expression.Parameter(typeof(object), "value");
-            var cacheTypeDefinition = typeof(SqlMapper).GetNestedType("TypeHandlerCache`1", BindingFlags.Public | BindingFlags.NonPublic);
-            if (cacheTypeDefinition == null)
-            {
-                return raw => ConvertValue(raw, targetType);
-            }
-
-            var cacheType = cacheTypeDefinition.MakeGenericType(targetType);
-            var parse = cacheType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(object) }, null);
-
-            if (parse == null)
-            {
-                return raw => ConvertValue(raw, targetType);
-            }
-
-            var nullValue = Expression.Constant(GetDefaultValue(targetType), typeof(object));
-            var body = Expression.Condition(
-                Expression.OrElse(
-                    Expression.Equal(value, Expression.Constant(null, typeof(object))),
-                    Expression.Equal(value, Expression.Constant(DBNull.Value, typeof(object)))),
-                nullValue,
-                Expression.Convert(Expression.Call(parse, value), typeof(object)));
-
-            return Expression.Lambda<Func<object, object>>(body, value).Compile();
         }
 
         private static object ConvertValue(object value, Type targetType)
