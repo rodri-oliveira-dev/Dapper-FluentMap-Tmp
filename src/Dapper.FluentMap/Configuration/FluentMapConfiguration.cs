@@ -3,6 +3,7 @@ using System.Linq;
 using System.ComponentModel;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.Naming;
 
 namespace Dapper.FluentMap.Configuration
 {
@@ -40,6 +41,44 @@ namespace Dapper.FluentMap.Configuration
         public FluentConventionConfiguration AddConvention<TConvention>() where TConvention : Convention, new()
         {
             return new FluentConventionConfiguration(new TConvention());
+        }
+
+        /// <summary>
+        /// Adds a naming policy to the configuration of Dapper.FluentMap.
+        /// </summary>
+        /// <param name="namingPolicy">The naming policy used to transform member names into column names.</param>
+        /// <param name="caseSensitive">A value indicating whether the generated column name mappings should be case sensitive.</param>
+        /// <returns>
+        /// An instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>
+        /// which allows configuration of the naming policy for entities.
+        /// </returns>
+        public FluentConventionConfiguration UseNamingPolicy(NamingPolicy namingPolicy, bool caseSensitive = true)
+        {
+            if (namingPolicy == null)
+            {
+                throw new ArgumentNullException(nameof(namingPolicy));
+            }
+
+            return new FluentConventionConfiguration(new NamingPolicyConvention(namingPolicy, caseSensitive));
+        }
+
+        /// <summary>
+        /// Adds a custom naming policy to the configuration of Dapper.FluentMap.
+        /// </summary>
+        /// <param name="transformer">A function that receives a member name and returns a column name.</param>
+        /// <param name="caseSensitive">A value indicating whether the generated column name mappings should be case sensitive.</param>
+        /// <returns>
+        /// An instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>
+        /// which allows configuration of the naming policy for entities.
+        /// </returns>
+        public FluentConventionConfiguration UseNamingPolicy(Func<string, string> transformer, bool caseSensitive = true)
+        {
+            if (transformer == null)
+            {
+                throw new ArgumentNullException(nameof(transformer));
+            }
+
+            return UseNamingPolicy(NamingPolicy.Custom(transformer), caseSensitive);
         }
 
         #region EditorBrowsableStates

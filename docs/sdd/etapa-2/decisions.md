@@ -32,3 +32,15 @@ Registre aqui apenas decisoes que afetem entregas posteriores.
 - Conflitos de coluna entre mappings explicitos do derivado e mappings herdados de paths diferentes sao invalidos e diagnosticados durante o registro do map derivado.
 - `IncludeBase<TBase>()` aceita apenas classe base real do tipo mapeado; tipos nao relacionados, o proprio tipo e interfaces ficam fora do contrato desta entrega.
 - Naming policies futuras devem respeitar a composicao explicita efetiva antes de aplicar conventions ou fallback.
+
+## Naming Policies
+
+- Naming policy e integrada ao mecanismo existente de conventions; nao ha segundo pipeline de resolucao.
+- A API publica usa `NamingPolicy`, uma abstracao leve baseada em delegate, em vez de uma interface publica prematura.
+- `FluentMapConfiguration.UseNamingPolicy(...)` retorna `FluentConventionConfiguration`, preservando `.ForEntity<T>()`, `.ForEntitiesInAssembly(...)` e `.ForEntitiesInCurrentAssembly(...)`.
+- Built-ins adicionados: `SnakeCase`, `Prefix`, `Suffix` e `Custom`, com composicao por `Then`, `WithPrefix` e `WithSuffix`.
+- `SnakeCase` nao altera `DefaultTypeMap.MatchNamesWithUnderscores`; a policy gera `PropertyMap` dentro do FluentMap e evita efeito global silencioso no Dapper.
+- A precedencia consolidada e: mapping explicito do derivado -> mapping explicito herdado mais proximo -> mapping explicito herdado mais distante -> convention/naming policy do tipo consultado -> Dapper default.
+- Naming policy e convention compartilham o mesmo nivel de precedencia e seguem a ordem de registro entre conventions.
+- Transformacao baseada em `MemberPath` completo continua fora do contrato publico, pois a etapa nao implementa materializacao aninhada.
+- Invalid policy que produz coluna nula ou vazia falha cedo com `FluentMapConfigurationException` durante a configuracao da entidade.

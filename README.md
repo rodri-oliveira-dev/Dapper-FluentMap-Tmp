@@ -165,3 +165,12 @@ FluentMapper.Initialize(config =>
 - Principais decisoes: `FluentMapper` permanece como fachada publica; `MappingRegistry` e o dono interno de mappings/cache; `SqlMapper.SetTypeMap` continua como integracao global necessaria com o Dapper.
 - Dividas transferidas: dicionarios publicos mutaveis preservados por compatibilidade, consumo direto pelo Dommel, paralelismo da suite ainda desabilitado, MemberPath/nested objects/Value Objects fora desta etapa.
 - Relatorios: `docs/sdd/etapa-1/01-reflection-helper.md`, `docs/sdd/etapa-1/02-mapping-composition.md`, `docs/sdd/etapa-1/03-dapper-integration-tests.md`, `docs/sdd/etapa-1/04-mapping-registry-cache.md`.
+
+## Resultado da Etapa 2
+
+- Capacidades estabilizadas: `MemberPath` para identidade interna de propriedades, validacao fail-fast com `FluentMapConfigurationException`, heranca opt-in por `IncludeBase<TBase>()` e naming policies configuraveis via `UseNamingPolicy(...)`.
+- Precedencia consolidada: mapping explicito do derivado, mapping explicito herdado mais proximo, mapping explicito herdado mais distante, convention/naming policy do tipo consultado e fallback do Dapper.
+- APIs publicas adicionadas: `Dapper.FluentMap.FluentMapConfigurationException`, `EntityMap.IncludeBase<TBase>()`, `Dapper.FluentMap.Naming.NamingPolicy` e `FluentMapConfiguration.UseNamingPolicy(...)`.
+- Naming policies implementadas: `SnakeCase`, `Prefix`, `Suffix`, `Custom` e composicao por `Then`, `WithPrefix` e `WithSuffix`, sem alterar `DefaultTypeMap.MatchNamesWithUnderscores`.
+- Dividas adiadas: nested object materialization, Value Objects complexos, constructor/record mapping, multiple mapping profiles, Roslyn analyzers, source generators e AOT/trimming.
+- Relatorios: `docs/sdd/etapa-2/01-member-path.md`, `docs/sdd/etapa-2/02-configuration-validation.md`, `docs/sdd/etapa-2/03-inherited-mappings.md`, `docs/sdd/etapa-2/04-naming-policies.md`.
