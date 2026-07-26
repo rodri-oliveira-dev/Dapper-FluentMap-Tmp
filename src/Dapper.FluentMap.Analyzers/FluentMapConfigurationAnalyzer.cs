@@ -1,0 +1,836 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+
+namespace Dapper.FluentMap.Analyzers
+{
+    [DiagnosticAnalyzer(LanguageNames.CSharp)]
+    public sealed class FluentMapConfigurationAnalyzer : DiagnosticAnalyzer
+    {
+        public const string InvalidMapExpressionDiagnosticId = "DFM001";
+        public const string DuplicateMemberPathDiagnosticId = "DFM002";
+        public const string DuplicateColumnDiagnosticId = "DFM003";
+        public const string InvalidIncludeBaseDiagnosticId = "DFM004";
+        public const string InvalidGenericMapRegistrationDiagnosticId = "DFM005";
+        public const string InvalidGenericProfileRegistrationDiagnosticId = "DFM009";
+        public const string DuplicateProfileRegistrationDiagnosticId = "DFM010";
+
+        private const string Category = "Dapper.FluentMap.Configuration";
+        private const string MappingNamespace = "Dapper.FluentMap.Mapping";
+        private const string ConfigurationNamespace = "Dapper.FluentMap.Configuration";
+
+        private static readonly DiagnosticDescriptor InvalidMapExpressionRule = new DiagnosticDescriptor(
+            InvalidMapExpressionDiagnosticId,
+            "Map expression must resolve to a property path",
+            "Map expression '{0}' is invalid: {1}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Dapper.FluentMap Map expressions must resolve to a property path rooted in the entity parameter.");
+
+        private static readonly DiagnosticDescriptor DuplicateMemberPathRule = new DiagnosticDescriptor(
+            DuplicateMemberPathDiagnosticId,
+            "Property path is mapped more than once",
+            "Property path '{0}' is mapped more than once in this entity map constructor",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Mapping the same property path more than once in the same entity map constructor is an invalid FluentMap configuration.",
+            customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+        private static readonly DiagnosticDescriptor DuplicateColumnRule = new DiagnosticDescriptor(
+            DuplicateColumnDiagnosticId,
+            "Column is mapped by more than one property path",
+            "Column '{0}' is mapped by more than one property path in this entity map constructor: '{1}' and '{2}'",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Two explicit FluentMap mappings in the same entity map constructor must not resolve the same column when that conflict is statically known.",
+            customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+        private static readonly DiagnosticDescriptor InvalidIncludeBaseRule = new DiagnosticDescriptor(
+            InvalidIncludeBaseDiagnosticId,
+            "Included mapping type must be a base class",
+            "Type '{0}' cannot be included as a base mapping for entity '{1}'",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "IncludeBase<TBase>() can only include a real base class of the entity mapped by the current EntityMap.");
+
+        private static readonly DiagnosticDescriptor InvalidGenericMapRegistrationRule = new DiagnosticDescriptor(
+            InvalidGenericMapRegistrationDiagnosticId,
+            "Generic map registration type is invalid",
+            "Entity map type '{0}' must implement exactly one closed IEntityMap<TEntity> interface targeting a class type",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "AddMap<TMap>() can only register map types that implement exactly one closed IEntityMap<TEntity> interface whose entity type is a class.");
+
+        private static readonly DiagnosticDescriptor InvalidGenericProfileRegistrationRule = new DiagnosticDescriptor(
+            InvalidGenericProfileRegistrationDiagnosticId,
+            "Generic profile registration type is invalid",
+            "Profile map type '{0}' must implement exactly one closed IEntityMap<TEntity> interface and exactly one closed IProfileMap<TProfile> interface",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "AddProfile<TMap>() can only register map types that implement one entity map interface and one mapping profile interface.");
+
+        private static readonly DiagnosticDescriptor DuplicateProfileRegistrationRule = new DiagnosticDescriptor(
+            DuplicateProfileRegistrationDiagnosticId,
+            "Mapping profile is registered more than once",
+            "Entity '{0}' registers mapping profile '{1}' more than once in this configuration method",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "The same entity/profile pair must not be registered more than once.",
+            customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+            ImmutableArray.Create(
+                InvalidMapExpressionRule,
+                DuplicateMemberPathRule,
+                DuplicateColumnRule,
+                InvalidIncludeBaseRule,
+                InvalidGenericMapRegistrationRule,
+                InvalidGenericProfileRegistrationRule,
+                DuplicateProfileRegistrationRule);
+
+        public override void Initialize(AnalysisContext context)
+        {
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.EnableConcurrentExecution();
+
+            context.RegisterCompilationStartAction(startContext =>
+            {
+                var constructorMapInvocations = new ConcurrentBag<MapInvocation>();
+                var profileRegistrations = new ConcurrentBag<ProfileRegistrationInvocation>();
+
+                startContext.RegisterSyntaxNodeAction(
+                    nodeContext => AnalyzeInvocation(nodeContext, constructorMapInvocations, profileRegistrations),
+                    SyntaxKind.InvocationExpression);
+
+                startContext.RegisterCompilationEndAction(
+                    endContext =>
+                    {
+                        AnalyzeConstructorMapInvocations(endContext, constructorMapInvocations);
+                        AnalyzeProfileRegistrations(endContext, profileRegistrations);
+                    });
+            });
+        }
+
+        private static void AnalyzeInvocation(
+            SyntaxNodeAnalysisContext context,
+            ConcurrentBag<MapInvocation> constructorMapInvocations,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
+        {
+            var invocation = (InvocationExpressionSyntax)context.Node;
+            var method = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol as IMethodSymbol;
+
+            if (method == null)
+            {
+                return;
+            }
+
+            if (IsMapInvocation(method))
+            {
+                AnalyzeMapInvocation(context, invocation, constructorMapInvocations);
+                return;
+            }
+
+            if (IsIncludeBaseInvocation(method))
+            {
+                AnalyzeIncludeBaseInvocation(context, invocation, method);
+                return;
+            }
+
+            if (IsGenericAddMapInvocation(method))
+            {
+                AnalyzeGenericAddMapInvocation(context, invocation, method);
+                return;
+            }
+
+            if (IsGenericAddProfileInvocation(method))
+            {
+                AnalyzeGenericAddProfileInvocation(context, invocation, method, profileRegistrations);
+            }
+        }
+
+        private static void AnalyzeMapInvocation(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            ConcurrentBag<MapInvocation> constructorMapInvocations)
+        {
+            if (invocation.ArgumentList.Arguments.Count != 1)
+            {
+                return;
+            }
+
+            var argument = invocation.ArgumentList.Arguments[0].Expression;
+            if (!TryGetLambda(argument, out var lambda))
+            {
+                return;
+            }
+
+            if (!TryCreateMemberPath(lambda.Body, context.SemanticModel, context.CancellationToken, out var memberPath, out var reason))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InvalidMapExpressionRule,
+                    lambda.Body.GetLocation(),
+                    lambda.Body.ToString(),
+                    reason));
+                return;
+            }
+
+            if (!TryCreateDirectConstructorMapInvocation(
+                    invocation,
+                    context.SemanticModel,
+                    memberPath,
+                    context.CancellationToken,
+                    out var mapInvocation))
+            {
+                return;
+            }
+
+            constructorMapInvocations.Add(mapInvocation);
+        }
+
+        private static void AnalyzeIncludeBaseInvocation(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method)
+        {
+            if (method.TypeArguments.Length != 1)
+            {
+                return;
+            }
+
+            var containingType = context.ContainingSymbol?.ContainingType;
+            if (containingType == null)
+            {
+                return;
+            }
+
+            var entityType = FindEntityType(containingType);
+            var baseType = method.TypeArguments[0] as INamedTypeSymbol;
+            if (entityType == null || baseType == null)
+            {
+                return;
+            }
+
+            if (baseType.TypeKind == TypeKind.Class &&
+                !SymbolEqualityComparer.Default.Equals(baseType, entityType) &&
+                IsAssignableTo(entityType, baseType))
+            {
+                return;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                InvalidIncludeBaseRule,
+                invocation.GetLocation(),
+                FormatSymbol(baseType),
+                FormatSymbol(entityType)));
+        }
+
+        private static void AnalyzeGenericAddMapInvocation(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method)
+        {
+            if (method.TypeArguments.Length != 1)
+            {
+                return;
+            }
+
+            var mapType = method.TypeArguments[0] as INamedTypeSymbol;
+            if (mapType == null)
+            {
+                return;
+            }
+
+            if (TryGetEntityMapInterface(mapType, out _))
+            {
+                return;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                InvalidGenericMapRegistrationRule,
+                invocation.GetLocation(),
+                FormatSymbol(mapType)));
+        }
+
+        private static void AnalyzeGenericAddProfileInvocation(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
+        {
+            if (method.TypeArguments.Length != 1)
+            {
+                return;
+            }
+
+            var mapType = method.TypeArguments[0] as INamedTypeSymbol;
+            if (mapType == null)
+            {
+                return;
+            }
+
+            if (!TryGetEntityMapInterface(mapType, out var entityType) ||
+                !TryGetProfileMapInterface(mapType, out var profileType))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InvalidGenericProfileRegistrationRule,
+                    invocation.GetLocation(),
+                    FormatSymbol(mapType)));
+                return;
+            }
+
+            if (context.ContainingSymbol != null)
+            {
+                profileRegistrations.Add(new ProfileRegistrationInvocation(
+                    context.ContainingSymbol,
+                    entityType,
+                    profileType,
+                    GetInvocationNameLocation(invocation)));
+            }
+        }
+
+        private static void AnalyzeConstructorMapInvocations(
+            CompilationAnalysisContext context,
+            ConcurrentBag<MapInvocation> constructorMapInvocations)
+        {
+            var groups = constructorMapInvocations
+                .GroupBy(invocation => invocation.Constructor, SymbolEqualityComparer.Default);
+
+            foreach (var group in groups)
+            {
+                var invocations = group
+                    .OrderBy(invocation => invocation.InvocationLocation.SourceSpan.Start)
+                    .ToList();
+
+                ReportDuplicateMemberPaths(context, invocations);
+                ReportDuplicateColumns(context, invocations);
+            }
+        }
+
+        private static void ReportDuplicateMemberPaths(
+            CompilationAnalysisContext context,
+            IList<MapInvocation> invocations)
+        {
+            var seen = new Dictionary<string, MapInvocation>(StringComparer.Ordinal);
+
+            foreach (var invocation in invocations)
+            {
+                if (seen.ContainsKey(invocation.MemberPath.Key))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DuplicateMemberPathRule,
+                        invocation.InvocationLocation,
+                        invocation.MemberPath.Display));
+                    continue;
+                }
+
+                seen.Add(invocation.MemberPath.Key, invocation);
+            }
+        }
+
+        private static void ReportDuplicateColumns(
+            CompilationAnalysisContext context,
+            IList<MapInvocation> invocations)
+        {
+            for (var i = 0; i < invocations.Count; i++)
+            {
+                var left = invocations[i];
+                if (!left.ColumnKnown || left.Ignored)
+                {
+                    continue;
+                }
+
+                for (var j = i + 1; j < invocations.Count; j++)
+                {
+                    var right = invocations[j];
+                    if (!right.ColumnKnown ||
+                        right.Ignored ||
+                        left.MemberPath.Key == right.MemberPath.Key ||
+                        !ColumnNamesOverlap(left, right))
+                    {
+                        continue;
+                    }
+
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DuplicateColumnRule,
+                        right.ColumnLocation,
+                        right.ColumnName,
+                        left.MemberPath.Display,
+                        right.MemberPath.Display));
+                }
+            }
+        }
+
+        private static void AnalyzeProfileRegistrations(
+            CompilationAnalysisContext context,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
+        {
+            var groups = profileRegistrations
+                .GroupBy(
+                    registration => registration.ContainingSymbol,
+                    SymbolEqualityComparer.Default);
+
+            foreach (var group in groups)
+            {
+                var seen = new Dictionary<string, ProfileRegistrationInvocation>(StringComparer.Ordinal);
+                foreach (var registration in group.OrderBy(item => item.Location.SourceSpan.Start))
+                {
+                    var key = FormatSymbol(registration.EntityType) + "|" + FormatSymbol(registration.ProfileType);
+                    if (seen.ContainsKey(key))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DuplicateProfileRegistrationRule,
+                            registration.Location,
+                            FormatSymbol(registration.EntityType),
+                            FormatSymbol(registration.ProfileType)));
+                        continue;
+                    }
+
+                    seen.Add(key, registration);
+                }
+            }
+        }
+
+        private static bool ColumnNamesOverlap(MapInvocation left, MapInvocation right)
+        {
+            if (string.Equals(left.ColumnName, right.ColumnName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return (!left.CaseSensitive || !right.CaseSensitive) &&
+                   string.Equals(left.ColumnName, right.ColumnName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryCreateDirectConstructorMapInvocation(
+            InvocationExpressionSyntax mapInvocation,
+            SemanticModel semanticModel,
+            MemberPathInfo memberPath,
+            System.Threading.CancellationToken cancellationToken,
+            out MapInvocation result)
+        {
+            result = null;
+
+            var statement = mapInvocation.FirstAncestorOrSelf<ExpressionStatementSyntax>();
+            var block = statement?.Parent as BlockSyntax;
+            var constructor = block?.Parent as ConstructorDeclarationSyntax;
+            if (statement == null || constructor == null)
+            {
+                return false;
+            }
+
+            var constructorSymbol = semanticModel.GetDeclaredSymbol(constructor, cancellationToken);
+            if (constructorSymbol == null)
+            {
+                return false;
+            }
+
+            var column = memberPath.TerminalName;
+            var columnKnown = true;
+            var caseSensitive = true;
+            var ignored = false;
+            var columnLocation = mapInvocation.GetLocation();
+
+            SyntaxNode current = mapInvocation;
+            while (current.Parent is MemberAccessExpressionSyntax memberAccess &&
+                   memberAccess.Expression == current &&
+                   memberAccess.Parent is InvocationExpressionSyntax chainedInvocation)
+            {
+                var chainedMethod = semanticModel.GetSymbolInfo(chainedInvocation, cancellationToken).Symbol as IMethodSymbol;
+                if (chainedMethod == null)
+                {
+                    return false;
+                }
+
+                if (IsToColumnInvocation(chainedMethod))
+                {
+                    columnLocation = chainedInvocation.GetLocation();
+                    if (!TryGetColumn(chainedInvocation, semanticModel, cancellationToken, out column, out caseSensitive))
+                    {
+                        columnKnown = false;
+                    }
+                }
+                else if (IsIgnoreInvocation(chainedMethod))
+                {
+                    ignored = true;
+                }
+
+                current = chainedInvocation;
+            }
+
+            if (current != statement.Expression)
+            {
+                return false;
+            }
+
+            result = new MapInvocation(
+                constructorSymbol,
+                memberPath,
+                column,
+                columnKnown,
+                caseSensitive,
+                ignored,
+                mapInvocation.GetLocation(),
+                columnLocation);
+            return true;
+        }
+
+        private static bool TryGetColumn(
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            System.Threading.CancellationToken cancellationToken,
+            out string column,
+            out bool caseSensitive)
+        {
+            column = null;
+            caseSensitive = true;
+
+            if (invocation.ArgumentList.Arguments.Count == 0)
+            {
+                return false;
+            }
+
+            var columnConstant = semanticModel.GetConstantValue(
+                invocation.ArgumentList.Arguments[0].Expression,
+                cancellationToken);
+            if (!columnConstant.HasValue || !(columnConstant.Value is string columnValue))
+            {
+                return false;
+            }
+
+            column = columnValue;
+
+            foreach (var argument in invocation.ArgumentList.Arguments.Skip(1))
+            {
+                var name = argument.NameColon?.Name.Identifier.ValueText;
+                if (name != null && name != "caseSensitive")
+                {
+                    continue;
+                }
+
+                var caseConstant = semanticModel.GetConstantValue(argument.Expression, cancellationToken);
+                if (!caseConstant.HasValue || !(caseConstant.Value is bool caseValue))
+                {
+                    return false;
+                }
+
+                caseSensitive = caseValue;
+                return true;
+            }
+
+            return true;
+        }
+
+        private static bool TryGetLambda(ExpressionSyntax expression, out LambdaExpressionSyntax lambda)
+        {
+            expression = StripCastsAndParentheses(expression);
+            lambda = expression as LambdaExpressionSyntax;
+            return lambda != null;
+        }
+
+        private static bool TryCreateMemberPath(
+            CSharpSyntaxNode body,
+            SemanticModel semanticModel,
+            System.Threading.CancellationToken cancellationToken,
+            out MemberPathInfo memberPath,
+            out string reason)
+        {
+            memberPath = null;
+            reason = null;
+
+            var expression = StripCastsAndParentheses(body as ExpressionSyntax);
+            var properties = new Stack<IPropertySymbol>();
+
+            while (expression != null)
+            {
+                if (expression is MemberAccessExpressionSyntax memberAccess)
+                {
+                    var symbol = semanticModel.GetSymbolInfo(memberAccess, cancellationToken).Symbol;
+                    var property = symbol as IPropertySymbol;
+                    if (property == null)
+                    {
+                        reason = symbol == null
+                            ? "the member could not be resolved statically"
+                            : $"member '{symbol.Name}' is not a property";
+                        return false;
+                    }
+
+                    if (property.IsIndexer || property.Parameters.Length > 0)
+                    {
+                        reason = $"indexed property '{property.Name}' is not supported";
+                        return false;
+                    }
+
+                    properties.Push(property);
+                    expression = StripCastsAndParentheses(memberAccess.Expression);
+                    continue;
+                }
+
+                if (expression is IdentifierNameSyntax identifier)
+                {
+                    var symbol = semanticModel.GetSymbolInfo(identifier, cancellationToken).Symbol;
+                    if (symbol is IParameterSymbol && properties.Count > 0)
+                    {
+                        memberPath = MemberPathInfo.Create(properties);
+                        return true;
+                    }
+
+                    reason = "the expression must resolve to a property path rooted in the entity parameter";
+                    return false;
+                }
+
+                reason = "the expression must resolve to a property path";
+                return false;
+            }
+
+            reason = "the expression must resolve to a property path";
+            return false;
+        }
+
+        private static ExpressionSyntax StripCastsAndParentheses(ExpressionSyntax expression)
+        {
+            while (true)
+            {
+                if (expression is ParenthesizedExpressionSyntax parenthesized)
+                {
+                    expression = parenthesized.Expression;
+                    continue;
+                }
+
+                if (expression is CastExpressionSyntax cast)
+                {
+                    expression = cast.Expression;
+                    continue;
+                }
+
+                return expression;
+            }
+        }
+
+        private static bool IsMapInvocation(IMethodSymbol method)
+        {
+            return method.Name == "Map" &&
+                   method.Parameters.Length == 1 &&
+                   IsType(method.ContainingType.OriginalDefinition, MappingNamespace, "EntityMapBase`2");
+        }
+
+        private static bool IsIncludeBaseInvocation(IMethodSymbol method)
+        {
+            return method.Name == "IncludeBase" &&
+                   method.IsGenericMethod &&
+                   method.TypeArguments.Length == 1 &&
+                   method.Parameters.Length == 0 &&
+                   IsType(method.ContainingType.OriginalDefinition, MappingNamespace, "EntityMapBase`2");
+        }
+
+        private static bool IsGenericAddMapInvocation(IMethodSymbol method)
+        {
+            return method.Name == "AddMap" &&
+                   method.IsGenericMethod &&
+                   method.TypeArguments.Length == 1 &&
+                   method.Parameters.Length == 0 &&
+                   IsType(method.ContainingType, ConfigurationNamespace, "FluentMapConfiguration");
+        }
+
+        private static bool IsGenericAddProfileInvocation(IMethodSymbol method)
+        {
+            return method.Name == "AddProfile" &&
+                   method.IsGenericMethod &&
+                   method.TypeArguments.Length == 1 &&
+                   method.Parameters.Length == 0 &&
+                   IsType(method.ContainingType, ConfigurationNamespace, "FluentMapConfiguration");
+        }
+
+        private static bool IsToColumnInvocation(IMethodSymbol method)
+        {
+            return method.Name == "ToColumn" &&
+                   method.Parameters.Length >= 1 &&
+                   method.Parameters[0].Type.SpecialType == SpecialType.System_String;
+        }
+
+        private static bool IsIgnoreInvocation(IMethodSymbol method)
+        {
+            return method.Name == "Ignore" && method.Parameters.Length == 0;
+        }
+
+        private static Location GetInvocationNameLocation(InvocationExpressionSyntax invocation)
+        {
+            var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
+            return memberAccess == null
+                ? invocation.GetLocation()
+                : memberAccess.Name.GetLocation();
+        }
+
+        private static INamedTypeSymbol FindEntityType(INamedTypeSymbol mapType)
+        {
+            for (var current = mapType; current != null; current = current.BaseType)
+            {
+                if (IsType(current.OriginalDefinition, MappingNamespace, "EntityMapBase`2") ||
+                    IsType(current.OriginalDefinition, MappingNamespace, "EntityMap`1"))
+                {
+                    return current.TypeArguments[0] as INamedTypeSymbol;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsAssignableTo(INamedTypeSymbol type, INamedTypeSymbol baseType)
+        {
+            for (var current = type.BaseType; current != null; current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, baseType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsType(INamedTypeSymbol type, string namespaceName, string metadataName)
+        {
+            return type != null &&
+                   type.MetadataName == metadataName &&
+                   type.ContainingNamespace.ToDisplayString() == namespaceName;
+        }
+
+        private static bool TryGetEntityMapInterface(INamedTypeSymbol mapType, out INamedTypeSymbol entityType)
+        {
+            entityType = null;
+            var entityMapInterfaces = mapType.AllInterfaces
+                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, "IEntityMap`1"))
+                .ToList();
+
+            if (entityMapInterfaces.Count != 1 ||
+                entityMapInterfaces[0].TypeArguments[0].TypeKind != TypeKind.Class)
+            {
+                return false;
+            }
+
+            entityType = entityMapInterfaces[0].TypeArguments[0] as INamedTypeSymbol;
+            return entityType != null;
+        }
+
+        private static bool TryGetProfileMapInterface(INamedTypeSymbol mapType, out INamedTypeSymbol profileType)
+        {
+            profileType = null;
+            var profileMapInterfaces = mapType.AllInterfaces
+                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, "IProfileMap`1"))
+                .ToList();
+
+            if (profileMapInterfaces.Count != 1)
+            {
+                return false;
+            }
+
+            profileType = profileMapInterfaces[0].TypeArguments[0] as INamedTypeSymbol;
+            return profileType != null;
+        }
+
+        private static string FormatSymbol(ISymbol symbol)
+        {
+            return symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+        }
+
+        private sealed class MapInvocation
+        {
+            internal MapInvocation(
+                IMethodSymbol constructor,
+                MemberPathInfo memberPath,
+                string columnName,
+                bool columnKnown,
+                bool caseSensitive,
+                bool ignored,
+                Location invocationLocation,
+                Location columnLocation)
+            {
+                Constructor = constructor;
+                MemberPath = memberPath;
+                ColumnName = columnName;
+                ColumnKnown = columnKnown;
+                CaseSensitive = caseSensitive;
+                Ignored = ignored;
+                InvocationLocation = invocationLocation;
+                ColumnLocation = columnLocation;
+            }
+
+            internal IMethodSymbol Constructor { get; }
+
+            internal MemberPathInfo MemberPath { get; }
+
+            internal string ColumnName { get; }
+
+            internal bool ColumnKnown { get; }
+
+            internal bool CaseSensitive { get; }
+
+            internal bool Ignored { get; }
+
+            internal Location InvocationLocation { get; }
+
+            internal Location ColumnLocation { get; }
+        }
+
+        private sealed class MemberPathInfo
+        {
+            private MemberPathInfo(string key, string display, string terminalName)
+            {
+                Key = key;
+                Display = display;
+                TerminalName = terminalName;
+            }
+
+            internal string Key { get; }
+
+            internal string Display { get; }
+
+            internal string TerminalName { get; }
+
+            internal static MemberPathInfo Create(IEnumerable<IPropertySymbol> properties)
+            {
+                var propertyList = properties.ToList();
+                var key = string.Join(
+                    ".",
+                    propertyList.Select(property => property.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + property.MetadataName));
+                var display = string.Join(".", propertyList.Select(property => property.Name));
+                return new MemberPathInfo(key, display, propertyList[propertyList.Count - 1].Name);
+            }
+        }
+
+        private sealed class ProfileRegistrationInvocation
+        {
+            internal ProfileRegistrationInvocation(
+                ISymbol containingSymbol,
+                INamedTypeSymbol entityType,
+                INamedTypeSymbol profileType,
+                Location location)
+            {
+                ContainingSymbol = containingSymbol;
+                EntityType = entityType;
+                ProfileType = profileType;
+                Location = location;
+            }
+
+            internal ISymbol ContainingSymbol { get; }
+
+            internal INamedTypeSymbol EntityType { get; }
+
+            internal INamedTypeSymbol ProfileType { get; }
+
+            internal Location Location { get; }
+        }
+    }
+}

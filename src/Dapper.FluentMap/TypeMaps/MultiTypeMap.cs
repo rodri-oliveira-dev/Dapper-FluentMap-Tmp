@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using Dapper.FluentMap.Compatibility;
 using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap.TypeMaps
@@ -39,7 +40,12 @@ namespace Dapper.FluentMap.TypeMaps
                 }
                 catch (NotImplementedException)
                 {
-                    // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // Ignore unsupported operations from mapper strategies
+                    // and continue to the next mapping strategy.
+                }
+                catch (NotSupportedException)
+                {
+                    // Ignore unsupported operations from mapper strategies
                     // and continue to the next mapping strategy.
                 }
             }
@@ -62,7 +68,12 @@ namespace Dapper.FluentMap.TypeMaps
                 }
                 catch (NotImplementedException)
                 {
-                    // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // Ignore unsupported operations from mapper strategies
+                    // and continue to the next mapping strategy.
+                }
+                catch (NotSupportedException)
+                {
+                    // Ignore unsupported operations from mapper strategies
                     // and continue to the next mapping strategy.
                 }
             }
@@ -86,7 +97,12 @@ namespace Dapper.FluentMap.TypeMaps
                 }
                 catch (NotImplementedException)
                 {
-                    // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // Ignore unsupported operations from mapper strategies
+                    // and continue to the next mapping strategy.
+                }
+                catch (NotSupportedException)
+                {
+                    // Ignore unsupported operations from mapper strategies
                     // and continue to the next mapping strategy.
                 }
             }
@@ -104,20 +120,18 @@ namespace Dapper.FluentMap.TypeMaps
                     var result = mapper.GetMember(columnName);
                     if (result != null)
                     {
-#if !NETSTANDARD1_3
-                        if (result is IgnoredPropertyInfo || result.Property is IgnoredPropertyInfo)
+                        if (DapperIgnoredMemberMap.IsIgnored(result))
                         {
-                            // The property is explicitly ignored, 
+                            // The property is explicitly ignored or FluentMap-controlled nested materialization.
                             // return null to prevent falling back to default type map of Dapper.
                             return null;
                         }
-#endif
                         return result;
                     }
                 }
                 catch (NotImplementedException)
                 {
-                    // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // Ignore unsupported operations from mapper strategies
                     // and continue to the next mapping strategy.
                 }
             }

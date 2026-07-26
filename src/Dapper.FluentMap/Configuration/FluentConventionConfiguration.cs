@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Conventions;
@@ -13,6 +14,9 @@ namespace Dapper.FluentMap.Configuration
     /// </summary>
     public class FluentConventionConfiguration
     {
+        private const string AssemblyScanningRequiresUnreferencedCodeMessage =
+            "Convention assembly scanning discovers entity types and properties by reflection. Register conventions with ForEntity<TEntity>() when publishing trimmed or Native AOT applications.";
+
         private readonly Convention _convention;
 
         /// <summary>
@@ -22,6 +26,11 @@ namespace Dapper.FluentMap.Configuration
         /// <param name="convention">The convention.</param>
         public FluentConventionConfiguration(Convention convention)
         {
+            if (convention == null)
+            {
+                throw new ArgumentNullException(nameof(convention));
+            }
+
             _convention = convention;
         }
 
@@ -30,7 +39,9 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         /// <typeparam name="T">The type of the entity.</typeparam>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
-        public FluentConventionConfiguration ForEntity<T>()
+        public FluentConventionConfiguration ForEntity<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+            T>()
         {
             var type = typeof(T);
             MapProperties(type);
@@ -48,6 +59,7 @@ namespace Dapper.FluentMap.Configuration
         /// This parameter is optional.
         /// </param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInCurrentAssembly(params string[] namespaces)
         {
             foreach (var type in Assembly.GetCallingAssembly().GetExportedTypes())
@@ -77,6 +89,7 @@ namespace Dapper.FluentMap.Configuration
         /// This parameter is optional.
         /// </param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInAssembly(Assembly assembly, params string[] namespaces)
         {
             foreach (var type in assembly.GetExportedTypes())
@@ -96,7 +109,9 @@ namespace Dapper.FluentMap.Configuration
             return this;
         }
 
-        private void MapProperties(Type type)
+        private void MapProperties(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+            Type type)
         {
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
@@ -107,9 +122,12 @@ namespace Dapper.FluentMap.Configuration
                                                   .Where(c => c.PropertyPredicates.Count <= 0 ||
                                                               c.PropertyPredicates.All(e => e(property))))
                 {
+                    MappingConfigurationValidator.ValidateConventionConfiguration(type, _convention, config);
+
                     if (!string.IsNullOrEmpty(config.PropertyConfiguration.ColumnName))
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.ColumnName,
                             config.PropertyConfiguration.CaseSensitive);
@@ -119,6 +137,7 @@ namespace Dapper.FluentMap.Configuration
                     if (!string.IsNullOrEmpty(config.PropertyConfiguration.Prefix))
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.Prefix + property.Name,
                             config.PropertyConfiguration.CaseSensitive);
@@ -128,6 +147,7 @@ namespace Dapper.FluentMap.Configuration
                     if (config.PropertyConfiguration.PropertyTransformer != null)
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.PropertyTransformer(property.Name),
                             config.PropertyConfiguration.CaseSensitive);
@@ -136,9 +156,10 @@ namespace Dapper.FluentMap.Configuration
             }
         }
 
-        private void AddConventionPropertyMap(PropertyInfo property, string columnName, bool caseSensitive)
+        private void AddConventionPropertyMap(Type entityType, PropertyInfo property, string columnName, bool caseSensitive)
         {
             var map = new PropertyMap(property, columnName, caseSensitive);
+            MappingConfigurationValidator.ValidateConventionColumn(entityType, _convention, map);
             _convention.PropertyMaps.Add(map);
         }
 

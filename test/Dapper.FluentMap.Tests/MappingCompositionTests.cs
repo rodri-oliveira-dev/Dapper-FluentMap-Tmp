@@ -21,6 +21,23 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void IncludedBaseMappingShouldResolveColumnForDerivedEntity()
+        {
+            PreTest(typeof(BaseUser), typeof(AdminUser));
+
+            FluentMapper.Initialize(c =>
+            {
+                c.AddMap(new BaseUserMap());
+                c.AddMap(new AdminUserMap());
+            });
+
+            var member = SqlMapper.GetTypeMap(typeof(AdminUser)).GetMember("user_id");
+
+            Assert.NotNull(member);
+            Assert.Equal(typeof(BaseUser).GetProperty(nameof(BaseUser.Id)), member.Property);
+        }
+
+        [Fact]
         public void ConventionShouldResolveColumn()
         {
             PreTest(typeof(ConventionOnlyEntity));
@@ -83,6 +100,23 @@ namespace Dapper.FluentMap.Tests
             Assert.NotNull(explicitMember);
             Assert.Null(conventionMember);
             Assert.Equal(typeof(ExplicitOverrideEntity).GetProperty(nameof(ExplicitOverrideEntity.Id)), explicitMember.Property);
+        }
+
+        [Fact]
+        public void ExplicitNestedMappingShouldNotOverrideConventionForDistinctPropertyWithSameTerminalName()
+        {
+            PreTest(typeof(NestedExplicitWithConventionEntity));
+
+            FluentMapper.Initialize(c =>
+            {
+                c.AddMap(new NestedExplicitWithConventionMap());
+                c.AddConvention<PrefixConvention>().ForEntity<NestedExplicitWithConventionEntity>();
+            });
+
+            var conventionMember = SqlMapper.GetTypeMap(typeof(NestedExplicitWithConventionEntity)).GetMember("colLevel");
+
+            Assert.NotNull(conventionMember);
+            Assert.Equal(typeof(NestedExplicitWithConventionEntity).GetProperty(nameof(NestedExplicitWithConventionEntity.Level)), conventionMember.Property);
         }
 
         [Fact]
@@ -164,6 +198,34 @@ namespace Dapper.FluentMap.Tests
             }
         }
 
+        private class BaseUser
+        {
+            public int Id { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        private class AdminUser : BaseUser
+        {
+            public string Permission { get; set; }
+        }
+
+        private class BaseUserMap : EntityMap<BaseUser>
+        {
+            public BaseUserMap()
+            {
+                Map(e => e.Id).ToColumn("user_id");
+            }
+        }
+
+        private class AdminUserMap : EntityMap<AdminUser>
+        {
+            public AdminUserMap()
+            {
+                IncludeBase<BaseUser>();
+            }
+        }
+
         private class ConventionOnlyEntity
         {
             public string Name { get; set; }
@@ -211,6 +273,26 @@ namespace Dapper.FluentMap.Tests
             public ExplicitOverrideMap()
             {
                 Map(e => e.Id).ToColumn("explicit_id");
+            }
+        }
+
+        private class NestedExplicitWithConventionEntity
+        {
+            public int Level { get; set; }
+
+            public NestedRankInfo Rank { get; set; }
+        }
+
+        private class NestedRankInfo
+        {
+            public int Level { get; set; }
+        }
+
+        private class NestedExplicitWithConventionMap : EntityMap<NestedExplicitWithConventionEntity>
+        {
+            public NestedExplicitWithConventionMap()
+            {
+                Map(e => e.Rank.Level).ToColumn("rank_level");
             }
         }
 

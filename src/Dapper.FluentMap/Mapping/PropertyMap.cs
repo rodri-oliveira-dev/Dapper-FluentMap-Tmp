@@ -34,7 +34,7 @@ namespace Dapper.FluentMap.Mapping
     /// Serves as the base class for all property mapping implementations.
     /// </summary>
     /// <typeparam name="TPropertyMap">The type of the property mapping.</typeparam>
-    public abstract class PropertyMapBase<TPropertyMap>
+    public abstract class PropertyMapBase<TPropertyMap> : IPropertyMapWithMemberPath
         where TPropertyMap : class, IPropertyMap
     {
         /// <summary>
@@ -44,7 +44,13 @@ namespace Dapper.FluentMap.Mapping
         /// <param name="info">The <see cref="T:System.Reflection.PropertyInfo"/> object representing to the property to map.</param>
         protected PropertyMapBase(PropertyInfo info)
         {
+            if (info == null)
+            {
+                throw new ArgumentNullException(nameof(info));
+            }
+
             PropertyInfo = info;
+            MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = info.Name;
         }
 
@@ -57,7 +63,13 @@ namespace Dapper.FluentMap.Mapping
         /// <param name="columnName">The column name in the database to map the property to.</param>
         internal PropertyMapBase(PropertyInfo info, string columnName)
         {
+            if (info == null)
+            {
+                throw new ArgumentNullException(nameof(info));
+            }
+
             PropertyInfo = info;
+            MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = columnName;
         }
 
@@ -71,7 +83,13 @@ namespace Dapper.FluentMap.Mapping
         /// <param name="caseSensitive">A value indicating whether the mappig should be case sensitive.</param>
         internal PropertyMapBase(PropertyInfo info, string columnName, bool caseSensitive)
         {
+            if (info == null)
+            {
+                throw new ArgumentNullException(nameof(info));
+            }
+
             PropertyInfo = info;
+            MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = columnName;
             CaseSensitive = caseSensitive;
         }
@@ -96,6 +114,15 @@ namespace Dapper.FluentMap.Mapping
         /// </summary>
         public PropertyInfo PropertyInfo { get; }
 
+        internal MemberPath MemberPath { get; private set; }
+
+        MemberPath IPropertyMapWithMemberPath.MemberPath => MemberPath;
+
+        void IPropertyMapWithMemberPath.SetMemberPath(MemberPath memberPath)
+        {
+            MemberPath = memberPath;
+        }
+
         /// <summary>
         /// Maps the current property to the specified column name.
         /// </summary>
@@ -104,6 +131,11 @@ namespace Dapper.FluentMap.Mapping
         /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
         public TPropertyMap ToColumn(string columnName, bool caseSensitive = true)
         {
+            if (string.IsNullOrEmpty(columnName))
+            {
+                throw new ArgumentException("Column name cannot be null or empty.", nameof(columnName));
+            }
+
             ColumnName = columnName;
             CaseSensitive = caseSensitive;
             return this as TPropertyMap;
