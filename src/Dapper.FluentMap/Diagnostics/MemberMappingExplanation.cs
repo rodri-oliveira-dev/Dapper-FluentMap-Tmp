@@ -20,7 +20,8 @@ namespace Dapper.FluentMap.Diagnostics
             bool ignored,
             Type inheritedFrom,
             Type conventionType,
-            IEnumerable<ConstructorParameterExplanation> constructorParameters)
+            IEnumerable<ConstructorParameterExplanation> constructorParameters,
+            MappingMaterialization materialization)
         {
             if (string.IsNullOrEmpty(memberPath))
             {
@@ -42,6 +43,7 @@ namespace Dapper.FluentMap.Diagnostics
             ConventionType = conventionType;
             ConstructorParameters = new ReadOnlyCollection<ConstructorParameterExplanation>(
                 (constructorParameters ?? Enumerable.Empty<ConstructorParameterExplanation>()).ToList());
+            Materialization = materialization;
         }
 
         /// <summary>
@@ -88,5 +90,10 @@ namespace Dapper.FluentMap.Diagnostics
         /// Gets constructor parameters that can receive this mapped column.
         /// </summary>
         public IReadOnlyList<ConstructorParameterExplanation> ConstructorParameters { get; }
+
+        /// <summary>
+        /// Gets how this member is materialized.
+        /// </summary>
+        public MappingMaterialization Materialization { get; }
     }
 }

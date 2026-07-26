@@ -45,6 +45,25 @@ public class ProductMap : EntityMap<Product>
 
 Column names are mapped case sensitive by default. You can change this by specifying the `caseSensitive` parameter in the `ToColumn()` method: `Map(p => p.Name).ToColumn("strName", caseSensitive: false)`.
 
+#### Nested object materialization
+Nested paths can be configured with the same `Map(...)` API, but materializing the object graph is opt-in. Use `QueryMapped<T>()` or `QueryMappedSingle<T>()` when you want FluentMap to create supported mutable intermediate objects:
+
+```csharp
+public class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Address.City)
+            .ToColumn("city");
+    }
+}
+
+var customer = connection.QueryMappedSingle<Customer>(
+    "SELECT 'Sao Paulo' AS city");
+```
+
+The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping and Dapper fallback as before. The nested materializer supports mutable intermediate objects with public parameterless constructors and settable properties; immutable nested value objects and nested records are reserved for a generated or constructor-based materializer.
+
 **Initialization:**
 ```csharp
 FluentMapper.Initialize(config =>

@@ -8,6 +8,7 @@ using System.Text;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.TypeMaps;
 
 namespace Dapper.FluentMap
@@ -17,6 +18,9 @@ namespace Dapper.FluentMap
         private readonly ConcurrentDictionary<MappingCacheKey, MappingCacheEntry> _propertyMapCache =
             new ConcurrentDictionary<MappingCacheKey, MappingCacheEntry>();
 
+        private readonly ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan> _materializationPlanCache =
+            new ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan>();
+
         internal ConcurrentDictionary<Type, IEntityMap> EntityMaps { get; } =
             new ConcurrentDictionary<Type, IEntityMap>();
 
@@ -24,6 +28,8 @@ namespace Dapper.FluentMap
             new ConcurrentDictionary<Type, IList<Convention>>();
 
         internal int CacheEntryCount => _propertyMapCache.Count;
+
+        internal int MaterializationPlanCacheEntryCount => _materializationPlanCache.Count;
 
         internal void AddEntityMap<TEntity>(IEntityMap<TEntity> mapper)
             where TEntity : class
@@ -131,6 +137,24 @@ namespace Dapper.FluentMap
                 .PropertyMap;
         }
 
+        internal NestedMaterializationPlan GetMaterializationPlan(Type type, string[] columnNames)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            if (columnNames == null)
+            {
+                throw new ArgumentNullException(nameof(columnNames));
+            }
+
+            var cacheKey = new MaterializationPlanCacheKey(type, columnNames);
+            return _materializationPlanCache.GetOrAdd(
+                cacheKey,
+                key => NestedMaterializationPlan.Create(key.Type, key.ColumnNames, this));
+        }
+
         internal void ValidateConfiguration()
         {
             var errors = new List<string>();
@@ -235,6 +259,7 @@ namespace Dapper.FluentMap
             EntityMaps.Clear();
             TypeConventions.Clear();
             _propertyMapCache.Clear();
+            _materializationPlanCache.Clear();
 
             if (dapperTypes == null)
             {
@@ -258,6 +283,11 @@ namespace Dapper.FluentMap
             foreach (var key in _propertyMapCache.Keys.Where(k => k.Type == type))
             {
                 _propertyMapCache.TryRemove(key, out _);
+            }
+
+            foreach (var key in _materializationPlanCache.Keys.Where(k => k.Type == type))
+            {
+                _materializationPlanCache.TryRemove(key, out _);
             }
         }
 
@@ -420,7 +450,8 @@ namespace Dapper.FluentMap
                     ignored: false,
                     inheritedFrom: null,
                     conventionType: null,
-                    constructorParameters: constructorParameters));
+                    constructorParameters: constructorParameters,
+                    materialization: MappingMaterialization.Dapper));
                 configuredPaths.Add(memberPath);
             }
         }
@@ -436,6 +467,9 @@ namespace Dapper.FluentMap
             var constructorParameters = descriptor.Map.Ignored || memberPath.IsNested
                 ? new ConstructorParameterExplanation[0]
                 : GetConstructorParameters(entityType, descriptor.Map.PropertyInfo);
+            var materialization = memberPath.IsNested
+                ? MappingMaterialization.Nested
+                : MappingMaterialization.Dapper;
 
             members.Add(new MemberMappingExplanation(
                 memberPath.ToString(),
@@ -446,7 +480,8 @@ namespace Dapper.FluentMap
                 descriptor.Map.Ignored,
                 descriptor.InheritedFrom,
                 descriptor.ConventionType,
-                constructorParameters));
+                constructorParameters,
+                materialization));
             configuredPaths.Add(memberPath);
         }
 
@@ -545,7 +580,14 @@ namespace Dapper.FluentMap
 
                 if (!propertyMap.Ignored)
                 {
-                    PropertyInfo = propertyMap.PropertyInfo;
+                    var memberPath = PropertyMapIdentity.GetMemberPath(propertyMap);
+                    PropertyInfo = memberPath.IsNested
+#if !NETSTANDARD1_3
+                        ? new IgnoredPropertyInfo()
+#else
+                        ? null
+#endif
+                        : propertyMap.PropertyInfo;
                     return;
                 }
 

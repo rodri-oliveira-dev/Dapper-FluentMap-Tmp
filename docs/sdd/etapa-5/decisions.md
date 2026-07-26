@@ -6,9 +6,13 @@ Registre aqui apenas decisoes arquiteturais necessarias as proximas entregas.
 
 - `MemberPath` continua sendo identidade e diagnostico de caminho; ele nao deve ser entregue diretamente ao Dapper como `PropertyInfo` terminal para simular nested assignment.
 - `Dapper.Query<T>` com o `ITypeMap` atual do Dapper permanece suportado para mappings simples, constructor mapping simples, conventions, naming policies e fallback.
-- Nested object materialization deve ser opt-in por um caminho controlado pelo FluentMap, provavelmente uma API paralela de consulta/materializacao como `QueryMapped<T>`.
-- O caminho opt-in deve ler os valores do reader ou de uma representacao intermediaria e aplicar um plano de materializacao baseado em `MemberPath`.
-- A Entrega 2 deve impedir que nested paths sejam tratados como propriedades simples pelo type map instalado no Dapper, porque isso pode escrever o valor do leaf no slot errado do objeto raiz.
+- Nested object materialization e opt-in por uma API paralela de consulta/materializacao: `QueryMapped<T>` e `QueryMappedSingle<T>`.
+- O caminho opt-in le valores do reader e aplica um plano de materializacao baseado em `MemberPath`.
+- Nested paths nao sao tratados como propriedades simples pelo type map instalado no Dapper, porque isso pode escrever o valor do leaf no slot errado do objeto raiz.
+- A Entrega 2 suporta objetos aninhados mutaveis com construtor publico sem parametros e propriedades publicamente settable.
+- A semantica de `NULL` e por subarvore: quando todos os valores nested de uma subarvore sao `NULL`, o intermediario fica `null`; quando algum valor nao e `NULL`, o intermediario e criado ou reutilizado.
+- `Explain<TEntity>()` representa nested mappings com `Materialization = Nested`.
+- Prefix conflicts como `Address` e `Address.City` no mesmo plano sao rejeitados.
 
 ## Value Objects
 
@@ -25,4 +29,4 @@ Registre aqui apenas decisoes arquiteturais necessarias as proximas entregas.
 
 - O generator da Etapa 4 continua limitado a registro de mappings.
 - Um materializer gerado pode ser uma estrategia futura para performance, trimming e Native AOT, mas nao deve ser acoplado a Entrega 2 como unico caminho.
-- O caminho runtime/reflection-based deve ser documentado como menos AOT-friendly; o caminho gerado deve ser a opcao preferencial para consumidores trimmed/AOT quando existir.
+- O caminho runtime/reflection-based de `QueryMapped*` e documentado como menos AOT-friendly e foi anotado com `RequiresUnreferencedCode` e `RequiresDynamicCode`; o caminho gerado deve ser a opcao preferencial para consumidores trimmed/AOT quando existir.

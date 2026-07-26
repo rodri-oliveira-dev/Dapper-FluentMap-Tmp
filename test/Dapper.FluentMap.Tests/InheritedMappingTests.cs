@@ -100,9 +100,14 @@ namespace Dapper.FluentMap.Tests
             });
 
             var member = SqlMapper.GetTypeMap(typeof(MemberPathAdminUser)).GetMember("rank_level");
+            var explanation = FluentMapper.Explain<MemberPathAdminUser>();
 
-            Assert.NotNull(member);
-            Assert.Equal(typeof(InheritedRankInfo).GetProperty(nameof(InheritedRankInfo.Level)), member.Property);
+            Assert.Null(member);
+            Assert.Contains(
+                explanation.Members,
+                m => m.MemberPath == "Rank.Level" &&
+                     m.ColumnName == "rank_level" &&
+                     m.PropertyInfo == typeof(InheritedRankInfo).GetProperty(nameof(InheritedRankInfo.Level)));
         }
 
         [Fact]

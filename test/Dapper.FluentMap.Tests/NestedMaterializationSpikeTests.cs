@@ -11,7 +11,7 @@ namespace Dapper.FluentMap.Tests
     {
         [Fact]
         [Trait("Category", "Integration")]
-        public void NestedMutablePathShouldWriteLeafValueIntoRootSlotInsteadOfMaterializingGraph()
+        public void DapperQueryShouldNotTreatNestedMutablePathAsRootProperty()
         {
             PreTest(typeof(NestedMutableCustomer));
 
@@ -23,10 +23,7 @@ namespace Dapper.FluentMap.Tests
                 {
                     var customer = connection.QuerySingle<NestedMutableCustomer>("SELECT 'Recife' AS city;");
 
-                    var assignedValue = (object)customer.Address;
-
-                    Assert.IsType<string>(assignedValue);
-                    Assert.Equal("Recife", assignedValue);
+                    Assert.Null(customer.Address);
                 }
             }
             finally
@@ -37,7 +34,7 @@ namespace Dapper.FluentMap.Tests
 
         [Fact]
         [Trait("Category", "Integration")]
-        public void NestedPathsWithSameTerminalShouldBeConfiguredButDapperStillReceivesOnlyTerminalMembers()
+        public void NestedPathsWithSameTerminalShouldBeConfiguredButDapperQueryShouldNotMaterializeThem()
         {
             PreTest(typeof(SameTerminalCustomer));
 
@@ -54,7 +51,7 @@ namespace Dapper.FluentMap.Tests
                     var customer = connection.QuerySingle<SameTerminalCustomer>(
                         "SELECT 'gold' AS rank_level, 'staff' AS seniority_level;");
 
-                    Assert.Equal("staff", (object)customer.Rank);
+                    Assert.Null(customer.Rank);
                     Assert.Null(customer.Seniority);
                 }
             }
@@ -100,16 +97,12 @@ namespace Dapper.FluentMap.Tests
             try
             {
                 SqlMapper.AddTypeHandler(new CpfTypeHandler());
-                FluentMapper.Initialize(c => c.AddMap(new NestedValueObjectCustomerMap()));
 
-                using (var connection = OpenConnection())
-                {
-                    var exception = Assert.ThrowsAny<Exception>(() =>
-                        connection.QuerySingle<NestedValueObjectCustomer>(
-                            "SELECT '12345678909' AS cpf;"));
+                var exception = Assert.Throws<FluentMapConfigurationException>(
+                    () => FluentMapper.Initialize(c => c.AddMap(new NestedValueObjectCustomerMap())));
 
-                    Assert.Contains("Number", exception.ToString(), StringComparison.Ordinal);
-                }
+                Assert.Contains("Cpf.Number", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("settable", exception.Message, StringComparison.OrdinalIgnoreCase);
             }
             finally
             {

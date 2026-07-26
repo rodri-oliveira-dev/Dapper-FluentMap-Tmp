@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Mapping;
 
@@ -23,6 +25,7 @@ namespace Dapper.FluentMap
             var maps = GetEntityMapDescriptors(entityType, entityMap).ToList();
             ValidateDuplicateMemberPaths(entityType, maps, "entity map", entityMap.GetType());
             ValidateColumnConflicts(entityType, maps, "entity map", entityMap.GetType());
+            ValidateNestedMaterializationPaths(entityType, maps, "entity map", entityMap.GetType());
         }
 
         internal static void ValidateComposedEntityMap(Type entityType, IEntityMap entityMap, IList<IPropertyMap> propertyMaps)
@@ -44,6 +47,7 @@ namespace Dapper.FluentMap
 
             var maps = GetEntityMapDescriptors(entityType, propertyMaps, entityMap.GetType(), "composed entity map").ToList();
             ValidateColumnConflicts(entityType, maps, "composed entity map", entityMap.GetType());
+            ValidateNestedMaterializationPaths(entityType, maps, "composed entity map", entityMap.GetType());
         }
 
         internal static void ValidateConvention(Type entityType, Convention convention)
@@ -211,6 +215,126 @@ namespace Dapper.FluentMap
         {
             return left.GetType() == typeof(PropertyMap) &&
                    right.GetType() == typeof(PropertyMap);
+        }
+
+        private static void ValidateNestedMaterializationPaths(Type entityType, IList<MapDescriptor> maps, string sourceKind, Type sourceType)
+        {
+            var activeMaps = maps
+                .Where(map => !map.Map.Ignored)
+                .ToList();
+
+            foreach (var map in activeMaps.Where(map => map.MemberPath.IsNested))
+            {
+                ValidateNestedMaterializationPath(entityType, map.MemberPath, sourceKind, sourceType);
+            }
+
+            for (var i = 0; i < activeMaps.Count; i++)
+            {
+                for (var j = i + 1; j < activeMaps.Count; j++)
+                {
+                    if (!IsPathPrefix(activeMaps[i].MemberPath, activeMaps[j].MemberPath) &&
+                        !IsPathPrefix(activeMaps[j].MemberPath, activeMaps[i].MemberPath))
+                    {
+                        continue;
+                    }
+
+                    throw new FluentMapConfigurationException(
+                        $"Property path '{activeMaps[i].MemberPath}' conflicts with property path '{activeMaps[j].MemberPath}' for entity '{FormatType(entityType)}' in {sourceKind} '{FormatType(sourceType)}'. Nested materialization cannot map both a path and one of its descendants.");
+                }
+            }
+        }
+
+        private static void ValidateNestedMaterializationPath(Type entityType, MemberPath memberPath, string sourceKind, Type sourceType)
+        {
+            var properties = memberPath.Properties;
+
+            for (var i = 0; i < properties.Count; i++)
+            {
+                var property = properties[i];
+                if (property.GetIndexParameters().Length != 0)
+                {
+                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' is an indexer.");
+                }
+
+                if (IsStatic(property))
+                {
+                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' is static.");
+                }
+
+                if (!CanRead(property))
+                {
+                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' must have a public getter.");
+                }
+
+                if (!CanWrite(property))
+                {
+                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' must be settable.");
+                }
+
+                if (i == properties.Count - 1)
+                {
+                    continue;
+                }
+
+                var propertyType = property.PropertyType;
+                if (IsUnsupportedIntermediateType(propertyType))
+                {
+                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Intermediate property '{property.Name}' has unsupported type '{FormatType(propertyType)}'. Collections and scalar values cannot appear in the middle of a nested path.");
+                }
+            }
+        }
+
+        private static bool IsPathPrefix(MemberPath prefix, MemberPath path)
+        {
+            if (prefix.Properties.Count >= path.Properties.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < prefix.Properties.Count; i++)
+            {
+                if (!Equals(prefix.Properties[i], path.Properties[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool CanRead(PropertyInfo property)
+        {
+            var getter = property.GetGetMethod();
+            return getter != null && !getter.IsStatic;
+        }
+
+        private static bool CanWrite(PropertyInfo property)
+        {
+            var setter = property.GetSetMethod();
+            return setter != null && !setter.IsStatic;
+        }
+
+        private static bool IsStatic(PropertyInfo property)
+        {
+            var getter = property.GetGetMethod();
+            var setter = property.GetSetMethod();
+            return (getter != null && getter.IsStatic) || (setter != null && setter.IsStatic);
+        }
+
+        private static bool IsUnsupportedIntermediateType(Type type)
+        {
+            if (!type.IsClass || type == typeof(string))
+            {
+                return true;
+            }
+
+            return typeof(IEnumerable).IsAssignableFrom(type);
+        }
+
+        private static FluentMapConfigurationException UnsupportedNestedPath(Type entityType, MemberPath memberPath, string sourceKind, Type sourceType, string reason)
+        {
+            return new FluentMapConfigurationException(
+                $"Property path '{memberPath}' is not supported for nested materialization on entity '{FormatType(entityType)}' in {sourceKind} '{FormatType(sourceType)}'. {reason}");
         }
 
         private static bool IsMapForEntity(Type entityType, IPropertyMap map)

@@ -57,5 +57,22 @@ namespace System.Diagnostics.CodeAnalysis
 
         public string Url { get; set; }
     }
+
+    [AttributeUsage(
+        AttributeTargets.Constructor |
+        AttributeTargets.Method |
+        AttributeTargets.Class,
+        Inherited = false)]
+    internal sealed class RequiresDynamicCodeAttribute : Attribute
+    {
+        public RequiresDynamicCodeAttribute(string message)
+        {
+            Message = message;
+        }
+
+        public string Message { get; }
+
+        public string Url { get; set; }
+    }
 }
 #endif
