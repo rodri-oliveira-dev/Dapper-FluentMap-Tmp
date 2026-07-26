@@ -46,7 +46,7 @@ public class ProductMap : EntityMap<Product>
 Column names are mapped case sensitive by default. You can change this by specifying the `caseSensitive` parameter in the `ToColumn()` method: `Map(p => p.Name).ToColumn("strName", caseSensitive: false)`.
 
 #### Nested object materialization
-Nested paths can be configured with the same `Map(...)` API, but materializing the object graph is opt-in. Use `QueryMapped<T>()` or `QueryMappedSingle<T>()` when you want FluentMap to create supported mutable intermediate objects:
+Nested paths can be configured with the same `Map(...)` API, but materializing the object graph is opt-in. Use `QueryMapped<T>()` or `QueryMappedSingle<T>()` when you want FluentMap to create supported intermediate objects or constructor-based immutable value objects:
 
 ```csharp
 public class CustomerMap : EntityMap<Customer>
@@ -62,7 +62,23 @@ var customer = connection.QueryMappedSingle<Customer>(
     "SELECT 'Sao Paulo' AS city");
 ```
 
-The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping and Dapper fallback as before. The nested materializer supports mutable intermediate objects with public parameterless constructors and settable properties; immutable nested value objects and nested records are reserved for a generated or constructor-based materializer.
+Constructor-based Value Objects are supported when each mapped component can be bound to a public constructor parameter:
+
+```csharp
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Id).ToColumn("id");
+        Map(c => c.Cpf.Number).ToColumn("cpf");
+    }
+}
+
+var customer = connection.QueryMappedSingle<Customer>(
+    "SELECT 1 AS id, '12345678909' AS cpf");
+```
+
+The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping, TypeHandlers and Dapper fallback as before. For scalar Value Objects mapped as a whole, such as `Map(c => c.Cpf).ToColumn("cpf")`, prefer a Dapper `TypeHandler<Cpf>`. For nested paths such as `Map(c => c.Cpf.Number)`, `QueryMapped*` constructs the Value Object through public constructors and preserves domain invariants. Factory methods and generated materializers are not part of this runtime path.
 
 **Initialization:**
 ```csharp

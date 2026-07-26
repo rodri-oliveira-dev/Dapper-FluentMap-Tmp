@@ -90,19 +90,22 @@ namespace Dapper.FluentMap.Tests
 
         [Fact]
         [Trait("Category", "Integration")]
-        public void TypeHandlerShouldNotMaterializeNestedValueObjectPath()
+        public void DapperQueryShouldNotUseTypeHandlerForNestedValueObjectPath()
         {
             PreTest(typeof(NestedValueObjectCustomer));
 
             try
             {
                 SqlMapper.AddTypeHandler(new CpfTypeHandler());
+                FluentMapper.Initialize(c => c.AddMap(new NestedValueObjectCustomerMap()));
 
-                var exception = Assert.Throws<FluentMapConfigurationException>(
-                    () => FluentMapper.Initialize(c => c.AddMap(new NestedValueObjectCustomerMap())));
+                using (var connection = OpenConnection())
+                {
+                    var customer = connection.QuerySingle<NestedValueObjectCustomer>(
+                        "SELECT '12345678909' AS cpf;");
 
-                Assert.Contains("Cpf.Number", exception.Message, StringComparison.Ordinal);
-                Assert.Contains("settable", exception.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.Null(customer.Cpf);
+                }
             }
             finally
             {

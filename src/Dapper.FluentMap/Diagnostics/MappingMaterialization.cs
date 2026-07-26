@@ -13,6 +13,11 @@ namespace Dapper.FluentMap.Diagnostics
         /// <summary>
         /// The member is materialized by FluentMap's opt-in nested object materializer.
         /// </summary>
-        Nested
+        Nested,
+
+        /// <summary>
+        /// The member is materialized by FluentMap's opt-in constructor-based value object materializer.
+        /// </summary>
+        ValueObject
     }
 }

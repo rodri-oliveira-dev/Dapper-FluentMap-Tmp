@@ -11,18 +11,11 @@ namespace Dapper.FluentMap.Materialization
 {
     internal sealed class NestedMaterializationPlan
     {
-        private readonly Func<object> _entityFactory;
-        private readonly Assignment[] _rootAssignments;
-        private readonly NestedNode[] _nestedNodes;
+        private readonly MaterializationNode _rootNode;
 
-        private NestedMaterializationPlan(
-            Func<object> entityFactory,
-            IEnumerable<Assignment> rootAssignments,
-            IEnumerable<NestedNode> nestedNodes)
+        private NestedMaterializationPlan(MaterializationNode rootNode)
         {
-            _entityFactory = entityFactory;
-            _rootAssignments = rootAssignments.ToArray();
-            _nestedNodes = nestedNodes.ToArray();
+            _rootNode = rootNode;
         }
 
         internal static NestedMaterializationPlan Create(Type entityType, IReadOnlyList<string> columnNames, MappingRegistry registry)
@@ -42,10 +35,8 @@ namespace Dapper.FluentMap.Materialization
                 throw new ArgumentNullException(nameof(registry));
             }
 
-            var entityFactory = CreateFactory(entityType, $"Entity type '{FormatType(entityType)}' must have a public parameterless constructor to use QueryMapped when nested mappings are present.");
             var defaultTypeMap = new DefaultTypeMap(entityType);
-            var rootAssignments = new List<Assignment>();
-            var nestedNodes = new List<NestedNode>();
+            var rootNode = MaterializationNode.Root(entityType);
 
             for (var i = 0; i < columnNames.Count; i++)
             {
@@ -59,13 +50,7 @@ namespace Dapper.FluentMap.Materialization
                     }
 
                     var memberPath = PropertyMapIdentity.GetMemberPath(fluentMap);
-                    if (memberPath.IsNested)
-                    {
-                        AddNestedAssignment(nestedNodes, memberPath, i);
-                        continue;
-                    }
-
-                    rootAssignments.Add(Assignment.ForProperty(i, memberPath.PropertyInfo));
+                    rootNode.AddPropertyPath(memberPath, i, columnName);
                     continue;
                 }
 
@@ -77,77 +62,50 @@ namespace Dapper.FluentMap.Materialization
 
                 if (defaultMember.Property != null)
                 {
-                    rootAssignments.Add(Assignment.ForProperty(i, defaultMember.Property));
+                    rootNode.AddRootProperty(defaultMember.Property, i, columnName);
                 }
                 else if (defaultMember.Field != null)
                 {
-                    rootAssignments.Add(Assignment.ForField(i, defaultMember.Field));
+                    rootNode.AddRootField(defaultMember.Field, i, columnName);
                 }
             }
 
-            foreach (var node in nestedNodes)
-            {
-                node.Seal();
-            }
+            rootNode.Seal(entityType);
 
-            return new NestedMaterializationPlan(entityFactory, rootAssignments, nestedNodes);
+            return new NestedMaterializationPlan(rootNode);
         }
 
         internal object Materialize(IDataRecord record)
         {
-            var entity = _entityFactory();
-
-            foreach (var assignment in _rootAssignments)
-            {
-                assignment.Assign(entity, record);
-            }
-
-            foreach (var node in _nestedNodes)
-            {
-                node.Apply(entity, record);
-            }
-
-            return entity;
+            return _rootNode.MaterializeRoot(record);
         }
 
-        private static void AddNestedAssignment(IList<NestedNode> rootNodes, MemberPath memberPath, int columnIndex)
-        {
-            var properties = memberPath.Properties;
-            var nodes = rootNodes;
-            var node = default(NestedNode);
-
-            for (var i = 0; i < properties.Count - 1; i++)
-            {
-                node = FindOrAddNode(nodes, properties[i]);
-                nodes = node.Children;
-            }
-
-            node.Leaves.Add(Assignment.ForProperty(columnIndex, properties[properties.Count - 1]));
-        }
-
-        private static NestedNode FindOrAddNode(IList<NestedNode> nodes, PropertyInfo property)
-        {
-            var node = nodes.FirstOrDefault(n => Equals(n.Property, property));
-            if (node != null)
-            {
-                return node;
-            }
-
-            node = new NestedNode(property);
-            nodes.Add(node);
-            return node;
-        }
-
-        private static Func<object> CreateFactory(Type type, string errorMessage)
+        private static Func<object> CreateParameterlessFactory(Type type)
         {
             var constructor = type.GetConstructor(Type.EmptyTypes);
             if (constructor == null)
             {
-                throw new FluentMapConfigurationException(errorMessage);
+                return null;
             }
 
             var body = Expression.Convert(Expression.New(constructor), typeof(object));
             return Expression.Lambda<Func<object>>(body).Compile();
+        }
+
+        private static Func<object[], object> CreateConstructorFactory(ConstructorInfo constructor)
+        {
+            var args = Expression.Parameter(typeof(object[]), "args");
+            var parameters = constructor.GetParameters();
+            var arguments = new Expression[parameters.Length];
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var item = Expression.ArrayIndex(args, Expression.Constant(i));
+                arguments[i] = Expression.Convert(item, parameters[i].ParameterType);
+            }
+
+            var body = Expression.Convert(Expression.New(constructor, arguments), typeof(object));
+            return Expression.Lambda<Func<object[], object>>(body, args).Compile();
         }
 
         private static Func<object, object> CreateGetter(PropertyInfo property)
@@ -162,6 +120,11 @@ namespace Dapper.FluentMap.Materialization
 
         private static Action<object, object> CreatePropertySetter(PropertyInfo property)
         {
+            if (!CanWrite(property))
+            {
+                return null;
+            }
+
             var target = Expression.Parameter(typeof(object), "target");
             var value = Expression.Parameter(typeof(object), "value");
             var body = Expression.Assign(
@@ -180,6 +143,45 @@ namespace Dapper.FluentMap.Materialization
                 Expression.Convert(value, field.FieldType));
 
             return Expression.Lambda<Action<object, object>>(body, target, value).Compile();
+        }
+
+        private static Func<object, object> CreateConverter(Type targetType)
+        {
+            var conversionType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            if (SqlMapper.HasTypeHandler(conversionType))
+            {
+                return CreateTypeHandlerConverter(conversionType);
+            }
+
+            return value => ConvertValue(value, targetType);
+        }
+
+        private static Func<object, object> CreateTypeHandlerConverter(Type targetType)
+        {
+            var value = Expression.Parameter(typeof(object), "value");
+            var cacheTypeDefinition = typeof(SqlMapper).GetNestedType("TypeHandlerCache`1", BindingFlags.Public | BindingFlags.NonPublic);
+            if (cacheTypeDefinition == null)
+            {
+                return raw => ConvertValue(raw, targetType);
+            }
+
+            var cacheType = cacheTypeDefinition.MakeGenericType(targetType);
+            var parse = cacheType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(object) }, null);
+
+            if (parse == null)
+            {
+                return raw => ConvertValue(raw, targetType);
+            }
+
+            var nullValue = Expression.Constant(GetDefaultValue(targetType), typeof(object));
+            var body = Expression.Condition(
+                Expression.OrElse(
+                    Expression.Equal(value, Expression.Constant(null, typeof(object))),
+                    Expression.Equal(value, Expression.Constant(DBNull.Value, typeof(object)))),
+                nullValue,
+                Expression.Convert(Expression.Call(parse, value), typeof(object)));
+
+            return Expression.Lambda<Func<object, object>>(body, value).Compile();
         }
 
         private static object ConvertValue(object value, Type targetType)
@@ -225,9 +227,36 @@ namespace Dapper.FluentMap.Materialization
             return !type.GetTypeInfo().IsValueType || Nullable.GetUnderlyingType(type) != null;
         }
 
+        private static bool CanRead(PropertyInfo property)
+        {
+            var getter = property.GetGetMethod();
+            return getter != null && !getter.IsStatic;
+        }
+
+        private static bool CanWrite(PropertyInfo property)
+        {
+            var setter = property.GetSetMethod();
+            return setter != null && !setter.IsStatic;
+        }
+
         private static bool HasNonNullValue(IDataRecord record, IEnumerable<int> columnIndexes)
         {
             return columnIndexes.Any(index => !record.IsDBNull(index));
+        }
+
+        private static bool IsParameterCompatible(Type parameterType, Type sourceType)
+        {
+            var parameter = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+            var source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
+            return parameter.GetTypeInfo().IsAssignableFrom(source.GetTypeInfo()) ||
+                   source.GetTypeInfo().IsAssignableFrom(parameter.GetTypeInfo());
+        }
+
+        private static int GetCompatibilityScore(Type parameterType, Type sourceType)
+        {
+            var parameter = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+            var source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
+            return parameter == source ? 2 : 1;
         }
 
         private static string FormatType(Type type)
@@ -235,53 +264,120 @@ namespace Dapper.FluentMap.Materialization
             return type == null ? "<unknown>" : type.FullName;
         }
 
-        private sealed class NestedNode
+        private static string FormatConstructor(ConstructorInfo constructor)
         {
-            private int[] _subtreeColumnIndexes;
+            var parameters = constructor.GetParameters()
+                .Select(parameter => FormatType(parameter.ParameterType) + " " + parameter.Name);
 
-            internal NestedNode(PropertyInfo property)
+            return FormatType(constructor.DeclaringType) + "(" + string.Join(", ", parameters) + ")";
+        }
+
+        private sealed class MaterializationNode
+        {
+            private readonly List<NestedLeaf> _leaves = new List<NestedLeaf>();
+            private readonly List<MaterializationNode> _children = new List<MaterializationNode>();
+            private readonly bool _isRoot;
+            private int[] _subtreeColumnIndexes;
+            private Func<object> _parameterlessFactory;
+            private ConstructorPlan _constructorPlan;
+            private NestedLeaf[] _postConstructorLeaves;
+            private MaterializationNode[] _postConstructorChildren;
+
+            private MaterializationNode(Type type, PropertyInfo parentProperty, string memberPath, bool isRoot)
             {
-                Property = property;
-                Children = new List<NestedNode>();
-                Leaves = new List<Assignment>();
-                Getter = CreateGetter(property);
-                Setter = CreatePropertySetter(property);
-                Factory = CreateFactory(
-                    property.PropertyType,
-                    $"Intermediate property '{property.Name}' of type '{FormatType(property.PropertyType)}' must have a public parameterless constructor for nested materialization.");
+                Type = type;
+                ParentProperty = parentProperty;
+                MemberPath = memberPath;
+                _isRoot = isRoot;
+
+                if (parentProperty != null)
+                {
+                    Getter = CanRead(parentProperty) ? CreateGetter(parentProperty) : null;
+                    Setter = CreatePropertySetter(parentProperty);
+                }
             }
 
-            internal PropertyInfo Property { get; }
+            internal Type Type { get; }
 
-            internal IList<NestedNode> Children { get; }
+            internal PropertyInfo ParentProperty { get; }
 
-            internal IList<Assignment> Leaves { get; }
+            internal string MemberPath { get; }
 
-            private Func<object, object> Getter { get; }
+            internal Func<object, object> Getter { get; }
 
-            private Action<object, object> Setter { get; }
+            internal Action<object, object> Setter { get; }
 
-            private Func<object> Factory { get; }
+            internal bool CanAssignToParent => _isRoot || Setter != null;
 
-            internal void Seal()
+            internal static MaterializationNode Root(Type type)
             {
-                foreach (var child in Children)
+                return new MaterializationNode(type, null, type.Name, isRoot: true);
+            }
+
+            internal void AddPropertyPath(MemberPath memberPath, int columnIndex, string columnName)
+            {
+                var properties = memberPath.Properties;
+                if (!memberPath.IsNested)
                 {
-                    child.Seal();
+                    AddRootProperty(properties[0], columnIndex, columnName);
+                    return;
                 }
 
-                _subtreeColumnIndexes = Leaves
+                var node = this;
+                for (var i = 0; i < properties.Count - 1; i++)
+                {
+                    node = node.FindOrAddChild(properties[i]);
+                }
+
+                node._leaves.Add(NestedLeaf.ForProperty(properties[properties.Count - 1], columnIndex, columnName, memberPath.ToString()));
+            }
+
+            internal void AddRootProperty(PropertyInfo property, int columnIndex, string columnName)
+            {
+                _leaves.Add(NestedLeaf.ForProperty(property, columnIndex, columnName, property.Name));
+            }
+
+            internal void AddRootField(FieldInfo field, int columnIndex, string columnName)
+            {
+                _leaves.Add(NestedLeaf.ForField(field, columnIndex, columnName, field.Name));
+            }
+
+            internal void Seal(Type entityType)
+            {
+                foreach (var child in _children)
+                {
+                    child.Seal(entityType);
+                }
+
+                _subtreeColumnIndexes = _leaves
                     .Select(leaf => leaf.ColumnIndex)
-                    .Concat(Children.SelectMany(child => child._subtreeColumnIndexes))
+                    .Concat(_children.SelectMany(child => child._subtreeColumnIndexes))
                     .Distinct()
                     .ToArray();
+
+                SelectConstructionPlan(entityType);
+            }
+
+            internal object MaterializeRoot(IDataRecord record)
+            {
+                return Materialize(record, existing: null, forceNew: true);
+            }
+
+            internal object MaterializeValue(IDataRecord record)
+            {
+                if (!HasNonNullValue(record, _subtreeColumnIndexes))
+                {
+                    return null;
+                }
+
+                return Materialize(record, existing: null, forceNew: true);
             }
 
             internal void Apply(object parent, IDataRecord record)
             {
                 if (!HasNonNullValue(record, _subtreeColumnIndexes))
                 {
-                    if (CanAssignNull(Property.PropertyType))
+                    if (Setter != null && CanAssignNull(ParentProperty.PropertyType))
                     {
                         Setter(parent, null);
                     }
@@ -289,52 +385,396 @@ namespace Dapper.FluentMap.Materialization
                     return;
                 }
 
-                var current = Getter(parent);
-                if (current == null)
+                var existing = _constructorPlan == null && Getter != null
+                    ? Getter(parent)
+                    : null;
+                var value = Materialize(record, existing, forceNew: false);
+
+                if (Setter != null && (!ReferenceEquals(existing, value) || _constructorPlan != null))
                 {
-                    current = Factory();
-                    Setter(parent, current);
+                    Setter(parent, value);
+                }
+            }
+
+            private MaterializationNode FindOrAddChild(PropertyInfo property)
+            {
+                var child = _children.FirstOrDefault(node => Equals(node.ParentProperty, property));
+                if (child != null)
+                {
+                    return child;
                 }
 
-                foreach (var child in Children)
+                var memberPath = _isRoot
+                    ? property.Name
+                    : MemberPath + "." + property.Name;
+                child = new MaterializationNode(property.PropertyType, property, memberPath, isRoot: false);
+                _children.Add(child);
+                return child;
+            }
+
+            private void SelectConstructionPlan(Type entityType)
+            {
+                _parameterlessFactory = CreateParameterlessFactory(Type);
+
+                var requiresConstructor = _parameterlessFactory == null ||
+                                          _leaves.Any(leaf => !leaf.CanAssign) ||
+                                          _children.Any(child => !child.CanAssignToParent);
+
+                if (!requiresConstructor)
+                {
+                    _postConstructorLeaves = _leaves.ToArray();
+                    _postConstructorChildren = _children.ToArray();
+                    return;
+                }
+
+                _constructorPlan = SelectConstructor(entityType);
+                if (_constructorPlan == null)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Type '{FormatType(Type)}' at member path '{MemberPath}' on entity '{FormatType(entityType)}' cannot be materialized. No public constructor matches the mapped properties or nested value objects. Columns: {FormatColumns()}.");
+                }
+
+                _postConstructorLeaves = _leaves
+                    .Where(leaf => !_constructorPlan.Uses(leaf))
+                    .ToArray();
+                _postConstructorChildren = _children
+                    .Where(child => !_constructorPlan.Uses(child))
+                    .ToArray();
+
+                var unsupportedLeaf = _postConstructorLeaves.FirstOrDefault(leaf => !leaf.CanAssign);
+                if (unsupportedLeaf != null)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Type '{FormatType(Type)}' at member path '{MemberPath}' on entity '{FormatType(entityType)}' cannot assign mapped property '{unsupportedLeaf.MemberPath}'. It has no public setter and is not bound to constructor '{FormatConstructor(_constructorPlan.Constructor)}'. Column: '{unsupportedLeaf.ColumnName}'.");
+                }
+
+                var unsupportedChild = _postConstructorChildren.FirstOrDefault(child => !child.CanAssignToParent);
+                if (unsupportedChild != null)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Type '{FormatType(Type)}' at member path '{MemberPath}' on entity '{FormatType(entityType)}' cannot assign nested value object '{unsupportedChild.MemberPath}'. It has no public setter and is not bound to constructor '{FormatConstructor(_constructorPlan.Constructor)}'.");
+                }
+            }
+
+            private ConstructorPlan SelectConstructor(Type entityType)
+            {
+                var candidates = Type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+                    .Select(constructor => TryCreateConstructorPlan(entityType, constructor))
+                    .Where(plan => plan != null)
+                    .ToList();
+
+                if (candidates.Count == 0)
+                {
+                    return null;
+                }
+
+                var bestScore = candidates.Max(candidate => candidate.Score);
+                var best = candidates
+                    .Where(candidate => candidate.Score == bestScore)
+                    .ToList();
+
+                if (best.Count > 1)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Type '{FormatType(Type)}' at member path '{MemberPath}' on entity '{FormatType(entityType)}' has multiple public constructors that match the mapped columns: {string.Join("; ", best.Select(plan => FormatConstructor(plan.Constructor)))}.");
+                }
+
+                return best[0];
+            }
+
+            private ConstructorPlan TryCreateConstructorPlan(Type entityType, ConstructorInfo constructor)
+            {
+                var bindings = new List<ParameterBinding>();
+                var score = 0;
+
+                foreach (var parameter in constructor.GetParameters())
+                {
+                    var binding = TryBindParameter(parameter);
+                    if (binding == null)
+                    {
+                        return null;
+                    }
+
+                    bindings.Add(binding);
+                    score += binding.Score;
+                }
+
+                foreach (var leaf in _leaves.Where(leaf => !leaf.CanAssign))
+                {
+                    if (!bindings.Any(binding => binding.Leaf == leaf))
+                    {
+                        return null;
+                    }
+                }
+
+                foreach (var child in _children.Where(child => !child.CanAssignToParent))
+                {
+                    if (!bindings.Any(binding => binding.Child == child))
+                    {
+                        return null;
+                    }
+                }
+
+                return new ConstructorPlan(
+                    entityType,
+                    MemberPath,
+                    constructor,
+                    CreateConstructorFactory(constructor),
+                    bindings,
+                    score);
+            }
+
+            private ParameterBinding TryBindParameter(ParameterInfo parameter)
+            {
+                var leafMatches = _leaves
+                    .Where(leaf => leaf.Property != null &&
+                                   string.Equals(leaf.Property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
+                                   IsParameterCompatible(parameter.ParameterType, leaf.TargetType))
+                    .Select(leaf => ParameterBinding.ForLeaf(parameter, leaf, GetCompatibilityScore(parameter.ParameterType, leaf.TargetType)));
+
+                var childMatches = _children
+                    .Where(child => string.Equals(child.ParentProperty.Name, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
+                                    IsParameterCompatible(parameter.ParameterType, child.ParentProperty.PropertyType))
+                    .Select(child => ParameterBinding.ForChild(parameter, child, GetCompatibilityScore(parameter.ParameterType, child.ParentProperty.PropertyType)));
+
+                var matches = leafMatches
+                    .Concat(childMatches)
+                    .OrderByDescending(binding => binding.Score)
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    return null;
+                }
+
+                var bestScore = matches[0].Score;
+                var best = matches.Where(match => match.Score == bestScore).ToList();
+                return best.Count == 1 ? best[0] : null;
+            }
+
+            private object Materialize(IDataRecord record, object existing, bool forceNew)
+            {
+                var current = _constructorPlan != null
+                    ? _constructorPlan.Create(record)
+                    : forceNew || existing == null
+                        ? _parameterlessFactory()
+                        : existing;
+
+                foreach (var child in _postConstructorChildren)
                 {
                     child.Apply(current, record);
                 }
 
-                foreach (var leaf in Leaves)
+                foreach (var leaf in _postConstructorLeaves)
                 {
                     leaf.Assign(current, record);
                 }
+
+                return current;
+            }
+
+            private string FormatColumns()
+            {
+                return string.Join(", ", _leaves.Select(leaf => "'" + leaf.ColumnName + "'")
+                    .Concat(_children.SelectMany(child => child.GetColumnNames().Select(column => "'" + column + "'"))));
+            }
+
+            internal IEnumerable<string> GetColumnNames()
+            {
+                return _leaves.Select(leaf => leaf.ColumnName)
+                    .Concat(_children.SelectMany(child => child.GetColumnNames()));
             }
         }
 
-        private sealed class Assignment
+        private sealed class NestedLeaf
         {
-            private readonly Type _targetType;
             private readonly Action<object, object> _setter;
+            private readonly Func<object, object> _converter;
 
-            private Assignment(int columnIndex, Type targetType, Action<object, object> setter)
+            private NestedLeaf(
+                PropertyInfo property,
+                FieldInfo field,
+                int columnIndex,
+                string columnName,
+                string memberPath,
+                Type targetType,
+                Action<object, object> setter)
             {
+                Property = property;
+                Field = field;
                 ColumnIndex = columnIndex;
-                _targetType = targetType;
+                ColumnName = columnName;
+                MemberPath = memberPath;
+                TargetType = targetType;
                 _setter = setter;
+                _converter = CreateConverter(targetType);
             }
+
+            internal PropertyInfo Property { get; }
+
+            internal FieldInfo Field { get; }
 
             internal int ColumnIndex { get; }
 
-            internal static Assignment ForProperty(int columnIndex, PropertyInfo property)
+            internal string ColumnName { get; }
+
+            internal string MemberPath { get; }
+
+            internal Type TargetType { get; }
+
+            internal bool CanAssign => _setter != null;
+
+            internal static NestedLeaf ForProperty(PropertyInfo property, int columnIndex, string columnName, string memberPath)
             {
-                return new Assignment(columnIndex, property.PropertyType, CreatePropertySetter(property));
+                return new NestedLeaf(
+                    property,
+                    null,
+                    columnIndex,
+                    columnName,
+                    memberPath,
+                    property.PropertyType,
+                    CreatePropertySetter(property));
             }
 
-            internal static Assignment ForField(int columnIndex, FieldInfo field)
+            internal static NestedLeaf ForField(FieldInfo field, int columnIndex, string columnName, string memberPath)
             {
-                return new Assignment(columnIndex, field.FieldType, CreateFieldSetter(field));
+                return new NestedLeaf(
+                    null,
+                    field,
+                    columnIndex,
+                    columnName,
+                    memberPath,
+                    field.FieldType,
+                    CreateFieldSetter(field));
+            }
+
+            internal object GetValue(IDataRecord record)
+            {
+                return _converter(record.GetValue(ColumnIndex));
             }
 
             internal void Assign(object target, IDataRecord record)
             {
-                _setter(target, ConvertValue(record.GetValue(ColumnIndex), _targetType));
+                _setter(target, GetValue(record));
+            }
+        }
+
+        private sealed class ConstructorPlan
+        {
+            private readonly Type _entityType;
+            private readonly string _memberPath;
+            private readonly Func<object[], object> _factory;
+            private readonly ParameterBinding[] _bindings;
+
+            internal ConstructorPlan(
+                Type entityType,
+                string memberPath,
+                ConstructorInfo constructor,
+                Func<object[], object> factory,
+                IEnumerable<ParameterBinding> bindings,
+                int score)
+            {
+                _entityType = entityType;
+                _memberPath = memberPath;
+                Constructor = constructor;
+                _factory = factory;
+                _bindings = bindings.ToArray();
+                Score = score;
+            }
+
+            internal ConstructorInfo Constructor { get; }
+
+            internal int Score { get; }
+
+            internal bool Uses(NestedLeaf leaf)
+            {
+                return _bindings.Any(binding => binding.Leaf == leaf);
+            }
+
+            internal bool Uses(MaterializationNode child)
+            {
+                return _bindings.Any(binding => binding.Child == child);
+            }
+
+            internal object Create(IDataRecord record)
+            {
+                var args = new object[_bindings.Length];
+                for (var i = 0; i < _bindings.Length; i++)
+                {
+                    args[i] = _bindings[i].GetValue(record);
+                }
+
+                try
+                {
+                    return _factory(args);
+                }
+                catch (Exception exception)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Failed to materialize type '{FormatType(Constructor.DeclaringType)}' at member path '{_memberPath}' on entity '{FormatType(_entityType)}' using constructor '{FormatConstructor(Constructor)}'. Columns: {FormatColumns()}. See the inner exception for the domain failure.",
+                        exception);
+                }
+            }
+
+            private string FormatColumns()
+            {
+                return string.Join(", ", _bindings
+                    .SelectMany(binding => binding.GetColumnNames())
+                    .Distinct()
+                    .Select(column => "'" + column + "'"));
+            }
+        }
+
+        private sealed class ParameterBinding
+        {
+            private ParameterBinding(ParameterInfo parameter, NestedLeaf leaf, MaterializationNode child, int score)
+            {
+                Parameter = parameter;
+                Leaf = leaf;
+                Child = child;
+                Score = score;
+            }
+
+            internal ParameterInfo Parameter { get; }
+
+            internal NestedLeaf Leaf { get; }
+
+            internal MaterializationNode Child { get; }
+
+            internal int Score { get; }
+
+            internal static ParameterBinding ForLeaf(ParameterInfo parameter, NestedLeaf leaf, int score)
+            {
+                return new ParameterBinding(parameter, leaf, null, score);
+            }
+
+            internal static ParameterBinding ForChild(ParameterInfo parameter, MaterializationNode child, int score)
+            {
+                return new ParameterBinding(parameter, null, child, score);
+            }
+
+            internal object GetValue(IDataRecord record)
+            {
+                if (Leaf != null)
+                {
+                    return Leaf.GetValue(record);
+                }
+
+                return Child.MaterializeValue(record);
+            }
+
+            internal IEnumerable<string> GetColumnNames()
+            {
+                if (Leaf != null)
+                {
+                    yield return Leaf.ColumnName;
+                    yield break;
+                }
+
+                foreach (var columnName in Child.GetColumnNames())
+                {
+                    yield return columnName;
+                }
             }
         }
     }

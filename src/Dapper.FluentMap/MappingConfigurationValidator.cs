@@ -266,11 +266,6 @@ namespace Dapper.FluentMap
                     throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' must have a public getter.");
                 }
 
-                if (!CanWrite(property))
-                {
-                    throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Property '{property.Name}' must be settable.");
-                }
-
                 if (i == properties.Count - 1)
                 {
                     continue;
@@ -281,6 +276,7 @@ namespace Dapper.FluentMap
                 {
                     throw UnsupportedNestedPath(entityType, memberPath, sourceKind, sourceType, $"Intermediate property '{property.Name}' has unsupported type '{FormatType(propertyType)}'. Collections and scalar values cannot appear in the middle of a nested path.");
                 }
+
             }
         }
 
@@ -306,12 +302,6 @@ namespace Dapper.FluentMap
         {
             var getter = property.GetGetMethod();
             return getter != null && !getter.IsStatic;
-        }
-
-        private static bool CanWrite(PropertyInfo property)
-        {
-            var setter = property.GetSetMethod();
-            return setter != null && !setter.IsStatic;
         }
 
         private static bool IsStatic(PropertyInfo property)

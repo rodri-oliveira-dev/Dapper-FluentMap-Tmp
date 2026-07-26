@@ -13,7 +13,7 @@ namespace Dapper.FluentMap
     public static class QueryMappedExtensions
     {
         private const DynamicallyAccessedMemberTypes MaterializedEntityMemberTypes =
-            DynamicallyAccessedMemberTypes.PublicParameterlessConstructor |
+            DynamicallyAccessedMemberTypes.PublicConstructors |
             DynamicallyAccessedMemberTypes.PublicProperties;
 
         private const string QueryMappedRequiresUnreferencedCodeMessage =

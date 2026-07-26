@@ -467,9 +467,7 @@ namespace Dapper.FluentMap
             var constructorParameters = descriptor.Map.Ignored || memberPath.IsNested
                 ? new ConstructorParameterExplanation[0]
                 : GetConstructorParameters(entityType, descriptor.Map.PropertyInfo);
-            var materialization = memberPath.IsNested
-                ? MappingMaterialization.Nested
-                : MappingMaterialization.Dapper;
+            var materialization = GetMaterialization(memberPath);
 
             members.Add(new MemberMappingExplanation(
                 memberPath.ToString(),
@@ -483,6 +481,39 @@ namespace Dapper.FluentMap
                 constructorParameters,
                 materialization));
             configuredPaths.Add(memberPath);
+        }
+
+        private static MappingMaterialization GetMaterialization(MemberPath memberPath)
+        {
+            if (!memberPath.IsNested)
+            {
+                return MappingMaterialization.Dapper;
+            }
+
+            return RequiresConstructorMaterialization(memberPath)
+                ? MappingMaterialization.ValueObject
+                : MappingMaterialization.Nested;
+        }
+
+        private static bool RequiresConstructorMaterialization(MemberPath memberPath)
+        {
+            var properties = memberPath.Properties;
+            for (var i = 0; i < properties.Count; i++)
+            {
+                if (!CanWrite(properties[i]))
+                {
+                    return true;
+                }
+
+            }
+
+            return false;
+        }
+
+        private static bool CanWrite(PropertyInfo property)
+        {
+            var setter = property.GetSetMethod();
+            return setter != null && !setter.IsStatic;
         }
 
         private static IEnumerable<ConstructorParameterExplanation> GetConstructorParameters(

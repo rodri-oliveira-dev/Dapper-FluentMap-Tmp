@@ -343,7 +343,7 @@ namespace Dapper.FluentMap.Tests
                     var exception = Assert.Throws<FluentMapConfigurationException>(
                         () => connection.QueryMappedSingle<NonConstructibleCustomer>("SELECT 'Sao Paulo' AS city;"));
 
-                    Assert.Contains("public parameterless constructor", exception.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.Contains("No public constructor", exception.Message, StringComparison.OrdinalIgnoreCase);
                     Assert.Contains("Address", exception.Message, StringComparison.Ordinal);
                 }
             }
@@ -354,17 +354,23 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
-        public void InitializeShouldRejectReadonlyNestedPath()
+        public void QueryMappedShouldRejectReadonlyNestedPathWithoutMatchingConstructor()
         {
             PreTest(typeof(ReadOnlyPathCustomer));
 
             try
             {
-                var exception = Assert.Throws<FluentMapConfigurationException>(
-                    () => FluentMapper.Initialize(c => c.AddMap(new ReadOnlyPathCustomerMap())));
+                FluentMapper.Initialize(c => c.AddMap(new ReadOnlyPathCustomerMap()));
 
-                Assert.Contains("settable", exception.Message, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("Address.City", exception.Message, StringComparison.Ordinal);
+                using (var connection = OpenConnection())
+                {
+                    var exception = Assert.Throws<FluentMapConfigurationException>(
+                        () => connection.QueryMappedSingle<ReadOnlyPathCustomer>("SELECT 'Sao Paulo' AS city;"));
+
+                    Assert.Contains("No public constructor", exception.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.Contains("Address", exception.Message, StringComparison.Ordinal);
+                    Assert.Contains("city", exception.Message, StringComparison.Ordinal);
+                }
             }
             finally
             {

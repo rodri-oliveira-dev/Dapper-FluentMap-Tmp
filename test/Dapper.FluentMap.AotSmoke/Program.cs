@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Dapper;
 using Dapper.FluentMap;
+using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Naming;
 
@@ -17,6 +18,7 @@ AssertMappedMember<Customer>("customer_id", nameof(Customer.Id));
 AssertMappedMember<NamingCustomer>("created_at", nameof(NamingCustomer.CreatedAt));
 AssertConstructorMapping();
 AssertExplain();
+AssertValueObjectExplain();
 #elif AOT_SMOKE_SCANNING
 const string scenario = "scanning";
 FluentMapper.Initialize(configuration => configuration.AddMapsFromAssemblyContaining<CustomerMap>());
@@ -28,6 +30,7 @@ FluentMapper.Initialize(configuration =>
 {
     configuration.AddMap<CustomerMap>();
     configuration.AddMap<ImmutableCustomerMap>();
+    configuration.AddMap<ValueObjectCustomerMap>();
     configuration.UseNamingPolicy(NamingPolicy.SnakeCase).ForEntity<NamingCustomer>();
 });
 
@@ -35,6 +38,7 @@ AssertMappedMember<Customer>("customer_id", nameof(Customer.Id));
 AssertMappedMember<NamingCustomer>("created_at", nameof(NamingCustomer.CreatedAt));
 AssertConstructorMapping();
 AssertExplain();
+AssertValueObjectExplain();
 #endif
 
 Console.WriteLine(scenario + ":ok");
@@ -79,6 +83,18 @@ static void AssertExplain()
         throw new InvalidOperationException("Explain did not include the explicit mapping.");
     }
 }
+
+static void AssertValueObjectExplain()
+{
+    var explanation = FluentMapper.Explain<ValueObjectCustomer>();
+    if (!explanation.Members.Any(member =>
+            member.MemberPath == "Cpf.Number" &&
+            member.ColumnName == "cpf" &&
+            member.Materialization == MappingMaterialization.ValueObject))
+    {
+        throw new InvalidOperationException("Explain did not include the value object mapping.");
+    }
+}
 #endif
 
 public sealed class Customer
@@ -120,5 +136,33 @@ public sealed class ImmutableCustomerMap : EntityMap<ImmutableCustomer>
     {
         Map(customer => customer.Id).ToColumn("customer_id");
         Map(customer => customer.Name).ToColumn("name");
+    }
+}
+
+public sealed class ValueObjectCustomer
+{
+    public ValueObjectCustomer(Cpf cpf)
+    {
+        Cpf = cpf;
+    }
+
+    public Cpf Cpf { get; }
+}
+
+public sealed class Cpf
+{
+    public Cpf(string number)
+    {
+        Number = number;
+    }
+
+    public string Number { get; }
+}
+
+public sealed class ValueObjectCustomerMap : EntityMap<ValueObjectCustomer>
+{
+    public ValueObjectCustomerMap()
+    {
+        Map(customer => customer.Cpf.Number).ToColumn("cpf");
     }
 }
