@@ -125,3 +125,72 @@ Qualquer upgrade futuro de Dapper deve revisar explicitamente:
 - `SqlMapper.TypeHandlerCache<T>.Parse(object)`;
 - comportamento de fallback quando um mapper retorna `null`;
 - testes `DapperCompatibilityAdapterTests`, `ValueObjectMaterializationTests`, `ConstructorMappingTests`, `NestedMaterializationSpikeTests`, `DapperIntegrationTests` e Dommel.
+
+## E6-D009 - Generated Materializer Direction
+
+O spike da Entrega 04 conclui `GO WITH CONSTRAINTS` para materializacao gerada.
+
+A arquitetura futura recomendada e:
+
+```text
+QueryMapped
+    |
+    v
+Generated materializer available and matching?
+    | yes
+    v
+Generated materializer
+    |
+    no
+    v
+Runtime NestedMaterializationPlan fallback
+```
+
+Um caminho generated-only foi rejeitado como arquitetura default porque quebraria configuracao dinamica, assembly scanning, conventions nao geraveis, maps em assemblies externos sem manifest e a superficie legada de mutacao publica ainda preservada por compatibilidade.
+
+## E6-D010 - Static Mapping Eligibility
+
+Materializers gerados devem ser usados apenas quando o generator conseguir provar estaticamente o mapping efetivo.
+
+Primeiro subconjunto elegivel:
+
+- maps declarados na compilacao atual;
+- `Map(...).ToColumn("literal")`;
+- `Ignore()`;
+- `IncludeBase<TBase>()` quando o base map tambem for geravel;
+- profiles por `IProfileMap<TProfile>`;
+- construtores publicos e setters publicos representaveis pelo symbol model.
+
+Devem cair para fallback runtime:
+
+- column names dinamicos;
+- helper methods arbitrarios;
+- assembly scanning;
+- public dictionary mutation;
+- conventions customizadas nao geraveis;
+- naming policies aplicadas dinamicamente;
+- maps de assemblies externos sem descriptor gerado.
+
+## E6-D011 - AOT Claims Require Runtime Evidence
+
+Generated materializers podem reduzir dependencia de `Expression.Compile`, `Activator` e reflection no hot path para casos estaticos, mas isso nao basta para declarar compatibilidade Native AOT.
+
+Qualquer etapa futura deve separar:
+
+- `Proven`: validado por build/publish/run;
+- `Likely`: inferido de codigo gerado e analyzers;
+- `Unknown`: dependente de Dapper, TypeHandlers, ambiente Native AOT ou configuracao dinamica.
+
+As annotations `RequiresUnreferencedCode` e `RequiresDynamicCode` das APIs que podem usar fallback runtime nao devem ser removidas ate haver um caminho publico que garanta generated-only sem fallback reflection-based.
+
+## E6-D012 - Generated TypeHandler Boundary
+
+TypeHandlers permanecem a area mais sensivel para materializer gerado.
+
+Codigo gerado nao deve espalhar reflection para internals do Dapper nem chamar APIs version-sensitive sem uma decisao propria. Uma etapa futura deve escolher entre:
+
+- uma pequena API/boundary publica no core para conversao gerada;
+- chamada direta gerada a uma shape publica do Dapper, aceitando diagnostico/compile failure em upgrades;
+- fallback runtime quando TypeHandler for necessario.
+
+A decisao E6-D006 permanece vigente ate essa escolha ser implementada e validada.

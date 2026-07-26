@@ -265,6 +265,8 @@ Nested materialization, Value Object construction and profiles are implemented t
 - `docs/sdd/etapa-5/README.md`: P1 item to create a generated `DbDataReader` materializer.
 - `src/Dapper.FluentMap/QueryMappedExtensions.cs`: all public `QueryMapped*` methods are annotated with `RequiresUnreferencedCode` and `RequiresDynamicCode`.
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`: compiles delegates for constructors, getters, setters and converters.
+- `docs/sdd/etapa-6/04-generated-materializer-spike.md`: concludes `GO WITH CONSTRAINTS` for generated materializers with runtime fallback.
+- `test/Dapper.FluentMap.Tests/GeneratedMaterializerSpikeTests.cs`: test-only prototype proves direct `IDataRecord` materialization for simple entity, explicit mapping, nested mutable object, immutable Value Object, profile and `DBNull` without runtime expression compilation in the prototype.
 
 ### Cenario de impacto
 
@@ -284,7 +286,7 @@ Use explicit/generated registration for startup mapping and avoid `QueryMapped*`
 
 ### Recomendacao
 
-Prioritize a generated materializer for `DbDataReader` that covers nested paths, Value Objects and profiles without expression compilation in the hot path. Keep runtime `QueryMapped*` as fallback for dynamic configurations.
+Implement generated `DbDataReader` materialization only as an opt-in/generated path with runtime fallback. Start with statically provable explicit/profile maps and keep `QueryMapped*` runtime annotations until trimmed and Native AOT runtime validation proves a generated-only public path.
 
 ### Relacoes
 

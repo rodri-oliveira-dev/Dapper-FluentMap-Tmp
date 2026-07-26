@@ -78,7 +78,7 @@ var customer = connection.QueryMappedSingle<Customer>(
     "SELECT 1 AS id, '12345678909' AS cpf");
 ```
 
-The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping, TypeHandlers and Dapper fallback as before. For scalar Value Objects mapped as a whole, such as `Map(c => c.Cpf).ToColumn("cpf")`, prefer a Dapper `TypeHandler<Cpf>`. For nested paths such as `Map(c => c.Cpf.Number)`, `QueryMapped*` constructs the Value Object through public constructors and preserves domain invariants. Factory methods and generated materializers are not part of this runtime path.
+The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping, TypeHandlers and Dapper fallback as before. For scalar Value Objects mapped as a whole, such as `Map(c => c.Cpf).ToColumn("cpf")`, prefer a Dapper `TypeHandler<Cpf>`. For nested paths such as `Map(c => c.Cpf.Number)`, `QueryMapped*` constructs the Value Object through public constructors and preserves domain invariants. Factory methods and generated materializers are not part of this runtime path; the generated materializer direction is documented as a future architecture spike, not a production feature.
 
 #### Mapping profiles
 When the same entity needs different SQL shapes, register an opt-in mapping profile and select it explicitly per query. Profiles do not replace the Dapper type map global for the entity.
@@ -322,3 +322,12 @@ FluentMapper.Initialize(config =>
 - `QueryMapped*` permanece reflection-based e anotado para trimming/AOT; o generator atual gera registro, nao materializer de `DbDataReader`.
 - Limitacoes principais: sem per-profile conventions, sem multi-mapping com profile, sem streaming unbuffered e sem factory methods para Value Objects.
 - Relatorios: `docs/sdd/etapa-5/01-nested-materialization-spike.md`, `docs/sdd/etapa-5/02-nested-object-materialization.md`, `docs/sdd/etapa-5/03-value-objects.md`, `docs/sdd/etapa-5/04-mapping-profiles.md`.
+
+## Resultado da Etapa 6
+
+- Configuration lifecycle formalizado como startup/configuration seguido de operational phase read-only.
+- Mapping state ganhou snapshots read-only, preservando campos publicos mutaveis por compatibilidade.
+- Compatibilidade Dapper-specific foi isolada em adapters internos; `IgnoredPropertyInfo` foi removido.
+- Spike de generated `DbDataReader` materializer concluiu `GO WITH CONSTRAINTS`: geracao e tecnicamente viavel para mappings estaticos, mas deve coexistir com runtime fallback.
+- `FM-RISK-004` nao foi resolvido pelo spike; ele recebeu evidencia e arquitetura recomendada para uma etapa futura.
+- Relatorios: `docs/sdd/etapa-6/01-configuration-lifecycle.md`, `docs/sdd/etapa-6/02-mapping-state-encapsulation.md`, `docs/sdd/etapa-6/03-dapper-compatibility-adapters.md`, `docs/sdd/etapa-6/04-generated-materializer-spike.md`.
