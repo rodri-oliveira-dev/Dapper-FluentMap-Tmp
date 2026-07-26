@@ -91,7 +91,7 @@ namespace Dapper.FluentMap.TypeMaps
             return memberPath.IsNested ? null : map;
         }
 
-        private static ParameterInfo MatchParameter(ParameterInfo[] parameters, string memberName)
+        internal static ParameterInfo MatchParameter(ParameterInfo[] parameters, string memberName)
         {
             return parameters.FirstOrDefault(p => string.Equals(p.Name, memberName, StringComparison.Ordinal))
                 ?? parameters.FirstOrDefault(p => string.Equals(p.Name, memberName, StringComparison.OrdinalIgnoreCase))

@@ -43,3 +43,35 @@ Entregas:
 3. 03 - Validate e Explain
 
 O escopo padrao continua sendo o projeto principal `Dapper.FluentMap`. `Dapper.FluentMap.Dommel` nao deve receber alteracao funcional nesta etapa, salvo adaptacao tecnica estritamente necessaria provocada por API compartilhada.
+
+## Resultado da Etapa 3
+
+A Etapa 3 consolidou APIs publicas aditivas para configuracao avancada e diagnostico, preservando o comportamento historico.
+
+Resumo:
+
+- novas APIs de registro: `AddMap<TMap>()`, `AddMapsFromAssembly(...)` e `AddMapsFromAssemblyContaining<TMarker>()`;
+- caminho explicito sem scanning por tipo de map, mantendo `AddMap(new CustomerMap())`;
+- scanning disponivel como conveniencia, com filtros de namespace, ordenacao deterministica e deteccao de duplicidades;
+- constructor mapping integrado a explicit mappings, inherited mappings, conventions e naming policies;
+- records posicionais e tipos imutaveis suportados quando os parametros correspondem a propriedades simples resolvidas pelo FluentMap ou pelo fallback do Dapper;
+- `Validate()` publico para validar o estado global atual com agregacao de erros;
+- `Explain<TEntity>()` publico com modelo estruturado e provenance;
+- mudancas publicas foram aditivas e nao removeram APIs historicas;
+- diagnostics nao fazem I/O, nao acessam banco, nao invalidam caches e nao registram mappings.
+
+Limitacoes mantidas fora do escopo:
+
+- Roslyn analyzers;
+- Source generator;
+- AOT/trimming completo;
+- Nested object materialization;
+- Value Objects complexos;
+- Multiple mapping profiles por tipo;
+- Query-specific mapping.
+
+Relatorios:
+
+- `docs/sdd/etapa-3/01-mapping-registration.md`
+- `docs/sdd/etapa-3/02-constructor-immutable-mapping.md`
+- `docs/sdd/etapa-3/03-diagnostics-api.md`

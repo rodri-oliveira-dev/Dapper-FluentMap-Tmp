@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Conventions;
+using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap
@@ -35,6 +36,27 @@ namespace Dapper.FluentMap
         public static void Initialize(Action<FluentMapConfiguration> configure)
         {
             configure(_configuration);
+        }
+
+        /// <summary>
+        /// Validates the current Dapper.FluentMap configuration.
+        /// </summary>
+        /// <exception cref="T:Dapper.FluentMap.FluentMapConfigurationException">
+        /// when one or more configuration errors are found.
+        /// </exception>
+        public static void Validate()
+        {
+            _registry.ValidateConfiguration();
+        }
+
+        /// <summary>
+        /// Explains the effective mapping configuration for the specified entity type.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to explain.</typeparam>
+        /// <returns>A structured explanation of configured mappings, conventions and fallback mappings.</returns>
+        public static MappingExplanation Explain<TEntity>()
+        {
+            return _registry.Explain(typeof(TEntity));
         }
 
         /// <summary>
