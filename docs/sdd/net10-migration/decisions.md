@@ -30,6 +30,8 @@ Test execution remains on VSTest with xUnit 2:
 
 `Microsoft.Data.Sqlite` was updated only in the core test project because it is a direct test-only dependency used by Dapper integration tests. A vulnerable transitive `SQLitePCLRaw.lib.e_sqlite3 2.1.11` remains after the update and should be reviewed in Delivery 04 or a dedicated dependency-hardening task rather than adding unrelated overrides in this migration step.
 
+Dedicated security hardening later completed that review in `docs/sdd/security-hardening/sqlitepclraw-vulnerability.md`: `Dapper.FluentMap.Tests` now pins `SQLitePCLRaw.bundle_e_sqlite3 2.1.12` with `PrivateAssets="all"`, removing vulnerable `SQLitePCLRaw.lib.e_sqlite3 2.1.11` while keeping SQLite test-only.
+
 ## Delivery 03 Production Dependency Updates
 
 Delivery 03 updated only direct production dependencies in `src/`:
@@ -46,7 +48,7 @@ The update was intentionally limited to direct production dependencies. Transiti
 - `Microsoft.Bcl.AsyncInterfaces 10.0.8` is resolved through Dapper's `netstandard2.0` dependency floor.
 - `Microsoft.NETCore.Platforms 1.1.0` remains part of the `NETStandard.Library` restore graph.
 - `xunit.analyzers 1.18.0` remains transitive to xUnit 2 and is deferred with the xUnit 3 migration.
-- `SQLitePCLRaw.*` remains test-only and should be covered by Delivery 04 or a dedicated dependency-hardening task.
+- `SQLitePCLRaw.*` remains test-only and was covered by the dedicated dependency-hardening task documented in `docs/sdd/security-hardening/sqlitepclraw-vulnerability.md`.
 
 Delivery 04 should pack and inspect the published packages to confirm the final dependency groups and package contents.
 

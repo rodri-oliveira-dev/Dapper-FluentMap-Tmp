@@ -117,9 +117,9 @@ Status:
 - pack Release: aprovado; pacotes emitidos com `lib/netstandard2.0`.
 - CI: arquivos GitHub Actions, AppVeyor e Travis revisados localmente; execucoes remotas nao foram realizadas.
 
-Dependencias bloqueadas ou deferidas:
+Dependencias bloqueadas, deferidas ou concluidas posteriormente:
 
-- `SQLitePCLRaw.lib.e_sqlite3 2.1.11` permanece como transitive test-only vulneravel em `Dapper.FluentMap.Tests` e deve ser tratado em tarefa dedicada.
+- `SQLitePCLRaw.lib.e_sqlite3 2.1.11` foi corrigido em hardening dedicado documentado em `docs/sdd/security-hardening/sqlitepclraw-vulnerability.md`; `Dapper.FluentMap.Tests` agora pina `SQLitePCLRaw.bundle_e_sqlite3 2.1.12` com `PrivateAssets="all"`.
 - Modernizacao de metadados NuGet (`licenseUrl`, README de pacote, SourceLink/repository metadata) permanece fora do escopo.
 - Adocao de Microsoft Testing Platform fica deferida para uma migracao de runner separada, se necessaria.
 
