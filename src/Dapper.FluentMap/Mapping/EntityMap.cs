@@ -57,8 +57,9 @@ namespace Dapper.FluentMap.Mapping
         /// <exception cref="T:System.Exception">when a duplicate mapping is provided.</exception>
         protected TPropertyMap Map(Expression<Func<TEntity, object>> expression)
         {
-            var info = (PropertyInfo)ReflectionHelper.GetMemberInfo(expression);
-            var propertyMap = GetPropertyMap(info);
+            var memberPath = ReflectionHelper.GetMemberPath(expression);
+            var propertyMap = GetPropertyMap(memberPath.PropertyInfo);
+            PropertyMapIdentity.SetMemberPath(propertyMap, memberPath);
             ThrowIfDuplicateMapping(propertyMap);
             PropertyMaps.Add(propertyMap);
             return propertyMap;
@@ -73,9 +74,11 @@ namespace Dapper.FluentMap.Mapping
 
         private void ThrowIfDuplicateMapping(IPropertyMap map)
         {
-            if (PropertyMaps.Any(p => p.PropertyInfo.Name == map.PropertyInfo.Name))
+            var memberPath = PropertyMapIdentity.GetMemberPath(map);
+
+            if (PropertyMaps.Any(p => PropertyMapIdentity.GetMemberPath(p).Equals(memberPath)))
             {
-                throw new Exception($"Duplicate mapping detected. Property '{map.PropertyInfo.Name}' is already mapped to column '{map.ColumnName}'.");
+                throw new Exception($"Duplicate mapping detected. Property '{memberPath}' is already mapped to column '{map.ColumnName}'.");
             }
         }
     }

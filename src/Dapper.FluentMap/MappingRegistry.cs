@@ -183,7 +183,8 @@ namespace Dapper.FluentMap
 
         private static bool IsExplicitlyMapped(IPropertyMap conventionMap, IList<IPropertyMap> explicitPropertyMaps)
         {
-            return explicitPropertyMaps.Any(map => map.PropertyInfo.Name == conventionMap.PropertyInfo.Name);
+            var conventionPath = PropertyMapIdentity.GetMemberPath(conventionMap);
+            return explicitPropertyMaps.Any(map => PropertyMapIdentity.GetMemberPath(map).Equals(conventionPath));
         }
 
         private static bool MatchColumnNames(IPropertyMap map, string columnName)

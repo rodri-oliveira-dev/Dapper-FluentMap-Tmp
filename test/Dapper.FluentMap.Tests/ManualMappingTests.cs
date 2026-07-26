@@ -147,6 +147,24 @@ namespace Dapper.FluentMap.Tests
             Assert.Equal(typeof(EmailTestValueObject), email.PropertyInfo.DeclaringType);
         }
 
+        [Fact]
+        public void PropertyMapShouldDistinguishNestedPropertiesWithSameTerminalName()
+        {
+            PreTest();
+
+            var map = new NestedLevelMap();
+
+            Assert.Equal(2, map.PropertyMaps.Count);
+        }
+
+        [Fact]
+        public void DuplicateNestedPropertyPathShouldThrow_Exception()
+        {
+            PreTest();
+
+            Assert.Throws<Exception>(() => new DuplicateNestedLevelMap());
+        }
+
         private static void PreTest()
         {
             FluentMapper.Reset(typeof(TestEntity), typeof(DerivedTestEntity), typeof(ValueObjectTestEntity));
@@ -204,6 +222,41 @@ namespace Dapper.FluentMap.Tests
             {
                 Map(x => x.Email.Address).ToColumn("email");
             }
+        }
+
+        private class NestedLevelMap : EntityMap<NestedLevelEntity>
+        {
+            public NestedLevelMap()
+            {
+                Map(x => x.Rank.Level).ToColumn("rank_level");
+                Map(x => x.Seniority.Level).ToColumn("seniority_level");
+            }
+        }
+
+        private class DuplicateNestedLevelMap : EntityMap<NestedLevelEntity>
+        {
+            public DuplicateNestedLevelMap()
+            {
+                Map(x => x.Rank.Level).ToColumn("rank_level");
+                Map(x => x.Rank.Level).ToColumn("rank_level_again");
+            }
+        }
+
+        private class NestedLevelEntity
+        {
+            public RankInfo Rank { get; set; }
+
+            public SeniorityInfo Seniority { get; set; }
+        }
+
+        private class RankInfo
+        {
+            public int Level { get; set; }
+        }
+
+        private class SeniorityInfo
+        {
+            public int Level { get; set; }
         }
     }
 }

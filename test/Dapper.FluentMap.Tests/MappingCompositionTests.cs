@@ -86,6 +86,23 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void ExplicitNestedMappingShouldNotOverrideConventionForDistinctPropertyWithSameTerminalName()
+        {
+            PreTest(typeof(NestedExplicitWithConventionEntity));
+
+            FluentMapper.Initialize(c =>
+            {
+                c.AddMap(new NestedExplicitWithConventionMap());
+                c.AddConvention<PrefixConvention>().ForEntity<NestedExplicitWithConventionEntity>();
+            });
+
+            var conventionMember = SqlMapper.GetTypeMap(typeof(NestedExplicitWithConventionEntity)).GetMember("colLevel");
+
+            Assert.NotNull(conventionMember);
+            Assert.Equal(typeof(NestedExplicitWithConventionEntity).GetProperty(nameof(NestedExplicitWithConventionEntity.Level)), conventionMember.Property);
+        }
+
+        [Fact]
         public void RegistrationOrderShouldNotMatterWhenExplicitMappingIsAddedFirst()
         {
             PreTest(typeof(MapFirstEntity));
@@ -211,6 +228,26 @@ namespace Dapper.FluentMap.Tests
             public ExplicitOverrideMap()
             {
                 Map(e => e.Id).ToColumn("explicit_id");
+            }
+        }
+
+        private class NestedExplicitWithConventionEntity
+        {
+            public int Level { get; set; }
+
+            public NestedRankInfo Rank { get; set; }
+        }
+
+        private class NestedRankInfo
+        {
+            public int Level { get; set; }
+        }
+
+        private class NestedExplicitWithConventionMap : EntityMap<NestedExplicitWithConventionEntity>
+        {
+            public NestedExplicitWithConventionMap()
+            {
+                Map(e => e.Rank.Level).ToColumn("rank_level");
             }
         }
 
