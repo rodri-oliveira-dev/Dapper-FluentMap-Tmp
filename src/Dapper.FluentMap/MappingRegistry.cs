@@ -37,6 +37,8 @@ namespace Dapper.FluentMap
             }
 
             MappingConfigurationValidator.ValidateEntityMap(type, mapper);
+            ValidateIncludedBaseMaps(type, mapper);
+            MappingConfigurationValidator.ValidateComposedEntityMap(type, mapper, ComposeExplicitPropertyMaps(type, mapper));
 
             if (!EntityMaps.TryAdd(type, mapper))
             {
@@ -156,10 +158,72 @@ namespace Dapper.FluentMap
         {
             if (EntityMaps.TryGetValue(type, out var entityMap))
             {
-                return entityMap.PropertyMaps;
+                return ComposeExplicitPropertyMaps(type, entityMap);
             }
 
             return new IPropertyMap[0];
+        }
+
+        private void ValidateIncludedBaseMaps(Type type, IEntityMap entityMap)
+        {
+            foreach (var baseType in GetIncludedBaseTypes(entityMap))
+            {
+                if (baseType == type || !baseType.IsClass || !baseType.IsAssignableFrom(type))
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Type '{baseType.FullName}' cannot be included as a base mapping for entity '{type.FullName}'. The included type must be a base class of the entity.");
+                }
+
+                if (!EntityMaps.ContainsKey(baseType))
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}', but no entity map has been registered for the base type. Register the base map before the derived map.");
+                }
+            }
+        }
+
+        private IList<IPropertyMap> ComposeExplicitPropertyMaps(Type type, IEntityMap entityMap)
+        {
+            var propertyMaps = new List<IPropertyMap>();
+            AddPropertyMapsWithOverride(propertyMaps, entityMap.PropertyMaps);
+
+            foreach (var baseType in GetIncludedBaseTypes(entityMap))
+            {
+                if (!EntityMaps.TryGetValue(baseType, out var baseMap))
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}', but no entity map has been registered for the base type. Register the base map before the derived map.");
+                }
+
+                AddPropertyMapsWithOverride(propertyMaps, ComposeExplicitPropertyMaps(baseType, baseMap));
+            }
+
+            return propertyMaps;
+        }
+
+        private static void AddPropertyMapsWithOverride(IList<IPropertyMap> target, IEnumerable<IPropertyMap> maps)
+        {
+            foreach (var map in maps)
+            {
+                var memberPath = PropertyMapIdentity.GetMemberPath(map);
+                if (target.Any(existingMap => PropertyMapIdentity.GetMemberPath(existingMap).Equals(memberPath)))
+                {
+                    continue;
+                }
+
+                target.Add(map);
+            }
+        }
+
+        private static IList<Type> GetIncludedBaseTypes(IEntityMap entityMap)
+        {
+            var mapWithIncludedBases = entityMap as IEntityMapWithIncludedBaseTypes;
+            if (mapWithIncludedBases == null)
+            {
+                return new Type[0];
+            }
+
+            return mapWithIncludedBases.IncludedBaseTypes;
         }
 
         private PropertyInfo ResolveConventionPropertyInfo(Type type, string columnName)

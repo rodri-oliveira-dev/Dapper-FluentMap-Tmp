@@ -27,12 +27,17 @@ namespace Dapper.FluentMap.Mapping
     {
     }
 
+    internal interface IEntityMapWithIncludedBaseTypes
+    {
+        IList<Type> IncludedBaseTypes { get; }
+    }
+
     /// <summary>
     /// Serves as the base class for all entity mapping implementations.
     /// </summary>
     /// <typeparam name="TEntity">The type of the entity.</typeparam>
     /// <typeparam name="TPropertyMap">The type of the property mapping.</typeparam>
-    public abstract class EntityMapBase<TEntity, TPropertyMap> : IEntityMap<TEntity>
+    public abstract class EntityMapBase<TEntity, TPropertyMap> : IEntityMap<TEntity>, IEntityMapWithIncludedBaseTypes
         where TPropertyMap : IPropertyMap
     {
         /// <summary>
@@ -41,12 +46,17 @@ namespace Dapper.FluentMap.Mapping
         protected EntityMapBase()
         {
             PropertyMaps = new List<IPropertyMap>();
+            IncludedBaseTypes = new List<Type>();
         }
 
         /// <summary>
         /// Gets the collection of mapped properties.
         /// </summary>
         public IList<IPropertyMap> PropertyMaps { get; }
+
+        IList<Type> IEntityMapWithIncludedBaseTypes.IncludedBaseTypes => IncludedBaseTypes;
+
+        private IList<Type> IncludedBaseTypes { get; }
 
         /// <summary>
         /// Returns an instance of <typeparamref name="TPropertyMap"/> which can perform custom mapping
@@ -63,6 +73,35 @@ namespace Dapper.FluentMap.Mapping
             ThrowIfDuplicateMapping(propertyMap);
             PropertyMaps.Add(propertyMap);
             return propertyMap;
+        }
+
+        /// <summary>
+        /// Includes the explicit mappings configured for a base entity map.
+        /// </summary>
+        /// <typeparam name="TBase">The base entity type whose mappings should be included.</typeparam>
+        /// <exception cref="T:Dapper.FluentMap.FluentMapConfigurationException">
+        /// when <typeparamref name="TBase"/> is not a valid base type for <typeparamref name="TEntity"/>
+        /// or the same base type is included more than once.
+        /// </exception>
+        protected void IncludeBase<TBase>()
+            where TBase : class
+        {
+            var baseType = typeof(TBase);
+            var entityType = typeof(TEntity);
+
+            if (baseType == entityType || !baseType.IsClass || !baseType.IsAssignableFrom(entityType))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Type '{baseType.FullName}' cannot be included as a base mapping for entity '{entityType.FullName}'. The included type must be a base class of the entity.");
+            }
+
+            if (IncludedBaseTypes.Contains(baseType))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Base mapping for type '{baseType.FullName}' is already included by entity '{entityType.FullName}'.");
+            }
+
+            IncludedBaseTypes.Add(baseType);
         }
 
         /// <summary>

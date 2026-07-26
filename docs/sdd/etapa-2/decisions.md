@@ -21,3 +21,14 @@ Registre aqui apenas decisoes que afetem entregas posteriores.
 - Conflitos de coluna dentro do mesmo entity map do core ou da mesma convention sao invalidos quando mais de uma propriedade pode responder pela mesma coluna, incluindo sobreposicao por case-insensitive.
 - Implementacoes externas de `IPropertyMap` nao recebem validacao global de conflito de coluna, porque integracoes como Dommel podem reutilizar colunas com semantica adicional propria.
 - Conflitos entre mapping explicito e convention para a mesma coluna continuam fora do escopo de erro imediato e seguem a precedencia explicito -> convention -> Dapper default.
+
+## Heranca De Mappings
+
+- Heranca de mappings e opt-in por `IncludeBase<TBase>()`; nao ha aplicacao automatica de maps de classes base por reflection.
+- O map base deve estar registrado antes do map derivado; a ausencia do base map falha cedo com `FluentMapConfigurationException`.
+- A composicao de mappings explicitos para um tipo derivado segue a ordem: mappings proprios do derivado, mappings herdados mais proximos, mappings herdados mais distantes.
+- A precedencia final passa a ser: mapping explicito do derivado -> mapping explicito herdado -> convention do tipo consultado -> Dapper default.
+- Overrides sao definidos por `MemberPath`: quando derivado e base mapeiam o mesmo path, o derivado vence e o mapping base sobrescrito nao participa da resolucao para o derivado.
+- Conflitos de coluna entre mappings explicitos do derivado e mappings herdados de paths diferentes sao invalidos e diagnosticados durante o registro do map derivado.
+- `IncludeBase<TBase>()` aceita apenas classe base real do tipo mapeado; tipos nao relacionados, o proprio tipo e interfaces ficam fora do contrato desta entrega.
+- Naming policies futuras devem respeitar a composicao explicita efetiva antes de aplicar conventions ou fallback.

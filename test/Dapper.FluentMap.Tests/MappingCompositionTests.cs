@@ -21,6 +21,23 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void IncludedBaseMappingShouldResolveColumnForDerivedEntity()
+        {
+            PreTest(typeof(BaseUser), typeof(AdminUser));
+
+            FluentMapper.Initialize(c =>
+            {
+                c.AddMap(new BaseUserMap());
+                c.AddMap(new AdminUserMap());
+            });
+
+            var member = SqlMapper.GetTypeMap(typeof(AdminUser)).GetMember("user_id");
+
+            Assert.NotNull(member);
+            Assert.Equal(typeof(BaseUser).GetProperty(nameof(BaseUser.Id)), member.Property);
+        }
+
+        [Fact]
         public void ConventionShouldResolveColumn()
         {
             PreTest(typeof(ConventionOnlyEntity));
@@ -178,6 +195,34 @@ namespace Dapper.FluentMap.Tests
             public ExplicitOnlyMap()
             {
                 Map(e => e.Id).ToColumn("explicit_id");
+            }
+        }
+
+        private class BaseUser
+        {
+            public int Id { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        private class AdminUser : BaseUser
+        {
+            public string Permission { get; set; }
+        }
+
+        private class BaseUserMap : EntityMap<BaseUser>
+        {
+            public BaseUserMap()
+            {
+                Map(e => e.Id).ToColumn("user_id");
+            }
+        }
+
+        private class AdminUserMap : EntityMap<AdminUser>
+        {
+            public AdminUserMap()
+            {
+                IncludeBase<BaseUser>();
             }
         }
 

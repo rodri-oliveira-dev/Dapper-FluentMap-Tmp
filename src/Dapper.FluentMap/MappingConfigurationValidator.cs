@@ -25,6 +25,27 @@ namespace Dapper.FluentMap
             ValidateColumnConflicts(entityType, maps, "entity map", entityMap.GetType());
         }
 
+        internal static void ValidateComposedEntityMap(Type entityType, IEntityMap entityMap, IList<IPropertyMap> propertyMaps)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            if (entityMap == null)
+            {
+                throw new ArgumentNullException(nameof(entityMap));
+            }
+
+            if (propertyMaps == null)
+            {
+                throw new ArgumentNullException(nameof(propertyMaps));
+            }
+
+            var maps = GetEntityMapDescriptors(entityType, propertyMaps, entityMap.GetType(), "composed entity map").ToList();
+            ValidateColumnConflicts(entityType, maps, "composed entity map", entityMap.GetType());
+        }
+
         internal static void ValidateConvention(Type entityType, Convention convention)
         {
             if (entityType == null)
@@ -68,9 +89,14 @@ namespace Dapper.FluentMap
                     $"Entity map '{FormatType(entityMap.GetType())}' for entity '{FormatType(entityType)}' returned a null property map collection.");
             }
 
-            foreach (var map in entityMap.PropertyMaps)
+            return GetEntityMapDescriptors(entityType, entityMap.PropertyMaps, entityMap.GetType(), "entity map");
+        }
+
+        private static IEnumerable<MapDescriptor> GetEntityMapDescriptors(Type entityType, IEnumerable<IPropertyMap> propertyMaps, Type sourceType, string sourceKind)
+        {
+            foreach (var map in propertyMaps)
             {
-                yield return CreateDescriptor(entityType, map, entityMap.GetType(), "entity map", requireEntityCompatibility: true);
+                yield return CreateDescriptor(entityType, map, sourceType, sourceKind, requireEntityCompatibility: true);
             }
         }
 
