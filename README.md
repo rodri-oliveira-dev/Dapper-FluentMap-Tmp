@@ -85,6 +85,20 @@ FluentMapper.Initialize(config =>
 
 Assembly scanning APIs such as `AddMapsFromAssembly(...)`, `AddMapsFromAssemblyContaining<TMarker>()`, `ForEntitiesInAssembly(...)`, `ForEntitiesInCurrentAssembly(...)` and the legacy `ApplyMapsFromAssemblies(...)` depend on reflection discovery and are annotated as trimming-sensitive. They remain supported for normal runtime usage, but they can warn or fail after trimming if discovered types or metadata are removed.
 
+#### Generated mapping registration
+Consumers can opt into `Dapper.FluentMap.Generators` to generate explicit registration for maps declared in the current project:
+
+```csharp
+using Dapper.FluentMap;
+
+FluentMapper.Initialize(config =>
+    {
+       config.AddGeneratedMappings();
+    });
+```
+
+The generated method calls `AddMap<TMap>()` for each eligible map in the current compilation. It does not scan referenced assemblies, instantiate maps during generation, or generate materializers.
+
 #### Convention based mapping
 When you have a lot of entity types, creating manual mapping classes can become plumbing. If your column names adhere to some kind of naming convention, you might be better off by configuring a mapping convention.
 
@@ -206,3 +220,13 @@ FluentMapper.Initialize(config =>
 - Naming policies implementadas: `SnakeCase`, `Prefix`, `Suffix`, `Custom` e composicao por `Then`, `WithPrefix` e `WithSuffix`, sem alterar `DefaultTypeMap.MatchNamesWithUnderscores`.
 - Dividas adiadas: nested object materialization, Value Objects complexos, constructor/record mapping, multiple mapping profiles, Roslyn analyzers, source generators e AOT/trimming.
 - Relatorios: `docs/sdd/etapa-2/01-member-path.md`, `docs/sdd/etapa-2/02-configuration-validation.md`, `docs/sdd/etapa-2/03-inherited-mappings.md`, `docs/sdd/etapa-2/04-naming-policies.md`.
+
+## Resultado da Etapa 4
+
+- Tooling disponivel: `Dapper.FluentMap.Analyzers` com diagnostics `DFM001` a `DFM005` e `Dapper.FluentMap.Generators` com `AddGeneratedMappings()`, `DFM006` e `DFM007`.
+- Trimming: registro explicito e registro gerado foram validados em smoke trimmed sem warnings FluentMap-owned; assembly scanning permanece reflection-dependent e trimming-sensitive.
+- Native AOT: publish continua bloqueado neste ambiente por ausencia do platform linker C++; nao ha declaracao de runtime AOT completo.
+- Caminhos de registro: manual, gerado e assembly scanning coexistem; nenhum caminho antigo foi removido.
+- Packaging: analyzer e generator ficam em `analyzers/dotnet/cs`; o core continua `netstandard2.0` sem dependencias Roslyn runtime.
+- Limitacoes: o generator descobre apenas maps da compilacao atual e nao resolve nested object materialization, Value Objects complexos, multiple mapping profiles, query-specific mappings, custom materializer ou generated `DbDataReader` materializer.
+- Relatorios: `docs/sdd/etapa-4/01-roslyn-analyzers.md`, `docs/sdd/etapa-4/02-trimming-aot.md`, `docs/sdd/etapa-4/03-source-generator.md`.

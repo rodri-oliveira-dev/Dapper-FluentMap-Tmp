@@ -5,7 +5,19 @@ using Dapper.FluentMap;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Naming;
 
-#if AOT_SMOKE_SCANNING
+#if AOT_SMOKE_GENERATED
+const string scenario = "generated";
+FluentMapper.Initialize(configuration =>
+{
+    configuration.AddGeneratedMappings();
+    configuration.UseNamingPolicy(NamingPolicy.SnakeCase).ForEntity<NamingCustomer>();
+});
+
+AssertMappedMember<Customer>("customer_id", nameof(Customer.Id));
+AssertMappedMember<NamingCustomer>("created_at", nameof(NamingCustomer.CreatedAt));
+AssertConstructorMapping();
+AssertExplain();
+#elif AOT_SMOKE_SCANNING
 const string scenario = "scanning";
 FluentMapper.Initialize(configuration => configuration.AddMapsFromAssemblyContaining<CustomerMap>());
 

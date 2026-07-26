@@ -54,3 +54,26 @@ Regra principal:
 ```text
 Se nao for possivel provar estaticamente, nao reporte como erro.
 ```
+
+## Resultado da Etapa 4
+
+A Etapa 4 adicionou tooling build-time e validacao de publicacao sem alterar o contrato runtime principal do `Dapper.FluentMap`.
+
+Resumo:
+
+- analyzers Roslyn em `Dapper.FluentMap.Analyzers`, com diagnostics `DFM001` a `DFM005`;
+- generator incremental em `Dapper.FluentMap.Generators`, com registro gerado por `AddGeneratedMappings()`;
+- diagnostics novos do generator: `DFM006` para mapping candidato ignorado e `DFM007` para duplicidade geravel de entidade;
+- core preservado em `netstandard2.0` e sem dependencia Roslyn;
+- registro manual e `AddMap<TMap>()` permanecem suportados;
+- registro gerado complementa o caminho explicito para evitar assembly scanning;
+- assembly scanning permanece suportado como conveniencia reflection-dependent e trimming-sensitive;
+- caminho explicito e caminho gerado nao emitiram warnings FluentMap-owned nos smokes trimmed executados;
+- Native AOT runtime nao foi validado no ambiente local porque faltou o platform linker C++ exigido pelo SDK;
+- pacotes de analyzer/generator sao empacotados em `analyzers/dotnet/cs`, sem `lib/`.
+
+Relatorios:
+
+- `docs/sdd/etapa-4/01-roslyn-analyzers.md`
+- `docs/sdd/etapa-4/02-trimming-aot.md`
+- `docs/sdd/etapa-4/03-source-generator.md`

@@ -27,3 +27,13 @@ Registre aqui apenas decisoes que afetem entregas posteriores.
 ## Source Generator
 
 - A Entrega 03 pode reutilizar a leitura estatica de `Map(...)`, `ToColumn(...)`, `IncludeBase(...)` e `AddMap<TMap>()`, mas nao deve depender de diagnostics como unica fonte de verdade.
+- O Source Generator foi entregue em projeto separado `Dapper.FluentMap.Generators`, empacotado em `analyzers/dotnet/cs`, sem referencia do core para Roslyn.
+- A descoberta inicial e limitada a classes de mapping declaradas na compilacao atual; assemblies referenciados nao sao percorridos automaticamente.
+- A API gerada e `Dapper.FluentMap.DapperFluentMapGeneratedRegistration.AddGeneratedMappings(...)`, exposta como extension method interno no assembly consumidor.
+- O codigo gerado chama somente `FluentMapConfiguration.AddMap<TMap>()`, preservando o `MappingRegistry`, validacoes runtime, inheritance, conventions, naming policies e constructor mapping existentes.
+- O generator e incremental, baseado em symbols, nao executa codigo do consumidor e nao instancia mappings durante a geracao.
+- O caminho gerado nao usa assembly scanning, `GetTypes`, `GetExportedTypes` ou `Activator.CreateInstance(Type)`.
+- `DFM005` foi reutilizado para tipos que nao satisfazem o contrato de exatamente uma interface fechada `IEntityMap<TEntity>` para entidade class.
+- Novos diagnostics de generator: `DFM006` para mapping candidato ignorado no registro gerado e `DFM007` para duplicidade de entity maps geraveis na compilacao atual.
+- Abstract maps, open generic maps, maps inacessiveis e maps sem construtor publico sem parametros sao reportados por `DFM006` e ignorados, evitando que o caminho gerado produza chamadas que nao compilam.
+- O generator nao declara suporte a nested object materialization, Value Objects complexos, multiple mapping profiles, query-specific mappings, custom materializer ou generated `DbDataReader` materializer.
