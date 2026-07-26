@@ -25,7 +25,16 @@ namespace Dapper.FluentMap
         internal void AddEntityMap<TEntity>(IEntityMap<TEntity> mapper)
             where TEntity : class
         {
-            var type = typeof(TEntity);
+            AddEntityMap(typeof(TEntity), mapper);
+        }
+
+        internal void AddEntityMap(Type type, IEntityMap mapper)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
             if (mapper == null)
             {
                 throw new ArgumentNullException(nameof(mapper));

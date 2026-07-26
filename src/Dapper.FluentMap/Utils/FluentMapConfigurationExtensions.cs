@@ -15,7 +15,7 @@ namespace Dapper.FluentMap.Utils
         /// <summary>
         /// Finds all types, from provided assemblies, implementing <see cref="EntityMap{TEntity}"/>
         /// and applies them to <see cref="FluentMapConfiguration"/>,
-        /// by calling <see cref="FluentMapConfiguration.AddMap{TEntity}"/> and passing an instance of found type.
+        /// by calling AddMap and passing an instance of found type.
         /// </summary>
         /// <param name="configuration">The <see cref="FluentMapConfiguration"/> instance.</param>
         /// <param name="assemblies">The assemblies to scan for entity maps.</param>

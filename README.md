@@ -53,6 +53,25 @@ FluentMapper.Initialize(config =>
     });
 ```
 
+You can also register map types directly when they have a public parameterless constructor:
+```csharp
+FluentMapper.Initialize(config =>
+    {
+       config
+           .AddMap<ProductMap>()
+           .AddMap<OrderMap>();
+    });
+```
+
+Assembly scanning is available as a convenience, while explicit `AddMap<TMap>()` registration remains the path that does not require scanning:
+```csharp
+FluentMapper.Initialize(config =>
+    {
+       config.AddMapsFromAssemblyContaining<ProductMap>();
+       config.AddMapsFromAssembly(typeof(ProductMap).Assembly, "App.Domain.Maps");
+    });
+```
+
 #### Convention based mapping
 When you have a lot of entity types, creating manual mapping classes can become plumbing. If your column names adhere to some kind of naming convention, you might be better off by configuring a mapping convention.
 
