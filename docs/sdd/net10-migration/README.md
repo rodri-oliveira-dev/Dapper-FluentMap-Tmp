@@ -82,3 +82,51 @@ CI files after Delivery 04:
 - `.travis.yml`: uses `dotnet: 10.0` on `jammy`, runs restore, Release build, Release tests, and Release pack.
 
 No `global.json`, `Directory.Build.props`, `Directory.Packages.props`, or `.editorconfig` files are present after Delivery 04.
+
+## Resultado final
+
+TargetFrameworks finais:
+
+- `src/Dapper.FluentMap`: `netstandard2.0`
+- `src/Dapper.FluentMap.Dommel`: `netstandard2.0`
+- `test/Dapper.FluentMap.Tests`: `net10.0`
+- `test/Dapper.FluentMap.Dommel.Tests`: `net10.0`
+
+Versoes principais:
+
+- .NET SDK local validado: `10.0.302`
+- `Dapper`: `2.1.79`
+- `Dommel`: `3.5.3`
+- `Microsoft.NET.Test.Sdk`: `18.8.1`
+- `xunit.v3`: `3.2.2`
+- `xunit.runner.visualstudio`: `3.1.5`
+- `coverlet.collector`: `10.0.1`
+
+Runner de testes:
+
+- VSTest via `Microsoft.NET.Test.Sdk` e `xunit.runner.visualstudio`.
+- Microsoft Testing Platform nao foi adotado.
+- Paralelismo de testes permanece desabilitado por estado global compartilhado.
+
+Status:
+
+- build Debug: aprovado.
+- build Release: aprovado.
+- testes Debug: 52 descobertos, 52 aprovados, 0 falhos, 0 ignorados.
+- testes Release: 52 descobertos, 52 aprovados, 0 falhos, 0 ignorados.
+- pack Release: aprovado; pacotes emitidos com `lib/netstandard2.0`.
+- CI: arquivos GitHub Actions, AppVeyor e Travis revisados localmente; execucoes remotas nao foram realizadas.
+
+Dependencias bloqueadas ou deferidas:
+
+- `SQLitePCLRaw.lib.e_sqlite3 2.1.11` permanece como transitive test-only vulneravel em `Dapper.FluentMap.Tests` e deve ser tratado em tarefa dedicada.
+- Modernizacao de metadados NuGet (`licenseUrl`, README de pacote, SourceLink/repository metadata) permanece fora do escopo.
+- Adocao de Microsoft Testing Platform fica deferida para uma migracao de runner separada, se necessaria.
+
+Referencias dos relatorios:
+
+- `docs/sdd/net10-migration/01-inventory-baseline.md`
+- `docs/sdd/net10-migration/02-test-projects-net10.md`
+- `docs/sdd/net10-migration/03-src-dependencies.md`
+- `docs/sdd/net10-migration/04-validation-pack-ci.md`
+- `docs/sdd/net10-migration/05-xunit3-migration.md`

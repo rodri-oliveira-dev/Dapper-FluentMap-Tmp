@@ -4,7 +4,7 @@
 
 `src/Dapper.FluentMap` and `src/Dapper.FluentMap.Dommel` must remain on `netstandard2.0` throughout the migration. Dependency updates in Delivery 03 must not force either published project to move to `net8.0`, `net10.0`, or multi-targeting.
 
-## Keep xUnit 2 Until Delivery 05
+## Isolate xUnit 3 Until Delivery 05
 
 Delivery 02 may update xUnit 2 packages to the latest stable xUnit 2 line, but must not migrate test code or project references to `xunit.v3`. The xUnit 3 migration is intentionally isolated in Delivery 05.
 
@@ -73,20 +73,25 @@ CI policy:
 
 Package inspection confirms both published packages contain only `lib/netstandard2.0` assemblies/XML docs plus package metadata. Existing `licenseUrl` metadata produces NU5125 and package README is recommended by NuGet, but both are deferred because this delivery must avoid unrelated metadata modernization.
 
-## Delivery 05 Handoff
+## Delivery 05 xUnit 3 Migration
 
-The test runner remains VSTest with xUnit 2:
+Delivery 05 migrated the test projects from xUnit 2 to xUnit 3 without changing test semantics or production code.
+
+Final test infrastructure:
 
 - `Microsoft.NET.Test.Sdk 18.8.1`
-- `xunit 2.9.3`
+- `xunit.v3 3.2.2`
 - `xunit.runner.visualstudio 3.1.5`
+- `coverlet.collector 10.0.1` in `Dapper.FluentMap.Dommel.Tests`
 - no Microsoft Testing Platform runner in `global.json`
 - no `<TestingPlatformDotnetTestSupport>` property
 - test assemblies disable parallel execution with `[assembly: CollectionBehavior(DisableTestParallelization = true)]` because the suite uses global FluentMapper/Dapper state
 
-Patterns that Delivery 05 should preserve unless deliberately changed:
+Permanent decisions:
 
-- keep the xUnit 3 migration isolated from production dependency updates.
-- do not re-enable test parallelism unless global-state isolation is solved.
-- keep meaningful assertions and do not skip, weaken, or remove tests to satisfy runner migration.
-- keep Dapper materialization and Dommel resolver tests active as compatibility proof.
+- VSTest remains the official `dotnet test` runner path for this repository.
+- `xunit.runner.visualstudio` remains referenced for `dotnet test`, Visual Studio, and VS Code Test Explorer compatibility.
+- Microsoft Testing Platform adoption is deferred to a separate runner migration, if ever needed.
+- Parallel execution remains disabled until FluentMapper, Dapper type-map, and Dommel resolver global state are isolated.
+- Coverage remains based on the existing Coverlet collector setup; no Microsoft Testing Platform coverage extension was introduced.
+- Existing Dapper materialization and Dommel resolver tests remain active as compatibility proof.
