@@ -100,7 +100,7 @@ namespace Dapper.FluentMap
         {
             var cacheKey = MappingCacheKey.FluentMap(type, columnName);
             return _propertyMapCache
-                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveFluentPropertyInfo(type, columnName)))
+                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveFluentPropertyMap(type, columnName)))
                 .PropertyInfo;
         }
 
@@ -108,8 +108,24 @@ namespace Dapper.FluentMap
         {
             var cacheKey = MappingCacheKey.ConventionOnly(type, columnName);
             return _propertyMapCache
-                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveConventionPropertyInfo(type, columnName)))
+                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveConventionPropertyMap(type, columnName)))
                 .PropertyInfo;
+        }
+
+        internal IPropertyMap GetFluentPropertyMap(Type type, string columnName)
+        {
+            var cacheKey = MappingCacheKey.FluentMap(type, columnName);
+            return _propertyMapCache
+                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveFluentPropertyMap(type, columnName)))
+                .PropertyMap;
+        }
+
+        internal IPropertyMap GetConventionPropertyMap(Type type, string columnName)
+        {
+            var cacheKey = MappingCacheKey.ConventionOnly(type, columnName);
+            return _propertyMapCache
+                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveConventionPropertyMap(type, columnName)))
+                .PropertyMap;
         }
 
         internal void Reset(params Type[] dapperTypes)
@@ -143,24 +159,17 @@ namespace Dapper.FluentMap
             }
         }
 
-        private PropertyInfo ResolveFluentPropertyInfo(Type type, string columnName)
+        private IPropertyMap ResolveFluentPropertyMap(Type type, string columnName)
         {
             var explicitPropertyMaps = GetExplicitPropertyMaps(type);
             var explicitPropertyMap = explicitPropertyMaps.FirstOrDefault(m => MatchColumnNames(m, columnName));
 
             if (explicitPropertyMap != null)
             {
-                if (!explicitPropertyMap.Ignored)
-                {
-                    return explicitPropertyMap.PropertyInfo;
-                }
-
-#if !NETSTANDARD1_3
-                return new IgnoredPropertyInfo();
-#endif
+                return explicitPropertyMap;
             }
 
-            return ResolveConventionPropertyInfo(type, columnName, explicitPropertyMaps);
+            return ResolveConventionPropertyMap(type, columnName, explicitPropertyMaps);
         }
 
         private IList<IPropertyMap> GetExplicitPropertyMaps(Type type)
@@ -235,12 +244,12 @@ namespace Dapper.FluentMap
             return mapWithIncludedBases.IncludedBaseTypes;
         }
 
-        private PropertyInfo ResolveConventionPropertyInfo(Type type, string columnName)
+        private IPropertyMap ResolveConventionPropertyMap(Type type, string columnName)
         {
-            return ResolveConventionPropertyInfo(type, columnName, new IPropertyMap[0]);
+            return ResolveConventionPropertyMap(type, columnName, new IPropertyMap[0]);
         }
 
-        private PropertyInfo ResolveConventionPropertyInfo(Type type, string columnName, IList<IPropertyMap> explicitPropertyMaps)
+        private IPropertyMap ResolveConventionPropertyMap(Type type, string columnName, IList<IPropertyMap> explicitPropertyMaps)
         {
             if (!TypeConventions.TryGetValue(type, out var conventions))
             {
@@ -272,7 +281,7 @@ namespace Dapper.FluentMap
                     continue;
                 }
 
-                return maps[0].PropertyInfo;
+                return maps[0];
             }
 
             return null;
@@ -295,10 +304,27 @@ namespace Dapper.FluentMap
 
         private sealed class MappingCacheEntry
         {
-            internal MappingCacheEntry(PropertyInfo propertyInfo)
+            internal MappingCacheEntry(IPropertyMap propertyMap)
             {
-                PropertyInfo = propertyInfo;
+                PropertyMap = propertyMap;
+
+                if (propertyMap == null)
+                {
+                    return;
+                }
+
+                if (!propertyMap.Ignored)
+                {
+                    PropertyInfo = propertyMap.PropertyInfo;
+                    return;
+                }
+
+#if !NETSTANDARD1_3
+                PropertyInfo = new IgnoredPropertyInfo();
+#endif
             }
+
+            internal IPropertyMap PropertyMap { get; }
 
             internal PropertyInfo PropertyInfo { get; }
         }

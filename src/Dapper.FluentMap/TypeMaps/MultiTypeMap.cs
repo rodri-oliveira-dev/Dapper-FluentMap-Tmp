@@ -42,6 +42,11 @@ namespace Dapper.FluentMap.TypeMaps
                     // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
                     // and continue to the next mapping strategy.
                 }
+                catch (NotSupportedException)
+                {
+                    // Ignore NotSupportedException's thrown by the CustomPropertyTypeMap
+                    // and continue to the next mapping strategy.
+                }
             }
 
             return null;
@@ -63,6 +68,11 @@ namespace Dapper.FluentMap.TypeMaps
                 catch (NotImplementedException)
                 {
                     // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // and continue to the next mapping strategy.
+                }
+                catch (NotSupportedException)
+                {
+                    // Ignore NotSupportedException's thrown by the CustomPropertyTypeMap
                     // and continue to the next mapping strategy.
                 }
             }
@@ -87,6 +97,11 @@ namespace Dapper.FluentMap.TypeMaps
                 catch (NotImplementedException)
                 {
                     // Ignore NotImplementedException's thrown by the CustomPropertyTypeMap
+                    // and continue to the next mapping strategy.
+                }
+                catch (NotSupportedException)
+                {
+                    // Ignore NotSupportedException's thrown by the CustomPropertyTypeMap
                     // and continue to the next mapping strategy.
                 }
             }

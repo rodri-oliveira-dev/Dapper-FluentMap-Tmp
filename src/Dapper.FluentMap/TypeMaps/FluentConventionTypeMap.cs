@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Reflection;
+using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap.TypeMaps
 {
@@ -17,14 +18,21 @@ namespace Dapper.FluentMap.TypeMaps
         /// as mapping strategies.
         /// </summary>
         public FluentConventionTypeMap()
-            : base(new CustomPropertyTypeMap(typeof(TEntity), GetPropertyInfo), new DefaultTypeMap(typeof(TEntity)))
+            : base(
+                new FluentConstructorTypeMap(typeof(TEntity), GetPropertyMap),
+                new CustomPropertyTypeMap(typeof(TEntity), GetPropertyInfo),
+                new DefaultTypeMap(typeof(TEntity)))
         {
+        }
+
+        private static IPropertyMap GetPropertyMap(Type type, string columnName)
+        {
+            return FluentMapper.Registry.GetConventionPropertyMap(type, columnName);
         }
 
         private static PropertyInfo GetPropertyInfo(Type type, string columnName)
         {
             return FluentMapper.Registry.GetConventionPropertyInfo(type, columnName);
         }
-
     }
 }
