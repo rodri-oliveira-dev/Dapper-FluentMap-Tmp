@@ -10,7 +10,7 @@ namespace Dapper.FluentMap.Materialization
         private readonly string[] _columnNames;
         private readonly int _hashCode;
 
-        internal MaterializationPlanCacheKey(Type type, IEnumerable<string> columnNames)
+        internal MaterializationPlanCacheKey(Type type, Type profileType, IEnumerable<string> columnNames)
         {
             if (type == null)
             {
@@ -23,12 +23,15 @@ namespace Dapper.FluentMap.Materialization
             }
 
             Type = type;
+            ProfileType = profileType;
             _columnNames = columnNames.ToArray();
             ColumnNames = new ReadOnlyCollection<string>(_columnNames);
-            _hashCode = CalculateHashCode(type, _columnNames);
+            _hashCode = CalculateHashCode(type, profileType, _columnNames);
         }
 
         internal Type Type { get; }
+
+        internal Type ProfileType { get; }
 
         internal IReadOnlyList<string> ColumnNames { get; }
 
@@ -39,7 +42,10 @@ namespace Dapper.FluentMap.Materialization
                 return true;
             }
 
-            if (other == null || Type != other.Type || _columnNames.Length != other._columnNames.Length)
+            if (other == null ||
+                Type != other.Type ||
+                ProfileType != other.ProfileType ||
+                _columnNames.Length != other._columnNames.Length)
             {
                 return false;
             }
@@ -65,11 +71,12 @@ namespace Dapper.FluentMap.Materialization
             return _hashCode;
         }
 
-        private static int CalculateHashCode(Type type, string[] columnNames)
+        private static int CalculateHashCode(Type type, Type profileType, string[] columnNames)
         {
             unchecked
             {
                 var hash = type.GetHashCode();
+                hash = (hash * 31) + (profileType == null ? 0 : profileType.GetHashCode());
                 foreach (var columnName in columnNames)
                 {
                     hash = (hash * 31) + (columnName == null ? 0 : StringComparer.Ordinal.GetHashCode(columnName));

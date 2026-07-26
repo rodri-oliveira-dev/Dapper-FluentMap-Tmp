@@ -35,6 +35,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 10 AS immutable_id, 'Grace' AS name;");
                     var named = connection.QuerySingle<GeneratedNamingCustomer>(
                         "SELECT '2026-07-26T10:30:00' AS created_at;");
+                    var profiled = connection.QueryMappedSingle<GeneratedProfileCustomer, GeneratedLegacyProfile>(
+                        "SELECT 11 AS legacy_id, 'Profiled' AS legacy_name;");
 
                     Assert.Equal(7, customer.Id);
                     Assert.Equal("Ada", customer.Name);
@@ -44,6 +46,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal(10, immutable.Id);
                     Assert.Equal("Grace", immutable.Name);
                     Assert.Equal(new DateTime(2026, 7, 26, 10, 30, 0), named.CreatedAt);
+                    Assert.Equal(11, profiled.Id);
+                    Assert.Equal("Profiled", profiled.Name);
                 }
             }
             finally
@@ -67,7 +71,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedBaseCustomer),
                 typeof(GeneratedDerivedCustomer),
                 typeof(GeneratedImmutableCustomer),
-                typeof(GeneratedNamingCustomer));
+                typeof(GeneratedNamingCustomer),
+                typeof(GeneratedProfileCustomer));
         }
     }
 
@@ -151,5 +156,25 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
     public sealed class GeneratedNamingCustomer
     {
         public DateTime CreatedAt { get; set; }
+    }
+
+    public sealed class GeneratedLegacyProfile : IMappingProfile
+    {
+    }
+
+    public sealed class GeneratedProfileCustomer
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; }
+    }
+
+    public sealed class GeneratedLegacyProfileCustomerMap : EntityMap<GeneratedProfileCustomer>, IProfileMap<GeneratedLegacyProfile>
+    {
+        public GeneratedLegacyProfileCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("legacy_id");
+            Map(customer => customer.Name).ToColumn("legacy_name");
+        }
     }
 }

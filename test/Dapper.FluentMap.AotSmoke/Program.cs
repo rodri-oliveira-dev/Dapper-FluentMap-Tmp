@@ -19,6 +19,7 @@ AssertMappedMember<NamingCustomer>("created_at", nameof(NamingCustomer.CreatedAt
 AssertConstructorMapping();
 AssertExplain();
 AssertValueObjectExplain();
+AssertProfileExplain();
 #elif AOT_SMOKE_SCANNING
 const string scenario = "scanning";
 FluentMapper.Initialize(configuration => configuration.AddMapsFromAssemblyContaining<CustomerMap>());
@@ -31,6 +32,7 @@ FluentMapper.Initialize(configuration =>
     configuration.AddMap<CustomerMap>();
     configuration.AddMap<ImmutableCustomerMap>();
     configuration.AddMap<ValueObjectCustomerMap>();
+    configuration.AddProfile<LegacyCustomerMap>();
     configuration.UseNamingPolicy(NamingPolicy.SnakeCase).ForEntity<NamingCustomer>();
 });
 
@@ -39,6 +41,7 @@ AssertMappedMember<NamingCustomer>("created_at", nameof(NamingCustomer.CreatedAt
 AssertConstructorMapping();
 AssertExplain();
 AssertValueObjectExplain();
+AssertProfileExplain();
 #endif
 
 Console.WriteLine(scenario + ":ok");
@@ -95,6 +98,18 @@ static void AssertValueObjectExplain()
         throw new InvalidOperationException("Explain did not include the value object mapping.");
     }
 }
+
+static void AssertProfileExplain()
+{
+    var explanation = FluentMapper.Explain<Customer, LegacyProfile>();
+    if (explanation.ProfileType != typeof(LegacyProfile) ||
+        !explanation.Members.Any(member =>
+            member.MemberPath == nameof(Customer.Id) &&
+            member.ColumnName == "legacy_id"))
+    {
+        throw new InvalidOperationException("Explain did not include the profile mapping.");
+    }
+}
 #endif
 
 public sealed class Customer
@@ -109,6 +124,18 @@ public sealed class CustomerMap : EntityMap<Customer>
     public CustomerMap()
     {
         Map(customer => customer.Id).ToColumn("customer_id");
+    }
+}
+
+public sealed class LegacyProfile : IMappingProfile
+{
+}
+
+public sealed class LegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+    public LegacyCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn("legacy_id");
     }
 }
 

@@ -18,6 +18,8 @@ namespace Dapper.FluentMap.Analyzers
         public const string DuplicateColumnDiagnosticId = "DFM003";
         public const string InvalidIncludeBaseDiagnosticId = "DFM004";
         public const string InvalidGenericMapRegistrationDiagnosticId = "DFM005";
+        public const string InvalidGenericProfileRegistrationDiagnosticId = "DFM009";
+        public const string DuplicateProfileRegistrationDiagnosticId = "DFM010";
 
         private const string Category = "Dapper.FluentMap.Configuration";
         private const string MappingNamespace = "Dapper.FluentMap.Mapping";
@@ -70,13 +72,34 @@ namespace Dapper.FluentMap.Analyzers
             isEnabledByDefault: true,
             description: "AddMap<TMap>() can only register map types that implement exactly one closed IEntityMap<TEntity> interface whose entity type is a class.");
 
+        private static readonly DiagnosticDescriptor InvalidGenericProfileRegistrationRule = new DiagnosticDescriptor(
+            InvalidGenericProfileRegistrationDiagnosticId,
+            "Generic profile registration type is invalid",
+            "Profile map type '{0}' must implement exactly one closed IEntityMap<TEntity> interface and exactly one closed IProfileMap<TProfile> interface",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "AddProfile<TMap>() can only register map types that implement one entity map interface and one mapping profile interface.");
+
+        private static readonly DiagnosticDescriptor DuplicateProfileRegistrationRule = new DiagnosticDescriptor(
+            DuplicateProfileRegistrationDiagnosticId,
+            "Mapping profile is registered more than once",
+            "Entity '{0}' registers mapping profile '{1}' more than once in this configuration method",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "The same entity/profile pair must not be registered more than once.",
+            customTags: WellKnownDiagnosticTags.CompilationEnd);
+
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(
                 InvalidMapExpressionRule,
                 DuplicateMemberPathRule,
                 DuplicateColumnRule,
                 InvalidIncludeBaseRule,
-                InvalidGenericMapRegistrationRule);
+                InvalidGenericMapRegistrationRule,
+                InvalidGenericProfileRegistrationRule,
+                DuplicateProfileRegistrationRule);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -86,19 +109,25 @@ namespace Dapper.FluentMap.Analyzers
             context.RegisterCompilationStartAction(startContext =>
             {
                 var constructorMapInvocations = new ConcurrentBag<MapInvocation>();
+                var profileRegistrations = new ConcurrentBag<ProfileRegistrationInvocation>();
 
                 startContext.RegisterSyntaxNodeAction(
-                    nodeContext => AnalyzeInvocation(nodeContext, constructorMapInvocations),
+                    nodeContext => AnalyzeInvocation(nodeContext, constructorMapInvocations, profileRegistrations),
                     SyntaxKind.InvocationExpression);
 
                 startContext.RegisterCompilationEndAction(
-                    endContext => AnalyzeConstructorMapInvocations(endContext, constructorMapInvocations));
+                    endContext =>
+                    {
+                        AnalyzeConstructorMapInvocations(endContext, constructorMapInvocations);
+                        AnalyzeProfileRegistrations(endContext, profileRegistrations);
+                    });
             });
         }
 
         private static void AnalyzeInvocation(
             SyntaxNodeAnalysisContext context,
-            ConcurrentBag<MapInvocation> constructorMapInvocations)
+            ConcurrentBag<MapInvocation> constructorMapInvocations,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
         {
             var invocation = (InvocationExpressionSyntax)context.Node;
             var method = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol as IMethodSymbol;
@@ -123,6 +152,12 @@ namespace Dapper.FluentMap.Analyzers
             if (IsGenericAddMapInvocation(method))
             {
                 AnalyzeGenericAddMapInvocation(context, invocation, method);
+                return;
+            }
+
+            if (IsGenericAddProfileInvocation(method))
+            {
+                AnalyzeGenericAddProfileInvocation(context, invocation, method, profileRegistrations);
             }
         }
 
@@ -218,12 +253,7 @@ namespace Dapper.FluentMap.Analyzers
                 return;
             }
 
-            var entityMapInterfaces = mapType.AllInterfaces
-                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, "IEntityMap`1"))
-                .ToList();
-
-            if (entityMapInterfaces.Count == 1 &&
-                entityMapInterfaces[0].TypeArguments[0].TypeKind == TypeKind.Class)
+            if (TryGetEntityMapInterface(mapType, out _))
             {
                 return;
             }
@@ -232,6 +262,43 @@ namespace Dapper.FluentMap.Analyzers
                 InvalidGenericMapRegistrationRule,
                 invocation.GetLocation(),
                 FormatSymbol(mapType)));
+        }
+
+        private static void AnalyzeGenericAddProfileInvocation(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
+        {
+            if (method.TypeArguments.Length != 1)
+            {
+                return;
+            }
+
+            var mapType = method.TypeArguments[0] as INamedTypeSymbol;
+            if (mapType == null)
+            {
+                return;
+            }
+
+            if (!TryGetEntityMapInterface(mapType, out var entityType) ||
+                !TryGetProfileMapInterface(mapType, out var profileType))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InvalidGenericProfileRegistrationRule,
+                    invocation.GetLocation(),
+                    FormatSymbol(mapType)));
+                return;
+            }
+
+            if (context.ContainingSymbol != null)
+            {
+                profileRegistrations.Add(new ProfileRegistrationInvocation(
+                    context.ContainingSymbol,
+                    entityType,
+                    profileType,
+                    GetInvocationNameLocation(invocation)));
+            }
         }
 
         private static void AnalyzeConstructorMapInvocations(
@@ -302,6 +369,36 @@ namespace Dapper.FluentMap.Analyzers
                         right.ColumnName,
                         left.MemberPath.Display,
                         right.MemberPath.Display));
+                }
+            }
+        }
+
+        private static void AnalyzeProfileRegistrations(
+            CompilationAnalysisContext context,
+            ConcurrentBag<ProfileRegistrationInvocation> profileRegistrations)
+        {
+            var groups = profileRegistrations
+                .GroupBy(
+                    registration => registration.ContainingSymbol,
+                    SymbolEqualityComparer.Default);
+
+            foreach (var group in groups)
+            {
+                var seen = new Dictionary<string, ProfileRegistrationInvocation>(StringComparer.Ordinal);
+                foreach (var registration in group.OrderBy(item => item.Location.SourceSpan.Start))
+                {
+                    var key = FormatSymbol(registration.EntityType) + "|" + FormatSymbol(registration.ProfileType);
+                    if (seen.ContainsKey(key))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DuplicateProfileRegistrationRule,
+                            registration.Location,
+                            FormatSymbol(registration.EntityType),
+                            FormatSymbol(registration.ProfileType)));
+                        continue;
+                    }
+
+                    seen.Add(key, registration);
                 }
             }
         }
@@ -547,6 +644,15 @@ namespace Dapper.FluentMap.Analyzers
                    IsType(method.ContainingType, ConfigurationNamespace, "FluentMapConfiguration");
         }
 
+        private static bool IsGenericAddProfileInvocation(IMethodSymbol method)
+        {
+            return method.Name == "AddProfile" &&
+                   method.IsGenericMethod &&
+                   method.TypeArguments.Length == 1 &&
+                   method.Parameters.Length == 0 &&
+                   IsType(method.ContainingType, ConfigurationNamespace, "FluentMapConfiguration");
+        }
+
         private static bool IsToColumnInvocation(IMethodSymbol method)
         {
             return method.Name == "ToColumn" &&
@@ -557,6 +663,14 @@ namespace Dapper.FluentMap.Analyzers
         private static bool IsIgnoreInvocation(IMethodSymbol method)
         {
             return method.Name == "Ignore" && method.Parameters.Length == 0;
+        }
+
+        private static Location GetInvocationNameLocation(InvocationExpressionSyntax invocation)
+        {
+            var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
+            return memberAccess == null
+                ? invocation.GetLocation()
+                : memberAccess.Name.GetLocation();
         }
 
         private static INamedTypeSymbol FindEntityType(INamedTypeSymbol mapType)
@@ -591,6 +705,39 @@ namespace Dapper.FluentMap.Analyzers
             return type != null &&
                    type.MetadataName == metadataName &&
                    type.ContainingNamespace.ToDisplayString() == namespaceName;
+        }
+
+        private static bool TryGetEntityMapInterface(INamedTypeSymbol mapType, out INamedTypeSymbol entityType)
+        {
+            entityType = null;
+            var entityMapInterfaces = mapType.AllInterfaces
+                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, "IEntityMap`1"))
+                .ToList();
+
+            if (entityMapInterfaces.Count != 1 ||
+                entityMapInterfaces[0].TypeArguments[0].TypeKind != TypeKind.Class)
+            {
+                return false;
+            }
+
+            entityType = entityMapInterfaces[0].TypeArguments[0] as INamedTypeSymbol;
+            return entityType != null;
+        }
+
+        private static bool TryGetProfileMapInterface(INamedTypeSymbol mapType, out INamedTypeSymbol profileType)
+        {
+            profileType = null;
+            var profileMapInterfaces = mapType.AllInterfaces
+                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, "IProfileMap`1"))
+                .ToList();
+
+            if (profileMapInterfaces.Count != 1)
+            {
+                return false;
+            }
+
+            profileType = profileMapInterfaces[0].TypeArguments[0] as INamedTypeSymbol;
+            return profileType != null;
         }
 
         private static string FormatSymbol(ISymbol symbol)
@@ -661,6 +808,29 @@ namespace Dapper.FluentMap.Analyzers
                 var display = string.Join(".", propertyList.Select(property => property.Name));
                 return new MemberPathInfo(key, display, propertyList[propertyList.Count - 1].Name);
             }
+        }
+
+        private sealed class ProfileRegistrationInvocation
+        {
+            internal ProfileRegistrationInvocation(
+                ISymbol containingSymbol,
+                INamedTypeSymbol entityType,
+                INamedTypeSymbol profileType,
+                Location location)
+            {
+                ContainingSymbol = containingSymbol;
+                EntityType = entityType;
+                ProfileType = profileType;
+                Location = location;
+            }
+
+            internal ISymbol ContainingSymbol { get; }
+
+            internal INamedTypeSymbol EntityType { get; }
+
+            internal INamedTypeSymbol ProfileType { get; }
+
+            internal Location Location { get; }
         }
     }
 }

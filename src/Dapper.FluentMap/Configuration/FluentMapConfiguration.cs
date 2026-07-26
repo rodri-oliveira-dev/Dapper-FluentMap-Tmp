@@ -55,6 +55,25 @@ namespace Dapper.FluentMap.Configuration
         }
 
         /// <summary>
+        /// Adds a new instance of the specified entity map type as an explicitly selected mapping profile.
+        /// </summary>
+        /// <typeparam name="TMap">The profile entity map type to create and register.</typeparam>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddProfile<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+            TMap>()
+            where TMap : IEntityMap, new()
+        {
+            var mapType = typeof(TMap);
+            var entityType = GetMappedEntityType(mapType);
+            var profileType = GetMappedProfileType(mapType);
+            var mapper = CreateEntityMap<TMap>();
+
+            FluentMapper.Registry.AddProfileMap(entityType, profileType, mapper);
+            return this;
+        }
+
+        /// <summary>
         /// Finds exported entity map types in the specified assembly and adds them to the configuration of Dapper.FluentMap.
         /// </summary>
         /// <param name="assembly">The assembly to scan for entity maps.</param>
@@ -215,6 +234,31 @@ namespace Dapper.FluentMap.Configuration
             }
 
             return entityType;
+        }
+
+        private static Type GetMappedProfileType(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+            Type mapType)
+        {
+            var profileInterfaces = mapType.GetInterfaces()
+                .Where(type => type.GetTypeInfo().IsGenericType &&
+                               type.GetGenericTypeDefinition() == typeof(IProfileMap<>))
+                .ToList();
+
+            if (profileInterfaces.Count != 1)
+            {
+                throw new FluentMapConfigurationException(
+                    $"Profile entity map type '{mapType.FullName}' must implement exactly one closed IProfileMap<TProfile> interface.");
+            }
+
+            var profileType = profileInterfaces[0].GetGenericArguments()[0];
+            if (!typeof(IMappingProfile).GetTypeInfo().IsAssignableFrom(profileType.GetTypeInfo()))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Profile entity map type '{mapType.FullName}' targets '{profileType.FullName}', but mapping profiles must implement IMappingProfile.");
+            }
+
+            return profileType;
         }
 
         [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]

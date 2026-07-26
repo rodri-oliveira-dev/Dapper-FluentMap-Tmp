@@ -13,6 +13,7 @@ namespace Dapper.FluentMap.Diagnostics
     {
         internal MappingExplanation(
             Type entityType,
+            Type profileType,
             Type entityMapType,
             IEnumerable<Type> conventionTypes,
             IEnumerable<MemberMappingExplanation> members,
@@ -24,6 +25,7 @@ namespace Dapper.FluentMap.Diagnostics
             }
 
             EntityType = entityType;
+            ProfileType = profileType;
             EntityMapType = entityMapType;
             ConventionTypes = new ReadOnlyCollection<Type>(
                 (conventionTypes ?? Enumerable.Empty<Type>()).ToList());
@@ -37,6 +39,11 @@ namespace Dapper.FluentMap.Diagnostics
         /// Gets the entity type described by this explanation.
         /// </summary>
         public Type EntityType { get; }
+
+        /// <summary>
+        /// Gets the mapping profile marker type, when this explanation targets a profile.
+        /// </summary>
+        public Type ProfileType { get; }
 
         /// <summary>
         /// Gets the registered entity map type, when one exists.
@@ -63,6 +70,12 @@ namespace Dapper.FluentMap.Diagnostics
         {
             var builder = new StringBuilder();
             builder.Append("Entity: ").Append(EntityType.FullName);
+            if (ProfileType != null)
+            {
+                builder.AppendLine()
+                       .Append("Profile: ")
+                       .Append(ProfileType.FullName);
+            }
 
             foreach (var member in Members)
             {

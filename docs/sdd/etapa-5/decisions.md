@@ -38,3 +38,19 @@ Registre aqui apenas decisoes arquiteturais necessarias as proximas entregas.
 - Um materializer gerado pode ser uma estrategia futura para performance, trimming e Native AOT, mas nao deve ser acoplado a Entrega 2 como unico caminho.
 - O caminho runtime/reflection-based de `QueryMapped*` e documentado como menos AOT-friendly e foi anotado com `RequiresUnreferencedCode` e `RequiresDynamicCode`; o caminho gerado deve ser a opcao preferencial para consumidores trimmed/AOT quando existir.
 - A Entrega 3 nao amplia o generator para materializar `DbDataReader`; o smoke AOT valida registro/diagnostico de Value Object, nao runtime AOT completo de `QueryMapped*`.
+
+## Mapping Profiles
+
+- Multiple mapping profiles por tipo sao suportados apenas no caminho opt-in `QueryMapped*`; `Dapper.Query<T>` continua usando o mapping default registrado por `AddMap(...)`.
+- A identidade de profile e fortemente tipada por marker `TProfile : IMappingProfile`; maps de profile implementam `IProfileMap<TProfile>`.
+- A API de registro escolhida e `configuration.AddProfile<TMap>()`, inferindo a entidade por `IEntityMap<TEntity>` e o profile por `IProfileMap<TProfile>`.
+- A API de consulta escolhida e query-scoped: `QueryMapped<TEntity,TProfile>(...)`, `QueryMappedSingle<TEntity,TProfile>(...)`, `QueryMappedAsync<TEntity,TProfile>(...)` e `QueryMappedSingleAsync<TEntity,TProfile>(...)`.
+- `SqlMapper.SetTypeMap` nao e usado para profiles; o type map global do Dapper permanece representando apenas o default.
+- O registry passa a modelar `EntityMaps[EntityType]` para default e `ProfileMaps[(EntityType, ProfileType)]` para profiles.
+- `MappingCacheKey` e `MaterializationPlanCacheKey` incluem `ProfileType`, evitando reutilizacao de planos entre profiles.
+- `IncludeBase<TBase>()` dentro de profile map procura a base no mesmo `TProfile`; nao ha heranca silenciosa do default dentro de profile alternativo.
+- Conventions e naming policies continuam por entidade e sao aplicadas de forma read-only tambem em profiles; per-profile conventions ficam como divida futura.
+- `Explain<TEntity>()` continua descrevendo o default; `Explain<TEntity,TProfile>()` descreve o profile e expoe `MappingExplanation.ProfileType`.
+- O source generator distingue default maps de profile maps: default gera `AddMap<TMap>()`, profile gera `AddProfile<TMap>()`; duplicidade de profile gerada usa `DFM008`.
+- O analyzer adiciona `DFM009` para `AddProfile<TMap>()` invalido e `DFM010` para duplicidade conhecida de entity/profile no mesmo metodo de configuracao.
+- Profiles nao implementam multi-mapping, streaming unbuffered nem materializer gerado nesta entrega.

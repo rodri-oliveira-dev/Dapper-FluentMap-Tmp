@@ -16,6 +16,7 @@ namespace Dapper.FluentMap.Generators
         public const string InvalidGenericMapRegistrationDiagnosticId = "DFM005";
         public const string SkippedGeneratedMapDiagnosticId = "DFM006";
         public const string DuplicateGeneratedEntityMapDiagnosticId = "DFM007";
+        public const string DuplicateGeneratedProfileMapDiagnosticId = "DFM008";
 
         private const string Category = "Dapper.FluentMap.Configuration";
         private const string MappingNamespace = "Dapper.FluentMap.Mapping";
@@ -47,6 +48,15 @@ namespace Dapper.FluentMap.Generators
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,
             description: "Generated registration must not register more than one entity map for the same entity.");
+
+        private static readonly DiagnosticDescriptor DuplicateGeneratedProfileMapRule = new DiagnosticDescriptor(
+            DuplicateGeneratedProfileMapDiagnosticId,
+            "Multiple generated profile maps target the same entity and profile",
+            "Entity '{0}' has multiple generated maps for profile '{1}': '{2}' and '{3}'",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Generated registration must not register more than one map for the same entity and mapping profile.");
 
         private static readonly SymbolDisplayFormat FullyQualifiedTypeFormat = new SymbolDisplayFormat(
             globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
@@ -89,6 +99,9 @@ namespace Dapper.FluentMap.Generators
             var entityMapInterfaces = mapType.AllInterfaces
                 .Where(type => IsEntityMapInterface(type))
                 .ToList();
+            var profileMapInterfaces = mapType.AllInterfaces
+                .Where(type => IsProfileMapInterface(type))
+                .ToList();
 
             if (entityMapInterfaces.Count == 0)
             {
@@ -100,12 +113,16 @@ namespace Dapper.FluentMap.Generators
             var mapTypeName = mapType.ToDisplayString(FullyQualifiedTypeFormat);
 
             if (entityMapInterfaces.Count != 1 ||
-                entityMapInterfaces[0].TypeArguments[0].TypeKind != TypeKind.Class)
+                entityMapInterfaces[0].TypeArguments[0].TypeKind != TypeKind.Class ||
+                profileMapInterfaces.Count > 1)
             {
                 return MapCandidate.InvalidRegistration(mapDisplayName, location);
             }
 
             var entityType = (INamedTypeSymbol)entityMapInterfaces[0].TypeArguments[0];
+            var profileTypeName = profileMapInterfaces.Count == 0
+                ? null
+                : profileMapInterfaces[0].TypeArguments[0].ToDisplayString(FullyQualifiedTypeFormat);
             if (mapType.IsAbstract)
             {
                 return MapCandidate.Skipped(mapDisplayName, location, "the map type is abstract");
@@ -130,6 +147,7 @@ namespace Dapper.FluentMap.Generators
                 mapDisplayName,
                 mapTypeName,
                 entityType.ToDisplayString(FullyQualifiedTypeFormat),
+                profileTypeName,
                 GetInheritanceDepth(entityType),
                 location);
         }
@@ -156,8 +174,12 @@ namespace Dapper.FluentMap.Generators
                 .ToList();
 
             var duplicateEntityTypeNames = ReportDuplicateEntityMaps(context, validMaps);
+            var duplicateProfileKeys = ReportDuplicateProfileMaps(context, validMaps);
             var generatedMaps = validMaps
-                .Where(candidate => !duplicateEntityTypeNames.Contains(candidate.EntityTypeName))
+                .Where(candidate =>
+                    candidate.ProfileTypeName == null
+                        ? !duplicateEntityTypeNames.Contains(candidate.EntityTypeName)
+                        : !duplicateProfileKeys.Contains(candidate.ProfileKey))
                 .ToList();
 
             context.AddSource(GeneratedCodeHintName, SourceText.From(CreateGeneratedSource(generatedMaps), Encoding.UTF8));
@@ -190,6 +212,7 @@ namespace Dapper.FluentMap.Generators
         {
             var duplicateEntityTypeNames = new HashSet<string>(StringComparer.Ordinal);
             var groups = validMaps
+                .Where(candidate => candidate.ProfileTypeName == null)
                 .GroupBy(candidate => candidate.EntityTypeName, StringComparer.Ordinal)
                 .Where(group => group.Count() > 1);
 
@@ -213,6 +236,39 @@ namespace Dapper.FluentMap.Generators
             }
 
             return duplicateEntityTypeNames;
+        }
+
+        private static ISet<string> ReportDuplicateProfileMaps(
+            SourceProductionContext context,
+            IList<MapCandidate> validMaps)
+        {
+            var duplicateProfileKeys = new HashSet<string>(StringComparer.Ordinal);
+            var groups = validMaps
+                .Where(candidate => candidate.ProfileTypeName != null)
+                .GroupBy(candidate => candidate.ProfileKey, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1);
+
+            foreach (var group in groups)
+            {
+                var orderedGroup = group
+                    .OrderBy(candidate => candidate.MapTypeName, StringComparer.Ordinal)
+                    .ToList();
+                var first = orderedGroup[0];
+                duplicateProfileKeys.Add(first.ProfileKey);
+
+                foreach (var duplicate in orderedGroup.Skip(1))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DuplicateGeneratedProfileMapRule,
+                        duplicate.Location,
+                        duplicate.EntityTypeName,
+                        duplicate.ProfileTypeName,
+                        first.MapTypeName,
+                        duplicate.MapTypeName));
+                }
+            }
+
+            return duplicateProfileKeys;
         }
 
         private static string CreateGeneratedSource(IList<MapCandidate> maps)
@@ -243,7 +299,9 @@ namespace Dapper.FluentMap.Generators
                 for (var index = 0; index < maps.Count; index++)
                 {
                     var terminator = index == maps.Count - 1 ? ";" : string.Empty;
-                    builder.Append("                .AddMap<");
+                    builder.Append(maps[index].ProfileTypeName == null
+                        ? "                .AddMap<"
+                        : "                .AddProfile<");
                     builder.Append(maps[index].MapTypeName);
                     builder.Append(">()");
                     builder.AppendLine(terminator);
@@ -260,6 +318,12 @@ namespace Dapper.FluentMap.Generators
         private static bool IsEntityMapInterface(INamedTypeSymbol type)
         {
             return type.OriginalDefinition.MetadataName == "IEntityMap`1" &&
+                   type.OriginalDefinition.ContainingNamespace.ToDisplayString() == MappingNamespace;
+        }
+
+        private static bool IsProfileMapInterface(INamedTypeSymbol type)
+        {
+            return type.OriginalDefinition.MetadataName == "IProfileMap`1" &&
                    type.OriginalDefinition.ContainingNamespace.ToDisplayString() == MappingNamespace;
         }
 
@@ -325,6 +389,7 @@ namespace Dapper.FluentMap.Generators
                 string mapDisplayName,
                 string mapTypeName,
                 string entityTypeName,
+                string profileTypeName,
                 int entityInheritanceDepth,
                 Location location,
                 string skipReason)
@@ -333,6 +398,7 @@ namespace Dapper.FluentMap.Generators
                 MapDisplayName = mapDisplayName;
                 MapTypeName = mapTypeName;
                 EntityTypeName = entityTypeName;
+                ProfileTypeName = profileTypeName;
                 EntityInheritanceDepth = entityInheritanceDepth;
                 Location = location;
                 SkipReason = skipReason;
@@ -346,6 +412,10 @@ namespace Dapper.FluentMap.Generators
 
             internal string EntityTypeName { get; }
 
+            internal string ProfileTypeName { get; }
+
+            internal string ProfileKey => EntityTypeName + "|" + ProfileTypeName;
+
             internal int EntityInheritanceDepth { get; }
 
             internal Location Location { get; }
@@ -356,6 +426,7 @@ namespace Dapper.FluentMap.Generators
                 string mapDisplayName,
                 string mapTypeName,
                 string entityTypeName,
+                string profileTypeName,
                 int entityInheritanceDepth,
                 Location location)
             {
@@ -364,6 +435,7 @@ namespace Dapper.FluentMap.Generators
                     mapDisplayName,
                     mapTypeName,
                     entityTypeName,
+                    profileTypeName,
                     entityInheritanceDepth,
                     location,
                     null);
@@ -376,6 +448,7 @@ namespace Dapper.FluentMap.Generators
                     mapDisplayName,
                     null,
                     null,
+                    null,
                     0,
                     location,
                     null);
@@ -386,6 +459,7 @@ namespace Dapper.FluentMap.Generators
                 return new MapCandidate(
                     MapCandidateKind.Skipped,
                     mapDisplayName,
+                    null,
                     null,
                     null,
                     0,

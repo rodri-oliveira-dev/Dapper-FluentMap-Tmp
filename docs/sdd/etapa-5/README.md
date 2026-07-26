@@ -70,3 +70,66 @@ Esta etapa nao deve transformar o FluentMap em:
 2. 02 - Nested object materialization
 3. 03 - Value Objects imutaveis
 4. 04 - Mapping profiles
+
+## Resultado da Etapa 5
+
+Capacidades entregues:
+
+- nested mapping opt-in por `QueryMapped<T>()` e `QueryMappedSingle<T>()`, preservando `Dapper.Query<T>()` para o comportamento default;
+- `MemberPath` preservado como identidade completa de paths como `Address.City`, `Rank.Level` e `Seniority.Level`;
+- null semantics por subarvore: subarvore toda `NULL` resulta em intermediario/value object `null`; subarvore parcialmente preenchida cria o objeto;
+- Value Objects imutaveis e nested immutable objects por construtores publicos compativeis, sem setters privados, fields ou bypass de invariantes;
+- strategy de constructor/factory limitada a construtores publicos; factory methods permanecem fora do escopo;
+- TypeHandler integration preservada para Value Objects escalares mapeados como propriedade inteira;
+- mapping profiles query-scoped por `TProfile : IMappingProfile`, registrados por `AddProfile<TMap>()` e selecionados por `QueryMapped<TEntity,TProfile>()`;
+- concorrencia validada para profiles distintos em queries sync e async simultaneas, sem troca de `SqlMapper.SetTypeMap`;
+- `Explain<TEntity>()` para default e `Explain<TEntity,TProfile>()` para profile, incluindo `Materialization` e `ProfileType`;
+- source generator atualizado para gerar `AddMap<TMap>()` ou `AddProfile<TMap>()` conforme o map;
+- analyzer atualizado com diagnostics determinaveis para profile invalid/duplicado.
+
+Compatibilidade:
+
+- `Dapper.Query<T>()`, `AddMap(...)`, `AddMap<TMap>()`, conventions, naming policies, constructor mapping simples e fallback do Dapper continuam preservados;
+- o core continua `netstandard2.0`;
+- Dommel nao recebeu alteracao funcional nesta etapa.
+
+AOT/trimming:
+
+- `QueryMapped*` continua runtime/reflection-based e anotado com `RequiresUnreferencedCode` e `RequiresDynamicCode`;
+- registro explicito e gerado sao os caminhos recomendados para consumidores trimmed;
+- source generation ainda gera registro, nao materializer de `DbDataReader`;
+- Native AOT runtime completo nao foi validado neste ambiente por ausencia do platform linker C++.
+
+Limitacoes:
+
+- `QueryMapped*` materializa em lista, sem streaming unbuffered;
+- profiles nao se aplicam a `Dapper.Query<T>()` nem a multi-mapping do Dapper;
+- conventions e naming policies ainda sao por entidade, nao por profile;
+- factory methods, private constructors, private setters e field injection continuam fora do contrato;
+- materializer gerado permanece futuro.
+
+## Dividas e proximos passos
+
+### P0
+
+- Nenhum item P0 registrado ao encerrar a Etapa 5.
+
+### P1
+
+- Criar materializer gerado para `DbDataReader`, cobrindo nested mappings, Value Objects e profiles sem reflection no hot path.
+- Definir suporte a per-profile conventions/naming policies antes de ampliar a composicao de policies.
+- Avaliar streaming/unbuffered para `QueryMapped*` com lifetime claro de connection/reader.
+
+### P2
+
+- Adicionar benchmarks formais comparando Dapper default, `QueryMapped<T>()` e `QueryMapped<TEntity,TProfile>()`.
+- Expandir overloads async/default de `QueryMapped*` de forma simetrica, se houver demanda publica.
+- Melhorar diagnostics de profile inexistente em analyzer somente quando a ausencia puder ser comprovada sem falso positivo cross-assembly.
+- Avaliar API publica de factory methods para Value Objects com regras de ambiguidade e validacao.
+
+### Research
+
+- Investigar Native AOT runtime completo em ambiente com platform linker C++ instalado.
+- Avaliar integracao futura com APIs publicas novas do Dapper caso surja suporte a materializer/type map por operacao.
+- Avaliar modelo de cache imutavel/snapshot para reduzir dependencia de estado global historico.
+- Revisar Dommel em etapa propria para decidir se profiles devem ou nao ser visiveis em integrações CRUD externas.

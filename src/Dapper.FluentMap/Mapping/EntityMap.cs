@@ -30,6 +30,22 @@ namespace Dapper.FluentMap.Mapping
     {
     }
 
+    /// <summary>
+    /// Marker interface for a named mapping profile.
+    /// </summary>
+    public interface IMappingProfile
+    {
+    }
+
+    /// <summary>
+    /// Marks an entity map as belonging to the specified mapping profile.
+    /// </summary>
+    /// <typeparam name="TProfile">The profile marker type.</typeparam>
+    public interface IProfileMap<TProfile>
+        where TProfile : IMappingProfile
+    {
+    }
+
     internal interface IEntityMapWithIncludedBaseTypes
     {
         IList<Type> IncludedBaseTypes { get; }

@@ -24,6 +24,9 @@ namespace Dapper.FluentMap
         internal ConcurrentDictionary<Type, IEntityMap> EntityMaps { get; } =
             new ConcurrentDictionary<Type, IEntityMap>();
 
+        internal ConcurrentDictionary<MappingProfileKey, IEntityMap> ProfileMaps { get; } =
+            new ConcurrentDictionary<MappingProfileKey, IEntityMap>();
+
         internal ConcurrentDictionary<Type, IList<Convention>> TypeConventions { get; } =
             new ConcurrentDictionary<Type, IList<Convention>>();
 
@@ -55,8 +58,8 @@ namespace Dapper.FluentMap
             }
 
             MappingConfigurationValidator.ValidateEntityMap(type, mapper);
-            ValidateIncludedBaseMaps(type, mapper);
-            MappingConfigurationValidator.ValidateComposedEntityMap(type, mapper, ComposeExplicitPropertyMaps(type, mapper));
+            ValidateIncludedBaseMaps(type, mapper, profileType: null);
+            MappingConfigurationValidator.ValidateComposedEntityMap(type, mapper, ComposeExplicitPropertyMaps(type, mapper, profileType: null));
 
             if (!EntityMaps.TryAdd(type, mapper))
             {
@@ -65,6 +68,46 @@ namespace Dapper.FluentMap
 
             InvalidateType(type);
             SetDapperTypeMap(type);
+        }
+
+        internal void AddProfileMap(Type type, Type profileType, IEntityMap mapper)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            if (profileType == null)
+            {
+                throw new ArgumentNullException(nameof(profileType));
+            }
+
+            if (mapper == null)
+            {
+                throw new ArgumentNullException(nameof(mapper));
+            }
+
+            var key = new MappingProfileKey(type, profileType);
+            if (ProfileMaps.ContainsKey(key))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity '{type}' already has a configured mapping profile '{profileType}'.");
+            }
+
+            MappingConfigurationValidator.ValidateEntityMap(type, mapper);
+            ValidateIncludedBaseMaps(type, mapper, profileType);
+            MappingConfigurationValidator.ValidateComposedEntityMap(
+                type,
+                mapper,
+                ComposeExplicitPropertyMaps(type, mapper, profileType));
+
+            if (!ProfileMaps.TryAdd(key, mapper))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity '{type}' already has a configured mapping profile '{profileType}'.");
+            }
+
+            InvalidateType(type);
         }
 
         internal void AddConvention(Type type, Convention convention)
@@ -129,6 +172,19 @@ namespace Dapper.FluentMap
                 .PropertyMap;
         }
 
+        internal IPropertyMap GetProfilePropertyMap(Type type, Type profileType, string columnName)
+        {
+            if (profileType == null)
+            {
+                return GetFluentPropertyMap(type, columnName);
+            }
+
+            var cacheKey = MappingCacheKey.ProfileMap(type, profileType, columnName);
+            return _propertyMapCache
+                .GetOrAdd(cacheKey, _ => new MappingCacheEntry(ResolveProfilePropertyMap(type, profileType, columnName)))
+                .PropertyMap;
+        }
+
         internal IPropertyMap GetConventionPropertyMap(Type type, string columnName)
         {
             var cacheKey = MappingCacheKey.ConventionOnly(type, columnName);
@@ -138,6 +194,11 @@ namespace Dapper.FluentMap
         }
 
         internal NestedMaterializationPlan GetMaterializationPlan(Type type, string[] columnNames)
+        {
+            return GetMaterializationPlan(type, null, columnNames);
+        }
+
+        internal NestedMaterializationPlan GetMaterializationPlan(Type type, Type profileType, string[] columnNames)
         {
             if (type == null)
             {
@@ -149,10 +210,16 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(columnNames));
             }
 
-            var cacheKey = new MaterializationPlanCacheKey(type, columnNames);
+            if (profileType != null && !ProfileMaps.ContainsKey(new MappingProfileKey(type, profileType)))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity '{type.FullName}' does not have a registered mapping profile '{profileType.FullName}'.");
+            }
+
+            var cacheKey = new MaterializationPlanCacheKey(type, profileType, columnNames);
             return _materializationPlanCache.GetOrAdd(
                 cacheKey,
-                key => NestedMaterializationPlan.Create(key.Type, key.ColumnNames, this));
+                key => NestedMaterializationPlan.Create(key.Type, key.ProfileType, key.ColumnNames, this));
         }
 
         internal void ValidateConfiguration()
@@ -164,11 +231,28 @@ namespace Dapper.FluentMap
                 try
                 {
                     MappingConfigurationValidator.ValidateEntityMap(entityMap.Key, entityMap.Value);
-                    ValidateIncludedBaseMaps(entityMap.Key, entityMap.Value);
+                    ValidateIncludedBaseMaps(entityMap.Key, entityMap.Value, profileType: null);
                     MappingConfigurationValidator.ValidateComposedEntityMap(
                         entityMap.Key,
                         entityMap.Value,
-                        ComposeExplicitPropertyMaps(entityMap.Key, entityMap.Value));
+                        ComposeExplicitPropertyMaps(entityMap.Key, entityMap.Value, profileType: null));
+                }
+                catch (Exception exception)
+                {
+                    errors.Add(exception.Message);
+                }
+            }
+
+            foreach (var profileMap in ProfileMaps.OrderBy(p => p.Key.EntityType.FullName).ThenBy(p => p.Key.ProfileType.FullName))
+            {
+                try
+                {
+                    MappingConfigurationValidator.ValidateEntityMap(profileMap.Key.EntityType, profileMap.Value);
+                    ValidateIncludedBaseMaps(profileMap.Key.EntityType, profileMap.Value, profileMap.Key.ProfileType);
+                    MappingConfigurationValidator.ValidateComposedEntityMap(
+                        profileMap.Key.EntityType,
+                        profileMap.Value,
+                        ComposeExplicitPropertyMaps(profileMap.Key.EntityType, profileMap.Value, profileMap.Key.ProfileType));
                 }
                 catch (Exception exception)
                 {
@@ -213,6 +297,14 @@ namespace Dapper.FluentMap
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
             Type type)
         {
+            return Explain(type, profileType: null);
+        }
+
+        internal MappingExplanation Explain(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+            Type type,
+            Type profileType)
+        {
             if (type == null)
             {
                 throw new ArgumentNullException(nameof(type));
@@ -223,11 +315,16 @@ namespace Dapper.FluentMap
             var configuredPaths = new List<MemberPath>();
             var entityMapType = default(Type);
 
-            if (EntityMaps.TryGetValue(type, out var entityMap))
+            IEntityMap entityMap;
+            var hasEntityMap = profileType == null
+                ? EntityMaps.TryGetValue(type, out entityMap)
+                : ProfileMaps.TryGetValue(new MappingProfileKey(type, profileType), out entityMap);
+
+            if (hasEntityMap)
             {
                 entityMapType = entityMap.GetType();
 
-                foreach (var descriptor in ComposeExplicitPropertyMapDescriptors(type, entityMap))
+                foreach (var descriptor in ComposeExplicitPropertyMapDescriptors(type, entityMap, profileType))
                 {
                     AddMemberExplanation(type, members, configuredPaths, descriptor);
                 }
@@ -241,13 +338,18 @@ namespace Dapper.FluentMap
 
             AddDapperDefaultExplanations(type, members, configuredPaths);
 
-            if (entityMapType == null && conventionTypes.Count == 0)
+            if (entityMapType == null && profileType != null)
+            {
+                diagnostics.Add($"No FluentMap mapping profile '{profileType.FullName}' is registered for this entity. Dapper default mapping is used.");
+            }
+            else if (entityMapType == null && conventionTypes.Count == 0)
             {
                 diagnostics.Add("No FluentMap entity map or convention is registered for this entity. Dapper default mapping is used.");
             }
 
             return new MappingExplanation(
                 type,
+                profileType,
                 entityMapType,
                 conventionTypes,
                 members.OrderBy(m => m.MemberPath, StringComparer.Ordinal).ThenBy(m => m.ColumnName, StringComparer.Ordinal),
@@ -257,6 +359,7 @@ namespace Dapper.FluentMap
         internal void Reset(params Type[] dapperTypes)
         {
             EntityMaps.Clear();
+            ProfileMaps.Clear();
             TypeConventions.Clear();
             _propertyMapCache.Clear();
             _materializationPlanCache.Clear();
@@ -293,7 +396,7 @@ namespace Dapper.FluentMap
 
         private IPropertyMap ResolveFluentPropertyMap(Type type, string columnName)
         {
-            var explicitPropertyMaps = GetExplicitPropertyMaps(type);
+            var explicitPropertyMaps = GetExplicitPropertyMaps(type, profileType: null);
             var explicitPropertyMap = explicitPropertyMaps.FirstOrDefault(m => MatchColumnNames(m, columnName));
 
             if (explicitPropertyMap != null)
@@ -304,11 +407,34 @@ namespace Dapper.FluentMap
             return ResolveConventionPropertyMap(type, columnName, explicitPropertyMaps);
         }
 
-        private IList<IPropertyMap> GetExplicitPropertyMaps(Type type)
+        private IPropertyMap ResolveProfilePropertyMap(Type type, Type profileType, string columnName)
         {
-            if (EntityMaps.TryGetValue(type, out var entityMap))
+            var explicitPropertyMaps = GetExplicitPropertyMaps(type, profileType);
+            var explicitPropertyMap = explicitPropertyMaps.FirstOrDefault(m => MatchColumnNames(m, columnName));
+
+            if (explicitPropertyMap != null)
             {
-                return ComposeExplicitPropertyMaps(type, entityMap);
+                return explicitPropertyMap;
+            }
+
+            return ResolveConventionPropertyMap(type, columnName, explicitPropertyMaps);
+        }
+
+        private IList<IPropertyMap> GetExplicitPropertyMaps(Type type, Type profileType)
+        {
+            if (profileType == null)
+            {
+                if (EntityMaps.TryGetValue(type, out var entityMap))
+                {
+                    return ComposeExplicitPropertyMaps(type, entityMap, profileType: null);
+                }
+
+                return new IPropertyMap[0];
+            }
+
+            if (ProfileMaps.TryGetValue(new MappingProfileKey(type, profileType), out var profileMap))
+            {
+                return ComposeExplicitPropertyMaps(type, profileMap, profileType);
             }
 
             return new IPropertyMap[0];
@@ -324,7 +450,7 @@ namespace Dapper.FluentMap
             return conventions.Select(c => c.GetType()).ToList();
         }
 
-        private void ValidateIncludedBaseMaps(Type type, IEntityMap entityMap)
+        private void ValidateIncludedBaseMaps(Type type, IEntityMap entityMap, Type profileType)
         {
             foreach (var baseType in GetIncludedBaseTypes(entityMap))
             {
@@ -334,22 +460,30 @@ namespace Dapper.FluentMap
                         $"Type '{baseType.FullName}' cannot be included as a base mapping for entity '{type.FullName}'. The included type must be a base class of the entity.");
                 }
 
-                if (!EntityMaps.ContainsKey(baseType))
+                var hasBaseMap = profileType == null
+                    ? EntityMaps.ContainsKey(baseType)
+                    : ProfileMaps.ContainsKey(new MappingProfileKey(baseType, profileType));
+
+                if (!hasBaseMap)
                 {
+                    var profileContext = profileType == null
+                        ? string.Empty
+                        : $" for mapping profile '{profileType.FullName}'";
+
                     throw new FluentMapConfigurationException(
-                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}', but no entity map has been registered for the base type. Register the base map before the derived map.");
+                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}'{profileContext}, but no entity map has been registered for the base type. Register the base map before the derived map.");
                 }
             }
         }
 
-        private IList<IPropertyMap> ComposeExplicitPropertyMaps(Type type, IEntityMap entityMap)
+        private IList<IPropertyMap> ComposeExplicitPropertyMaps(Type type, IEntityMap entityMap, Type profileType)
         {
-            return ComposeExplicitPropertyMapDescriptors(type, entityMap)
+            return ComposeExplicitPropertyMapDescriptors(type, entityMap, profileType)
                 .Select(d => d.Map)
                 .ToList();
         }
 
-        private IList<MappingDiagnosticDescriptor> ComposeExplicitPropertyMapDescriptors(Type type, IEntityMap entityMap)
+        private IList<MappingDiagnosticDescriptor> ComposeExplicitPropertyMapDescriptors(Type type, IEntityMap entityMap, Type profileType)
         {
             var propertyMaps = new List<MappingDiagnosticDescriptor>();
             AddPropertyMapsWithOverride(
@@ -358,15 +492,24 @@ namespace Dapper.FluentMap
 
             foreach (var baseType in GetIncludedBaseTypes(entityMap))
             {
-                if (!EntityMaps.TryGetValue(baseType, out var baseMap))
+                IEntityMap baseMap;
+                var hasBaseMap = profileType == null
+                    ? EntityMaps.TryGetValue(baseType, out baseMap)
+                    : ProfileMaps.TryGetValue(new MappingProfileKey(baseType, profileType), out baseMap);
+
+                if (!hasBaseMap)
                 {
+                    var profileContext = profileType == null
+                        ? string.Empty
+                        : $" for mapping profile '{profileType.FullName}'";
+
                     throw new FluentMapConfigurationException(
-                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}', but no entity map has been registered for the base type. Register the base map before the derived map.");
+                        $"Entity '{type.FullName}' includes base mapping '{baseType.FullName}'{profileContext}, but no entity map has been registered for the base type. Register the base map before the derived map.");
                 }
 
                 AddPropertyMapsWithOverride(
                     propertyMaps,
-                    ComposeExplicitPropertyMapDescriptors(baseType, baseMap)
+                    ComposeExplicitPropertyMapDescriptors(baseType, baseMap, profileType)
                         .Select(d => d.AsInheritedFrom(baseType)));
             }
 

@@ -80,6 +80,37 @@ var customer = connection.QueryMappedSingle<Customer>(
 
 The regular `Dapper.Query<T>()` path continues to handle root properties, conventions, constructor mapping, TypeHandlers and Dapper fallback as before. For scalar Value Objects mapped as a whole, such as `Map(c => c.Cpf).ToColumn("cpf")`, prefer a Dapper `TypeHandler<Cpf>`. For nested paths such as `Map(c => c.Cpf.Number)`, `QueryMapped*` constructs the Value Object through public constructors and preserves domain invariants. Factory methods and generated materializers are not part of this runtime path.
 
+#### Mapping profiles
+When the same entity needs different SQL shapes, register an opt-in mapping profile and select it explicitly per query. Profiles do not replace the Dapper type map global for the entity.
+
+```csharp
+public sealed class LegacyCustomerProfile : IMappingProfile
+{
+}
+
+public sealed class LegacyCustomerMap :
+    EntityMap<Customer>,
+    IProfileMap<LegacyCustomerProfile>
+{
+    public LegacyCustomerMap()
+    {
+        Map(c => c.Id).ToColumn("id");
+        Map(c => c.Name).ToColumn("legal_name");
+    }
+}
+
+FluentMapper.Initialize(config =>
+    {
+       config.AddMap<CustomerMap>();
+       config.AddProfile<LegacyCustomerMap>();
+    });
+
+var legacyCustomer = connection.QueryMappedSingle<Customer, LegacyCustomerProfile>(
+    "SELECT id, legal_name FROM legacy_customer");
+```
+
+`connection.Query<Customer>(...)` and `connection.QueryMapped<Customer>(...)` continue using the default mapping. Profile selection is tied to the `QueryMapped<TEntity,TProfile>()` operation, so concurrent queries using different profiles do not mutate `SqlMapper.SetTypeMap`.
+
 **Initialization:**
 ```csharp
 FluentMapper.Initialize(config =>
@@ -258,10 +289,22 @@ FluentMapper.Initialize(config =>
 
 ## Resultado da Etapa 4
 
-- Tooling disponivel: `Dapper.FluentMap.Analyzers` com diagnostics `DFM001` a `DFM005` e `Dapper.FluentMap.Generators` com `AddGeneratedMappings()`, `DFM006` e `DFM007`.
+- Tooling disponivel: `Dapper.FluentMap.Analyzers` com diagnostics `DFM001` a `DFM005` e `Dapper.FluentMap.Generators` com `AddGeneratedMappings()`, `DFM006`, `DFM007` e `DFM008`.
 - Trimming: registro explicito e registro gerado foram validados em smoke trimmed sem warnings FluentMap-owned; assembly scanning permanece reflection-dependent e trimming-sensitive.
 - Native AOT: publish continua bloqueado neste ambiente por ausencia do platform linker C++; nao ha declaracao de runtime AOT completo.
 - Caminhos de registro: manual, gerado e assembly scanning coexistem; nenhum caminho antigo foi removido.
 - Packaging: analyzer e generator ficam em `analyzers/dotnet/cs`; o core continua `netstandard2.0` sem dependencias Roslyn runtime.
 - Limitacoes: o generator descobre apenas maps da compilacao atual e nao resolve nested object materialization, Value Objects complexos, multiple mapping profiles, query-specific mappings, custom materializer ou generated `DbDataReader` materializer.
 - Relatorios: `docs/sdd/etapa-4/01-roslyn-analyzers.md`, `docs/sdd/etapa-4/02-trimming-aot.md`, `docs/sdd/etapa-4/03-source-generator.md`.
+
+## Resultado da Etapa 5
+
+- Nested object materialization e Value Objects imutaveis sao suportados no caminho opt-in `QueryMapped*`, com null semantics por subarvore e construcao por construtores publicos.
+- TypeHandlers do Dapper continuam sendo o caminho recomendado para Value Objects escalares mapeados como propriedade inteira.
+- Mapping profiles foram adicionados por marker tipado (`IMappingProfile` + `IProfileMap<TProfile>`) e selecionados explicitamente por operacao em `QueryMapped<TEntity,TProfile>()`.
+- O mapping default permanece compativel com `Dapper.Query<T>()`; profiles nao trocam `SqlMapper.SetTypeMap` temporariamente.
+- Concorrencia sync e async foi validada para profiles distintos sem vazamento de mapping.
+- `Explain<TEntity,TProfile>()`, analyzer e source generator foram atualizados para distinguir default e profiles.
+- `QueryMapped*` permanece reflection-based e anotado para trimming/AOT; o generator atual gera registro, nao materializer de `DbDataReader`.
+- Limitacoes principais: sem per-profile conventions, sem multi-mapping com profile, sem streaming unbuffered e sem factory methods para Value Objects.
+- Relatorios: `docs/sdd/etapa-5/01-nested-materialization-spike.md`, `docs/sdd/etapa-5/02-nested-object-materialization.md`, `docs/sdd/etapa-5/03-value-objects.md`, `docs/sdd/etapa-5/04-mapping-profiles.md`.

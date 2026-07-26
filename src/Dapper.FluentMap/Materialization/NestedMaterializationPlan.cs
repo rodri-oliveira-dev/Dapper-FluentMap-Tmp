@@ -18,7 +18,7 @@ namespace Dapper.FluentMap.Materialization
             _rootNode = rootNode;
         }
 
-        internal static NestedMaterializationPlan Create(Type entityType, IReadOnlyList<string> columnNames, MappingRegistry registry)
+        internal static NestedMaterializationPlan Create(Type entityType, Type profileType, IReadOnlyList<string> columnNames, MappingRegistry registry)
         {
             if (entityType == null)
             {
@@ -41,7 +41,7 @@ namespace Dapper.FluentMap.Materialization
             for (var i = 0; i < columnNames.Count; i++)
             {
                 var columnName = columnNames[i];
-                var fluentMap = registry.GetFluentPropertyMap(entityType, columnName);
+                var fluentMap = registry.GetProfilePropertyMap(entityType, profileType, columnName);
                 if (fluentMap != null)
                 {
                     if (fluentMap.Ignored)

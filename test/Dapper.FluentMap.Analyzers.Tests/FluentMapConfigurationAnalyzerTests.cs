@@ -159,6 +159,76 @@ public sealed class Startup
         }
 
         [Fact]
+        public async Task InvalidGenericProfileRegistrationShouldReportDfm009()
+        {
+            var source = @"
+using Dapper.FluentMap.Configuration;
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+}
+
+public sealed class Startup
+{
+    public void Configure(FluentMapConfiguration configuration)
+    {
+        configuration.AddProfile<CustomerMap>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidGenericProfileRegistrationDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Profile map type 'CustomerMap' must implement exactly one closed IEntityMap<TEntity> interface and exactly one closed IProfileMap<TProfile> interface");
+            AssertDiagnosticLineContains(source, diagnostic, "configuration.AddProfile<CustomerMap>()");
+        }
+
+        [Fact]
+        public async Task DuplicateProfileRegistrationShouldReportDfm010()
+        {
+            var source = @"
+using Dapper.FluentMap.Configuration;
+using Dapper.FluentMap.Mapping;
+
+public sealed class LegacyProfile : IMappingProfile
+{
+}
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+}
+
+public sealed class FirstCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+}
+
+public sealed class SecondCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+}
+
+public sealed class Startup
+{
+    public void Configure(FluentMapConfiguration configuration)
+    {
+        configuration
+            .AddProfile<FirstCustomerMap>()
+            .AddProfile<SecondCustomerMap>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.DuplicateProfileRegistrationDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Entity 'Customer' registers mapping profile 'LegacyProfile' more than once");
+            AssertDiagnosticLineContains(source, diagnostic, ".AddProfile<SecondCustomerMap>()");
+        }
+
+        [Fact]
         public async Task ValidMappingConfigurationShouldNotReportDiagnostics()
         {
             var source = @"
@@ -218,6 +288,18 @@ public sealed class ConstructorCustomerMap : EntityMap<ConstructorCustomer>
     }
 }
 
+public sealed class LegacyProfile : IMappingProfile
+{
+}
+
+public sealed class LegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+    public LegacyCustomerMap()
+    {
+        Map(c => c.Id).ToColumn(""legacy_customer_id"");
+    }
+}
+
 public sealed class Startup
 {
     public void Configure(FluentMapConfiguration configuration)
@@ -225,7 +307,8 @@ public sealed class Startup
         configuration
             .AddMap<CustomerMap>()
             .AddMap<CustomerBaseMap>()
-            .AddMap<ConstructorCustomerMap>();
+            .AddMap<ConstructorCustomerMap>()
+            .AddProfile<LegacyCustomerMap>();
     }
 }";
 

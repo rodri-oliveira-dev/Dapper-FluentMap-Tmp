@@ -219,6 +219,83 @@ public sealed class SecondCustomerMap : EntityMap<Customer>
         }
 
         [Fact]
+        public void ProfileMappingShouldGenerateAddProfileCall()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class LegacyProfile : IMappingProfile
+{
+}
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+    }
+}
+
+public sealed class LegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+    public LegacyCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""legacy_id"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains(".AddProfile<global::LegacyCustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DuplicateProfileMappingsShouldReportDiagnostic()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class LegacyProfile : IMappingProfile
+{
+}
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+}
+
+public sealed class FirstLegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+    public FirstLegacyCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""legacy_id"");
+    }
+}
+
+public sealed class SecondLegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyProfile>
+{
+    public SecondLegacyCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""other_legacy_id"");
+    }
+}";
+
+            var result = RunGenerator(source, assertCompiles: false);
+            var diagnostic = Assert.Single(result.DfmDiagnostics);
+
+            Assert.Equal(MappingRegistrationGenerator.DuplicateGeneratedProfileMapDiagnosticId, diagnostic.Id);
+            Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+            Assert.Contains("multiple generated maps for profile", diagnostic.GetMessage(), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DistinctNamespacesShouldGenerateFullyQualifiedNames()
         {
             var source = @"

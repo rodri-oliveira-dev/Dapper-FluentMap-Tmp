@@ -67,6 +67,21 @@ namespace Dapper.FluentMap
         }
 
         /// <summary>
+        /// Explains the effective mapping configuration for the specified entity type and mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to explain.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to explain.</typeparam>
+        /// <returns>A structured explanation of configured mappings, conventions and fallback mappings.</returns>
+        public static MappingExplanation Explain<
+            [DynamicallyAccessedMembers(EntityMemberTypes)]
+            TEntity,
+            TProfile>()
+            where TProfile : IMappingProfile
+        {
+            return _registry.Explain(typeof(TEntity), typeof(TProfile));
+        }
+
+        /// <summary>
         /// Registers a Dapper type map using fluent mapping for the specified <typeparamref name="TEntity"/>.
         /// </summary>
         /// <typeparam name="TEntity">The type of the entity.</typeparam>
