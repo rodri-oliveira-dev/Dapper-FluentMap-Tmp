@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -33,6 +34,26 @@ namespace Dapper.FluentMap
         internal int CacheEntryCount => _propertyMapCache.Count;
 
         internal int MaterializationPlanCacheEntryCount => _materializationPlanCache.Count;
+
+        internal IReadOnlyDictionary<Type, IEntityMap> GetEntityMapsSnapshot()
+        {
+            var snapshot = EntityMaps
+                .OrderBy(map => map.Key.FullName, StringComparer.Ordinal)
+                .ToDictionary(map => map.Key, map => map.Value);
+
+            return new ReadOnlyDictionary<Type, IEntityMap>(snapshot);
+        }
+
+        internal IReadOnlyDictionary<Type, IReadOnlyList<Convention>> GetTypeConventionsSnapshot()
+        {
+            var snapshot = TypeConventions
+                .OrderBy(conventions => conventions.Key.FullName, StringComparer.Ordinal)
+                .ToDictionary(
+                    conventions => conventions.Key,
+                    conventions => (IReadOnlyList<Convention>)new ReadOnlyCollection<Convention>(conventions.Value.ToList()));
+
+            return new ReadOnlyDictionary<Type, IReadOnlyList<Convention>>(snapshot);
+        }
 
         internal void AddEntityMap<TEntity>(IEntityMap<TEntity> mapper)
             where TEntity : class

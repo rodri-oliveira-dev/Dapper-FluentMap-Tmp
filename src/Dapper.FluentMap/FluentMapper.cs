@@ -24,11 +24,21 @@ namespace Dapper.FluentMap
         /// <summary>
         /// Gets the dictionary containing the entity mapping per entity type.
         /// </summary>
+        /// <remarks>
+        /// This mutable dictionary is preserved for source and binary compatibility. Prefer configuring maps
+        /// through <see cref="Initialize(Action{FluentMapConfiguration})"/> and use <see cref="GetEntityMaps"/>
+        /// for read-only inspection.
+        /// </remarks>
         public static readonly ConcurrentDictionary<Type, IEntityMap> EntityMaps = _registry.EntityMaps;
 
         /// <summary>
         /// Gets the dictionary containing the conventions per entity type.
         /// </summary>
+        /// <remarks>
+        /// This mutable dictionary is preserved for source and binary compatibility. Prefer configuring conventions
+        /// through <see cref="Initialize(Action{FluentMapConfiguration})"/> and use <see cref="GetTypeConventions"/>
+        /// for read-only inspection.
+        /// </remarks>
         public static readonly ConcurrentDictionary<Type, IList<Convention>> TypeConventions = _registry.TypeConventions;
 
         internal static MappingRegistry Registry => _registry;
@@ -52,6 +62,24 @@ namespace Dapper.FluentMap
         public static void Validate()
         {
             _registry.ValidateConfiguration();
+        }
+
+        /// <summary>
+        /// Gets a read-only snapshot of the default entity maps currently registered in Dapper.FluentMap.
+        /// </summary>
+        /// <returns>A read-only snapshot of the registered default entity maps.</returns>
+        public static IReadOnlyDictionary<Type, IEntityMap> GetEntityMaps()
+        {
+            return _registry.GetEntityMapsSnapshot();
+        }
+
+        /// <summary>
+        /// Gets a read-only snapshot of the type conventions currently registered in Dapper.FluentMap.
+        /// </summary>
+        /// <returns>A read-only snapshot of the registered type conventions.</returns>
+        public static IReadOnlyDictionary<Type, IReadOnlyList<Convention>> GetTypeConventions()
+        {
+            return _registry.GetTypeConventionsSnapshot();
         }
 
         /// <summary>

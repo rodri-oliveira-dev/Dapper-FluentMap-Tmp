@@ -11,15 +11,15 @@ Esta etapa preserva a compatibilidade publica existente do core `Dapper.FluentMa
 | Delivery | Title | Status | Notes |
 |---|---|---|---|
 | 01 | Configuration Lifecycle | COMPLETED | Lifecycle suportado e mutacoes de runtime formalizados. |
-| 02 | Mapping State Encapsulation | NEXT | Planejar reducao segura da exposicao mutavel de estado. |
-| 03 | Dapper Compatibility Adapters | PENDING | Isolar contratos de compatibilidade com Dapper. |
+| 02 | Mapping State Encapsulation | COMPLETED | Snapshots read-only adicionados e superficie mutavel legada documentada. |
+| 03 | Dapper Compatibility Adapters | NEXT | Isolar contratos de compatibilidade com Dapper. |
 | 04 | Generated Materializer Spike | PENDING | Investigar materializer gerado para `DbDataReader`. |
 
 ## Delivery List
 
 01 Configuration Lifecycle -> COMPLETED
-02 Mapping State Encapsulation -> NEXT
-03 Dapper Compatibility Adapters -> PENDING
+02 Mapping State Encapsulation -> COMPLETED
+03 Dapper Compatibility Adapters -> NEXT
 04 Generated Materializer Spike -> PENDING
 
 ## Sources Of Truth

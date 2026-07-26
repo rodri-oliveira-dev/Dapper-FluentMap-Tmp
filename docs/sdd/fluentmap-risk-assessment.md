@@ -117,6 +117,8 @@ FluentMap still relies on process-wide mapping state and Dapper's global type-ma
 - `docs/sdd/net10-migration/05-xunit3-migration.md`: preserves `[assembly: CollectionBehavior(DisableTestParallelization = true)]` because tests use global FluentMapper/Dapper/Dommel state.
 - `src/Dapper.FluentMap/FluentMapper.cs`: static `_registry`, static `_configuration`, public static `EntityMaps` and `TypeConventions`.
 - `src/Dapper.FluentMap/MappingRegistry.cs`: `SetDapperTypeMap` calls `SqlMapper.SetTypeMap(type, instance)`.
+- `docs/sdd/etapa-6/02-mapping-state-encapsulation.md`: adds read-only mapping snapshots while preserving mutable compatibility fields.
+- `test/Dapper.FluentMap.Tests/MappingStateEncapsulationTests.cs`: validates official mutation cache/Dapper behavior, read-only snapshots, profile isolation and legacy bypass behavior.
 - `test/Dapper.FluentMap.Tests/ManualMappingTests.cs` and `test/Dapper.FluentMap.Dommel.Tests/ManualMappingTests.cs`: assembly-level test parallelization disabled.
 - `docs/sdd/etapa-6/01-configuration-lifecycle.md`: defines the supported lifecycle as startup configuration followed by read-only operation, with runtime mutation allowed only under external quiescence for compatibility.
 - `test/Dapper.FluentMap.Tests/ConfigurationLifecycleTests.cs`: characterizes repeated additive `Initialize`, serialized runtime registration compatibility, and direct dictionary mutation bypassing Dapper type-map installation.
@@ -164,7 +166,9 @@ Related to FM-RISK-002, FM-RISK-005, FM-RISK-013 and the Etapa 5 research item "
 - `docs/sdd/etapa-1/decisions.md`: keeps public dictionaries and says reducing their mutability is a compatibility-planned change.
 - `docs/sdd/etapa-3/03-diagnostics-api.md`: keeps the dictionaries public for compatibility.
 - `src/Dapper.FluentMap/FluentMapper.cs`: exposes `public static readonly ConcurrentDictionary<Type, IEntityMap> EntityMaps` and `public static readonly ConcurrentDictionary<Type, IList<Convention>> TypeConventions`.
+- `src/Dapper.FluentMap/FluentMapper.cs`: also exposes `GetEntityMaps()` and `GetTypeConventions()` read-only snapshots as the preferred inspection API.
 - `src/Dapper.FluentMap/MappingRegistry.cs`: validation and invalidation happen only through registry methods, not through arbitrary dictionary mutation.
+- `test/Dapper.FluentMap.Tests/MappingStateEncapsulationTests.cs`: characterizes direct map replacement leaving a cached mapping stale, proving the legacy bypass still exists.
 
 ### Cenario de impacto
 
@@ -180,11 +184,11 @@ Media. Direct dictionary access is public and historically available, but most d
 
 ### Workaround atual
 
-Use `FluentMapper.Initialize`, `AddMap`, `AddMap<TMap>`, `AddProfile<TMap>` and convention APIs only. Do not mutate `EntityMaps` or `TypeConventions` directly.
+Use `FluentMapper.Initialize`, `AddMap`, `AddMap<TMap>`, `AddProfile<TMap>` and convention APIs only. Use `FluentMapper.GetEntityMaps()` and `FluentMapper.GetTypeConventions()` for read-only inspection. Do not mutate `EntityMaps` or `TypeConventions` directly.
 
 ### Recomendacao
 
-Document direct mutation as legacy compatibility surface and introduce read-only public views plus explicit migration guidance in a future major version. Consider internal detection of dictionary replacement/mutation only if it can be done without breaking consumers.
+Keep direct mutation documented as legacy compatibility surface. Use the new read-only snapshots as the preferred inspection API and plan a future major version that replaces public mutable fields with read-only properties or immutable effective mapping snapshots. Consider internal detection of dictionary replacement/mutation only if it can be done without breaking consumers.
 
 ### Relacoes
 

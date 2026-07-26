@@ -45,3 +45,41 @@ O contrato preservado e:
 - Conventions e naming policies permanecem por entidade e sao lidas por profiles sem mutacao global por query.
 
 Qualquer entrega futura que tente aplicar profiles ao caminho `Dapper.Query<T>()`, multi-mapping ou Dommel deve tratar isso como nova decisao arquitetural.
+
+## E6-D004 - Mapping State Read-Only Snapshots
+
+Entrega 02 escolhe encapsulamento incremental sem breaking change.
+
+`FluentMapper.EntityMaps` e `FluentMapper.TypeConventions` permanecem campos publicos mutaveis do mesmo tipo para preservar compatibilidade de fonte e binaria. Eles nao foram marcados com `[Obsolete]` nesta entrega porque isso poderia quebrar consumidores que tratam warnings como erros.
+
+Novas APIs publicas de leitura foram adicionadas:
+
+```csharp
+FluentMapper.GetEntityMaps()
+FluentMapper.GetTypeConventions()
+```
+
+Elas retornam snapshots read-only, nao o `ConcurrentDictionary` vivo nem listas mutaveis de conventions. O objetivo e oferecer uma superficie oficial para inspecao e migracao sem permitir mutacao acidental pelo novo caminho.
+
+Toda mutacao oficial continua passando conceitualmente por:
+
+```text
+Consumer API
+     |
+     v
+FluentMapper / FluentMapConfiguration
+     |
+     v
+MappingRegistry
+     |
+     v
+Validation
+     |
+     v
+Cache invalidation
+     |
+     v
+Dapper integration
+```
+
+Mutacoes diretas nos campos legados continuam possiveis, podem ignorar invariantes e exigem migracao futura de major version para serem removidas ou substituidas por propriedades read-only.

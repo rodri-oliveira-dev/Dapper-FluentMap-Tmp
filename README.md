@@ -123,7 +123,7 @@ Operational Phase
 
 Configure FluentMap during application startup, optionally call `FluentMapper.Validate()`, then treat the effective configuration as read-only once queries begin. `FluentMapper.Initialize(...)` can still be called more than once for additive configuration, subject to the existing duplicate-map validations, but runtime reconfiguration is not a concurrency contract.
 
-For compatibility, the public registration APIs still mutate the global registry immediately. If an application changes mappings after queries have started, it must guarantee external quiescence for the affected types: no concurrent queries, no active materializers, and no competing `SqlMapper.SetTypeMap` changes. Direct mutation of `FluentMapper.EntityMaps` or `FluentMapper.TypeConventions` is a legacy compatibility surface and can bypass validation, cache invalidation and Dapper type-map installation; prefer `Initialize(...)` and the fluent registration APIs.
+For compatibility, the public registration APIs still mutate the global registry immediately. If an application changes mappings after queries have started, it must guarantee external quiescence for the affected types: no concurrent queries, no active materializers, and no competing `SqlMapper.SetTypeMap` changes. Direct mutation of `FluentMapper.EntityMaps` or `FluentMapper.TypeConventions` is a legacy compatibility surface and can bypass validation, cache invalidation and Dapper type-map installation; prefer `Initialize(...)` and the fluent registration APIs. For read-only inspection, prefer `FluentMapper.GetEntityMaps()` and `FluentMapper.GetTypeConventions()` snapshots.
 
 **Initialization:**
 ```csharp
