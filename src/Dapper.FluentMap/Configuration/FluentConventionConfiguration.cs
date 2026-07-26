@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Conventions;
@@ -13,6 +14,9 @@ namespace Dapper.FluentMap.Configuration
     /// </summary>
     public class FluentConventionConfiguration
     {
+        private const string AssemblyScanningRequiresUnreferencedCodeMessage =
+            "Convention assembly scanning discovers entity types and properties by reflection. Register conventions with ForEntity<TEntity>() when publishing trimmed or Native AOT applications.";
+
         private readonly Convention _convention;
 
         /// <summary>
@@ -35,7 +39,9 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         /// <typeparam name="T">The type of the entity.</typeparam>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
-        public FluentConventionConfiguration ForEntity<T>()
+        public FluentConventionConfiguration ForEntity<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+            T>()
         {
             var type = typeof(T);
             MapProperties(type);
@@ -53,6 +59,7 @@ namespace Dapper.FluentMap.Configuration
         /// This parameter is optional.
         /// </param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInCurrentAssembly(params string[] namespaces)
         {
             foreach (var type in Assembly.GetCallingAssembly().GetExportedTypes())
@@ -82,6 +89,7 @@ namespace Dapper.FluentMap.Configuration
         /// This parameter is optional.
         /// </param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentConventionConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInAssembly(Assembly assembly, params string[] namespaces)
         {
             foreach (var type in assembly.GetExportedTypes())
@@ -101,7 +109,9 @@ namespace Dapper.FluentMap.Configuration
             return this;
         }
 
-        private void MapProperties(Type type)
+        private void MapProperties(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+            Type type)
         {
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 

@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using Dapper;
 using Dapper.FluentMap.Mapping;
-using Dapper.FluentMap.TypeMaps;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -41,7 +40,9 @@ namespace Dapper.FluentMap.Tests
                 FluentMapper.Initialize(c => c.AddMap<GenericRegistrationMap>());
 
                 Assert.IsType<GenericRegistrationMap>(FluentMapper.EntityMaps[typeof(GenericRegistrationEntity)]);
-                Assert.IsType<FluentMapTypeMap<GenericRegistrationEntity>>(SqlMapper.GetTypeMap(typeof(GenericRegistrationEntity)));
+                var typeMap = SqlMapper.GetTypeMap(typeof(GenericRegistrationEntity));
+                var member = typeMap.GetMember("generic_id");
+                Assert.Equal(typeof(GenericRegistrationEntity).GetProperty(nameof(GenericRegistrationEntity.Id)), member.Property);
 
                 var property = FluentMapper.Registry.GetFluentPropertyInfo(typeof(GenericRegistrationEntity), "generic_id");
                 Assert.Equal(typeof(GenericRegistrationEntity).GetProperty(nameof(GenericRegistrationEntity.Id)), property);

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Configuration;
@@ -12,6 +13,9 @@ namespace Dapper.FluentMap.Utils
     /// </summary>
     public static class FluentMapConfigurationExtensions
     {
+        private const string AssemblyScanningRequiresUnreferencedCodeMessage =
+            "Assembly scanning discovers entity maps by reflection. Register maps explicitly with AddMap<TMap>() when publishing trimmed or Native AOT applications.";
+
         /// <summary>
         /// Finds all types, from provided assemblies, implementing <see cref="EntityMap{TEntity}"/>
         /// and applies them to <see cref="FluentMapConfiguration"/>,
@@ -19,6 +23,7 @@ namespace Dapper.FluentMap.Utils
         /// </summary>
         /// <param name="configuration">The <see cref="FluentMapConfiguration"/> instance.</param>
         /// <param name="assemblies">The assemblies to scan for entity maps.</param>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public static void ApplyMapsFromAssemblies(this FluentMapConfiguration configuration,  params Assembly[] assemblies)
         {
             if (assemblies == null)

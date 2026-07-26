@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
@@ -13,6 +14,10 @@ namespace Dapper.FluentMap
     /// </summary>
     public static class FluentMapper
     {
+        private const DynamicallyAccessedMemberTypes EntityMemberTypes =
+            DynamicallyAccessedMemberTypes.PublicConstructors |
+            DynamicallyAccessedMemberTypes.PublicProperties;
+
         private static readonly MappingRegistry _registry = new MappingRegistry();
         private static readonly FluentMapConfiguration _configuration = new FluentMapConfiguration();
 
@@ -54,7 +59,9 @@ namespace Dapper.FluentMap
         /// </summary>
         /// <typeparam name="TEntity">The entity type to explain.</typeparam>
         /// <returns>A structured explanation of configured mappings, conventions and fallback mappings.</returns>
-        public static MappingExplanation Explain<TEntity>()
+        public static MappingExplanation Explain<
+            [DynamicallyAccessedMembers(EntityMemberTypes)]
+            TEntity>()
         {
             return _registry.Explain(typeof(TEntity));
         }

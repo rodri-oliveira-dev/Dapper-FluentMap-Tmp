@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dapper.FluentMap\Dapper.FluentMap.csproj" Condition="'$(PublishTrimmed)' != 'true' And '$(PublishAot)' != 'true'" />
+    <Reference Include="Dapper.FluentMap" Condition="'$(PublishTrimmed)' == 'true' Or '$(PublishAot)' == 'true'">
+      <HintPath>..\..\src\Dapper.FluentMap\bin\$(Configuration)\netstandard2.0\Dapper.FluentMap.dll</HintPath>
+    </Reference>
+    <PackageReference Include="Dapper" Version="2.1.79" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -23,7 +24,9 @@ namespace Dapper.FluentMap.Mapping
     /// This serves as a marker interface for generic type inference.
     /// </summary>
     /// <typeparam name="TEntity">The type of the entity to configure the mapping for.</typeparam>
-    public interface IEntityMap<TEntity> : IEntityMap
+    public interface IEntityMap<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+        TEntity> : IEntityMap
     {
     }
 
@@ -37,7 +40,10 @@ namespace Dapper.FluentMap.Mapping
     /// </summary>
     /// <typeparam name="TEntity">The type of the entity.</typeparam>
     /// <typeparam name="TPropertyMap">The type of the property mapping.</typeparam>
-    public abstract class EntityMapBase<TEntity, TPropertyMap> : IEntityMap<TEntity>, IEntityMapWithIncludedBaseTypes
+    public abstract class EntityMapBase<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+        TEntity,
+        TPropertyMap> : IEntityMap<TEntity>, IEntityMapWithIncludedBaseTypes
         where TPropertyMap : IPropertyMap
     {
         /// <summary>
@@ -127,7 +133,9 @@ namespace Dapper.FluentMap.Mapping
     /// Represents a typed mapping of an entity.
     /// </summary>
     /// <typeparam name="TEntity">The type of the entity to configure the mapping for.</typeparam>
-    public abstract class EntityMap<TEntity> : EntityMapBase<TEntity, PropertyMap>
+    public abstract class EntityMap<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+        TEntity> : EntityMapBase<TEntity, PropertyMap>
         where TEntity : class
     {
         /// <inheritdoc />

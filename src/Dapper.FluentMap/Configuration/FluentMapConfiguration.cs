@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Conventions;
@@ -14,6 +15,9 @@ namespace Dapper.FluentMap.Configuration
     /// </summary>
     public class FluentMapConfiguration
     {
+        private const string AssemblyScanningRequiresUnreferencedCodeMessage =
+            "Assembly scanning discovers entity maps by reflection. Register maps explicitly with AddMap<TMap>() when publishing trimmed or Native AOT applications.";
+
         /// <summary>
         /// Adds the specified <see cref="T:Dapper.FluentMap.Mapping.EntityMap"/> to the configuration of Dapper.FluentMap.
         /// </summary>
@@ -37,12 +41,14 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         /// <typeparam name="TMap">The type of the entity map to create and register.</typeparam>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
-        public FluentMapConfiguration AddMap<TMap>()
+        public FluentMapConfiguration AddMap<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+            TMap>()
             where TMap : IEntityMap, new()
         {
             var mapType = typeof(TMap);
             var entityType = GetMappedEntityType(mapType);
-            var mapper = CreateEntityMap(mapType);
+            var mapper = CreateEntityMap<TMap>();
 
             FluentMapper.Registry.AddEntityMap(entityType, mapper);
             return this;
@@ -54,6 +60,7 @@ namespace Dapper.FluentMap.Configuration
         /// <param name="assembly">The assembly to scan for entity maps.</param>
         /// <param name="namespaces">Optional namespaces used to filter discovered entity map types.</param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentMapConfiguration AddMapsFromAssembly(Assembly assembly, params string[] namespaces)
         {
             if (assembly == null)
@@ -86,6 +93,7 @@ namespace Dapper.FluentMap.Configuration
         /// <typeparam name="TMarker">A marker type from the assembly to scan.</typeparam>
         /// <param name="namespaces">Optional namespaces used to filter discovered entity map types.</param>
         /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentMapConfiguration AddMapsFromAssemblyContaining<TMarker>(params string[] namespaces)
         {
             return AddMapsFromAssembly(typeof(TMarker).GetTypeInfo().Assembly, namespaces);
@@ -142,6 +150,7 @@ namespace Dapper.FluentMap.Configuration
             return UseNamingPolicy(NamingPolicy.Custom(transformer), caseSensitive);
         }
 
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         private static IEnumerable<EntityMapDefinition> FindEntityMapDefinitions(Assembly assembly, string[] namespaces)
         {
             return GetExportedTypes(assembly)
@@ -152,6 +161,7 @@ namespace Dapper.FluentMap.Configuration
                 .Select(type => new EntityMapDefinition(type, GetMappedEntityType(type)));
         }
 
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         private static IEnumerable<Type> GetExportedTypes(Assembly assembly)
         {
             try
@@ -182,7 +192,9 @@ namespace Dapper.FluentMap.Configuration
                    namespaces.Any(ns => string.Equals(ns, type.Namespace, StringComparison.Ordinal));
         }
 
-        private static Type GetMappedEntityType(Type mapType)
+        private static Type GetMappedEntityType(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+            Type mapType)
         {
             var entityMapInterfaces = mapType.GetInterfaces()
                 .Where(type => type.GetTypeInfo().IsGenericType &&
@@ -205,6 +217,7 @@ namespace Dapper.FluentMap.Configuration
             return entityType;
         }
 
+        [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         private static IEntityMap CreateEntityMap(Type mapType)
         {
             try
@@ -215,6 +228,21 @@ namespace Dapper.FluentMap.Configuration
             {
                 throw new FluentMapConfigurationException(
                     $"Entity map type '{mapType.FullName}' could not be created. Ensure it has a public parameterless constructor and the constructor completes successfully.",
+                    ex);
+            }
+        }
+
+        private static IEntityMap CreateEntityMap<TMap>()
+            where TMap : IEntityMap, new()
+        {
+            try
+            {
+                return new TMap();
+            }
+            catch (Exception ex)
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity map type '{typeof(TMap).FullName}' could not be created. Ensure it has a public parameterless constructor and the constructor completes successfully.",
                     ex);
             }
         }

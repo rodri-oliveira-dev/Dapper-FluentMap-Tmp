@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -184,7 +185,9 @@ namespace Dapper.FluentMap
             throw new FluentMapConfigurationException(message.ToString());
         }
 
-        internal MappingExplanation Explain(Type type)
+        internal MappingExplanation Explain(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+            Type type)
         {
             if (type == null)
             {
@@ -246,7 +249,7 @@ namespace Dapper.FluentMap
 
         private void SetDapperTypeMap(Type type)
         {
-            var instance = (SqlMapper.ITypeMap)Activator.CreateInstance(typeof(FluentMapTypeMap<>).MakeGenericType(type));
+            var instance = new FluentMapTypeMap(type);
             SqlMapper.SetTypeMap(type, instance);
         }
 
@@ -392,7 +395,11 @@ namespace Dapper.FluentMap
             }
         }
 
-        private void AddDapperDefaultExplanations(Type type, IList<MemberMappingExplanation> members, IList<MemberPath> configuredPaths)
+        private void AddDapperDefaultExplanations(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)]
+            Type type,
+            IList<MemberMappingExplanation> members,
+            IList<MemberPath> configuredPaths)
         {
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                                          .Where(p => p.GetIndexParameters().Length == 0))
@@ -419,6 +426,7 @@ namespace Dapper.FluentMap
         }
 
         private void AddMemberExplanation(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
             Type entityType,
             IList<MemberMappingExplanation> members,
             IList<MemberPath> configuredPaths,
@@ -442,7 +450,10 @@ namespace Dapper.FluentMap
             configuredPaths.Add(memberPath);
         }
 
-        private static IEnumerable<ConstructorParameterExplanation> GetConstructorParameters(Type entityType, PropertyInfo property)
+        private static IEnumerable<ConstructorParameterExplanation> GetConstructorParameters(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type entityType,
+            PropertyInfo property)
         {
             foreach (var constructor in entityType.GetConstructors(BindingFlags.Public | BindingFlags.Instance))
             {

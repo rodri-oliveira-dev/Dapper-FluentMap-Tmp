@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using Dapper.FluentMap.Mapping;
-using Dapper.FluentMap.TypeMaps;
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -118,7 +117,8 @@ namespace Dapper.FluentMap.Tests
 
             // Assert
             Assert.NotNull(typeMap);
-            Assert.IsType<FluentMapTypeMap<TestEntity>>(typeMap);
+            var member = typeMap.GetMember("test");
+            Assert.Equal(typeof(TestEntity).GetProperty(nameof(TestEntity.Id)), member.Property);
         }
 
         [Fact]

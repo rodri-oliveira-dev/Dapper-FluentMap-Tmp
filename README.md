@@ -72,6 +72,19 @@ FluentMapper.Initialize(config =>
     });
 ```
 
+#### Trimming and Native AOT
+For applications published with IL trimming, single-file or Native AOT, prefer explicit registration:
+
+```csharp
+FluentMapper.Initialize(config =>
+    {
+       config.AddMap<ProductMap>();
+       config.AddConvention<TypePrefixConvention>().ForEntity<Product>();
+    });
+```
+
+Assembly scanning APIs such as `AddMapsFromAssembly(...)`, `AddMapsFromAssemblyContaining<TMarker>()`, `ForEntitiesInAssembly(...)`, `ForEntitiesInCurrentAssembly(...)` and the legacy `ApplyMapsFromAssemblies(...)` depend on reflection discovery and are annotated as trimming-sensitive. They remain supported for normal runtime usage, but they can warn or fail after trimming if discovered types or metadata are removed.
+
 #### Convention based mapping
 When you have a lot of entity types, creating manual mapping classes can become plumbing. If your column names adhere to some kind of naming convention, you might be better off by configuring a mapping convention.
 
