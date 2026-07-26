@@ -21,14 +21,7 @@ namespace Dapper.FluentMap.Configuration
         /// </param>
         public void AddMap<TEntity>(IEntityMap<TEntity> mapper) where TEntity : class
         {
-            if (FluentMapper.EntityMaps.TryAdd(typeof(TEntity), mapper))
-            {
-                FluentMapper.AddTypeMap<TEntity>();
-            }
-            else
-            {
-                throw new InvalidOperationException($"Adding entity map for type '{typeof(TEntity)}' failed. The type already exists. Current entity maps: " + string.Join(", ", FluentMapper.EntityMaps.Select(e => e.Key.ToString())));
-            }
+            FluentMapper.Registry.AddEntityMap(mapper);
         }
 
         /// <summary>
