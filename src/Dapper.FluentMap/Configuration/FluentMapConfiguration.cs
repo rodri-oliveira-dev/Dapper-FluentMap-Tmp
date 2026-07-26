@@ -21,6 +21,11 @@ namespace Dapper.FluentMap.Configuration
         /// </param>
         public void AddMap<TEntity>(IEntityMap<TEntity> mapper) where TEntity : class
         {
+            if (mapper == null)
+            {
+                throw new ArgumentNullException(nameof(mapper));
+            }
+
             FluentMapper.Registry.AddEntityMap(mapper);
         }
 

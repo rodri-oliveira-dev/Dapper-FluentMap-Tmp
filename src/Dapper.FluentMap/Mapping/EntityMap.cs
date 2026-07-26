@@ -54,7 +54,7 @@ namespace Dapper.FluentMap.Mapping
         /// </summary>
         /// <param name="expression">Expression to the property on <typeparamref name="TEntity"/>.</param>
         /// <returns>The created <see cref="T:Dapper.FluentMap.Mapping.PropertyMap"/> instance. This enables a fluent API.</returns>
-        /// <exception cref="T:System.Exception">when a duplicate mapping is provided.</exception>
+        /// <exception cref="T:Dapper.FluentMap.FluentMapConfigurationException">when a duplicate mapping is provided.</exception>
         protected TPropertyMap Map(Expression<Func<TEntity, object>> expression)
         {
             var memberPath = ReflectionHelper.GetMemberPath(expression);
@@ -78,7 +78,8 @@ namespace Dapper.FluentMap.Mapping
 
             if (PropertyMaps.Any(p => PropertyMapIdentity.GetMemberPath(p).Equals(memberPath)))
             {
-                throw new Exception($"Duplicate mapping detected. Property '{memberPath}' is already mapped to column '{map.ColumnName}'.");
+                var existingMap = PropertyMaps.First(p => PropertyMapIdentity.GetMemberPath(p).Equals(memberPath));
+                throw new FluentMapConfigurationException($"Property path '{memberPath}' is already mapped for entity '{typeof(TEntity).FullName}'. Existing column: '{existingMap.ColumnName}'; duplicate column: '{map.ColumnName}'.");
             }
         }
     }

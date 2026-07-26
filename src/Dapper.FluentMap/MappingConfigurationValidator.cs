@@ -1,0 +1,223 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Dapper.FluentMap.Conventions;
+using Dapper.FluentMap.Mapping;
+
+namespace Dapper.FluentMap
+{
+    internal static class MappingConfigurationValidator
+    {
+        internal static void ValidateEntityMap(Type entityType, IEntityMap entityMap)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            if (entityMap == null)
+            {
+                throw new ArgumentNullException(nameof(entityMap));
+            }
+
+            var maps = GetEntityMapDescriptors(entityType, entityMap).ToList();
+            ValidateDuplicateMemberPaths(entityType, maps, "entity map", entityMap.GetType());
+            ValidateColumnConflicts(entityType, maps, "entity map", entityMap.GetType());
+        }
+
+        internal static void ValidateConvention(Type entityType, Convention convention)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            if (convention == null)
+            {
+                throw new ArgumentNullException(nameof(convention));
+            }
+
+            var maps = GetConventionMapDescriptors(entityType, convention).ToList();
+            ValidateDuplicateMemberPaths(entityType, maps, "convention", convention.GetType());
+            ValidateColumnConflicts(entityType, maps, "convention", convention.GetType());
+        }
+
+        internal static void ValidateConventionConfiguration(Type entityType, Convention convention, PropertyConventionConfiguration configuration)
+        {
+            if (configuration.PropertyConfiguration == null)
+            {
+                throw new FluentMapConfigurationException(
+                    $"Convention '{FormatType(convention.GetType())}' has a matching property rule without configuration for entity '{FormatType(entityType)}'. Call Configure(...) and choose a column name, prefix or transformer.");
+            }
+        }
+
+        internal static void ValidateConventionColumn(Type entityType, Convention convention, PropertyMap propertyMap)
+        {
+            if (string.IsNullOrEmpty(propertyMap.ColumnName))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Convention '{FormatType(convention.GetType())}' produced an empty column name for property path '{PropertyMapIdentity.GetMemberPath(propertyMap)}' on entity '{FormatType(entityType)}'.");
+            }
+        }
+
+        private static IEnumerable<MapDescriptor> GetEntityMapDescriptors(Type entityType, IEntityMap entityMap)
+        {
+            if (entityMap.PropertyMaps == null)
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity map '{FormatType(entityMap.GetType())}' for entity '{FormatType(entityType)}' returned a null property map collection.");
+            }
+
+            foreach (var map in entityMap.PropertyMaps)
+            {
+                yield return CreateDescriptor(entityType, map, entityMap.GetType(), "entity map", requireEntityCompatibility: true);
+            }
+        }
+
+        private static IEnumerable<MapDescriptor> GetConventionMapDescriptors(Type entityType, Convention convention)
+        {
+            foreach (var map in convention.PropertyMaps)
+            {
+                if (map == null)
+                {
+                    throw new FluentMapConfigurationException(
+                        $"Convention '{FormatType(convention.GetType())}' for entity '{FormatType(entityType)}' contains a null property map.");
+                }
+
+                if (!IsMapForEntity(entityType, map))
+                {
+                    continue;
+                }
+
+                yield return CreateDescriptor(entityType, map, convention.GetType(), "convention", requireEntityCompatibility: false);
+            }
+        }
+
+        private static MapDescriptor CreateDescriptor(Type entityType, IPropertyMap map, Type sourceType, string sourceKind, bool requireEntityCompatibility)
+        {
+            if (map == null)
+            {
+                throw new FluentMapConfigurationException(
+                    $"The {sourceKind} '{FormatType(sourceType)}' for entity '{FormatType(entityType)}' contains a null property map.");
+            }
+
+            if (map.PropertyInfo == null)
+            {
+                throw new FluentMapConfigurationException(
+                    $"The {sourceKind} '{FormatType(sourceType)}' for entity '{FormatType(entityType)}' contains a property map without metadata.");
+            }
+
+            var memberPath = PropertyMapIdentity.GetMemberPath(map);
+            if (requireEntityCompatibility && !IsMemberPathCompatible(entityType, memberPath))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Property path '{memberPath}' is not compatible with entity '{FormatType(entityType)}'. The first property is declared by '{FormatType(memberPath.Properties[0].DeclaringType)}'.");
+            }
+
+            if (string.IsNullOrEmpty(map.ColumnName))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Property path '{memberPath}' on entity '{FormatType(entityType)}' has an empty column name.");
+            }
+
+            return new MapDescriptor(map, memberPath);
+        }
+
+        private static void ValidateDuplicateMemberPaths(Type entityType, IList<MapDescriptor> maps, string sourceKind, Type sourceType)
+        {
+            for (var i = 0; i < maps.Count; i++)
+            {
+                for (var j = i + 1; j < maps.Count; j++)
+                {
+                    if (!maps[i].MemberPath.Equals(maps[j].MemberPath))
+                    {
+                        continue;
+                    }
+
+                    throw new FluentMapConfigurationException(
+                        $"Property path '{maps[i].MemberPath}' is already mapped for entity '{FormatType(entityType)}' in {sourceKind} '{FormatType(sourceType)}'. Existing column: '{maps[i].Map.ColumnName}'; duplicate column: '{maps[j].Map.ColumnName}'.");
+                }
+            }
+        }
+
+        private static void ValidateColumnConflicts(Type entityType, IList<MapDescriptor> maps, string sourceKind, Type sourceType)
+        {
+            for (var i = 0; i < maps.Count; i++)
+            {
+                for (var j = i + 1; j < maps.Count; j++)
+                {
+                    if (!ShouldValidateColumnConflict(maps[i].Map, maps[j].Map))
+                    {
+                        continue;
+                    }
+
+                    if (!ColumnNamesOverlap(maps[i].Map, maps[j].Map))
+                    {
+                        continue;
+                    }
+
+                    var caseSensitivity = maps[i].Map.CaseSensitive == maps[j].Map.CaseSensitive
+                        ? string.Empty
+                        : " The mappings use different case sensitivity settings.";
+
+                    throw new FluentMapConfigurationException(
+                        $"Column '{maps[i].Map.ColumnName}' is configured for more than one property path on entity '{FormatType(entityType)}' in {sourceKind} '{FormatType(sourceType)}': '{maps[i].MemberPath}' and '{maps[j].MemberPath}'.{caseSensitivity}");
+                }
+            }
+        }
+
+        private static bool ColumnNamesOverlap(IPropertyMap left, IPropertyMap right)
+        {
+            if (string.Equals(left.ColumnName, right.ColumnName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (!left.CaseSensitive || !right.CaseSensitive)
+            {
+                return string.Equals(left.ColumnName, right.ColumnName, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        private static bool ShouldValidateColumnConflict(IPropertyMap left, IPropertyMap right)
+        {
+            return left.GetType() == typeof(PropertyMap) &&
+                   right.GetType() == typeof(PropertyMap);
+        }
+
+        private static bool IsMapForEntity(Type entityType, IPropertyMap map)
+        {
+#if NETSTANDARD1_3
+            return map.PropertyInfo.DeclaringType == entityType;
+#else
+            return map.PropertyInfo.ReflectedType == entityType;
+#endif
+        }
+
+        private static bool IsMemberPathCompatible(Type entityType, MemberPath memberPath)
+        {
+            var declaringType = memberPath.Properties[0].DeclaringType;
+            return declaringType != null && declaringType.IsAssignableFrom(entityType);
+        }
+
+        private static string FormatType(Type type)
+        {
+            return type == null ? "<unknown>" : type.FullName;
+        }
+
+        private sealed class MapDescriptor
+        {
+            internal MapDescriptor(IPropertyMap map, MemberPath memberPath)
+            {
+                Map = map;
+                MemberPath = memberPath;
+            }
+
+            internal IPropertyMap Map { get; }
+
+            internal MemberPath MemberPath { get; }
+        }
+    }
+}

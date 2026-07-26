@@ -26,9 +26,21 @@ namespace Dapper.FluentMap
             where TEntity : class
         {
             var type = typeof(TEntity);
+            if (mapper == null)
+            {
+                throw new ArgumentNullException(nameof(mapper));
+            }
+
+            if (EntityMaps.ContainsKey(type))
+            {
+                throw new FluentMapConfigurationException($"Entity '{type}' already has a configured entity map. Current entity maps: " + string.Join(", ", EntityMaps.Select(e => e.Key.ToString())));
+            }
+
+            MappingConfigurationValidator.ValidateEntityMap(type, mapper);
+
             if (!EntityMaps.TryAdd(type, mapper))
             {
-                throw new InvalidOperationException($"Adding entity map for type '{type}' failed. The type already exists. Current entity maps: " + string.Join(", ", EntityMaps.Select(e => e.Key.ToString())));
+                throw new FluentMapConfigurationException($"Entity '{type}' already has a configured entity map. Current entity maps: " + string.Join(", ", EntityMaps.Select(e => e.Key.ToString())));
             }
 
             InvalidateType(type);
@@ -37,6 +49,18 @@ namespace Dapper.FluentMap
 
         internal void AddConvention(Type type, Convention convention)
         {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            if (convention == null)
+            {
+                throw new ArgumentNullException(nameof(convention));
+            }
+
+            MappingConfigurationValidator.ValidateConvention(type, convention);
+
             TypeConventions.AddOrUpdate(
                 type,
                 _ => new List<Convention> { convention },
@@ -166,8 +190,8 @@ namespace Dapper.FluentMap
 
                 if (maps.Count > 1)
                 {
-                    const string msg = "Finding mappings for column '{0}' yielded more than 1 PropertyMap. The conventions should be more specific. Type: '{1}'. Convention: '{2}'.";
-                    throw new Exception(string.Format(msg, columnName, type, convention));
+                    const string msg = "Column '{0}' matched more than one convention property map for entity '{1}' in convention '{2}'. The convention should be more specific.";
+                    throw new FluentMapConfigurationException(string.Format(msg, columnName, type, convention.GetType()));
                 }
 
                 if (maps.Count == 0)

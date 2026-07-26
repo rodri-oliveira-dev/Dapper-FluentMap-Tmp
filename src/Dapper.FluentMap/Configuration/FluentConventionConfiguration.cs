@@ -22,6 +22,11 @@ namespace Dapper.FluentMap.Configuration
         /// <param name="convention">The convention.</param>
         public FluentConventionConfiguration(Convention convention)
         {
+            if (convention == null)
+            {
+                throw new ArgumentNullException(nameof(convention));
+            }
+
             _convention = convention;
         }
 
@@ -107,9 +112,12 @@ namespace Dapper.FluentMap.Configuration
                                                   .Where(c => c.PropertyPredicates.Count <= 0 ||
                                                               c.PropertyPredicates.All(e => e(property))))
                 {
+                    MappingConfigurationValidator.ValidateConventionConfiguration(type, _convention, config);
+
                     if (!string.IsNullOrEmpty(config.PropertyConfiguration.ColumnName))
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.ColumnName,
                             config.PropertyConfiguration.CaseSensitive);
@@ -119,6 +127,7 @@ namespace Dapper.FluentMap.Configuration
                     if (!string.IsNullOrEmpty(config.PropertyConfiguration.Prefix))
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.Prefix + property.Name,
                             config.PropertyConfiguration.CaseSensitive);
@@ -128,6 +137,7 @@ namespace Dapper.FluentMap.Configuration
                     if (config.PropertyConfiguration.PropertyTransformer != null)
                     {
                         AddConventionPropertyMap(
+                            type,
                             property,
                             config.PropertyConfiguration.PropertyTransformer(property.Name),
                             config.PropertyConfiguration.CaseSensitive);
@@ -136,9 +146,10 @@ namespace Dapper.FluentMap.Configuration
             }
         }
 
-        private void AddConventionPropertyMap(PropertyInfo property, string columnName, bool caseSensitive)
+        private void AddConventionPropertyMap(Type entityType, PropertyInfo property, string columnName, bool caseSensitive)
         {
             var map = new PropertyMap(property, columnName, caseSensitive);
+            MappingConfigurationValidator.ValidateConventionColumn(entityType, _convention, map);
             _convention.PropertyMaps.Add(map);
         }
 

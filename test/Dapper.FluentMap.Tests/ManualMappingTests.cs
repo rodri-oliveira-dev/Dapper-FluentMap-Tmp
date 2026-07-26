@@ -16,7 +16,8 @@ namespace Dapper.FluentMap.Tests
             PreTest();
 
             // Act & Assert
-            Assert.Throws<Exception>(() => new MapWithDuplicateMapping());
+            var exception = Assert.Throws<FluentMapConfigurationException>(() => new MapWithDuplicateMapping());
+            Assert.Contains(nameof(TestEntity.Id), exception.Message);
         }
 
         [Fact]
@@ -162,7 +163,8 @@ namespace Dapper.FluentMap.Tests
         {
             PreTest();
 
-            Assert.Throws<Exception>(() => new DuplicateNestedLevelMap());
+            var exception = Assert.Throws<FluentMapConfigurationException>(() => new DuplicateNestedLevelMap());
+            Assert.Contains("Rank.Level", exception.Message);
         }
 
         private static void PreTest()
