@@ -31,6 +31,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.Generators
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.GeneratedRegistration.Tests", "test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj", "{87E09F49-F805-44EB-BA59-87C93C68497D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{66320409-64EC-F7C5-3DEF-65E7510DAAD1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.Benchmarks", "benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj", "{B09CFDAC-19CB-48F2-B7F7-03A47430C707}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -77,6 +81,10 @@ Global
 		{87E09F49-F805-44EB-BA59-87C93C68497D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87E09F49-F805-44EB-BA59-87C93C68497D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87E09F49-F805-44EB-BA59-87C93C68497D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -92,6 +100,7 @@ Global
 		{25768DB1-489F-4544-BDD4-8B0D0E88C6E5} = {580E3446-6579-4414-9875-970849E635E5}
 		{BA72BEA0-BB6E-41EE-ABFE-215FF0A1E9BB} = {742442F2-CAE7-4DC8-BD73-8C54C0005A53}
 		{87E09F49-F805-44EB-BA59-87C93C68497D} = {742442F2-CAE7-4DC8-BD73-8C54C0005A53}
+		{B09CFDAC-19CB-48F2-B7F7-03A47430C707} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {10834736-59FD-47FF-9344-096247DC48CD}
