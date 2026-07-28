@@ -46,9 +46,12 @@ public class MaterializationSteadyStateBenchmarks
         DapperPure();
         DapperWithFluentMapRootMapping();
         QueryMappedSimple();
+        QueryMappedSimpleRuntimeFallback();
         QueryMappedImmutableConstructor();
         QueryMappedNestedObject();
+        QueryMappedNestedObjectRuntimeFallback();
         QueryMappedValueObject();
+        QueryMappedValueObjectRuntimeFallback();
     }
 
     [GlobalCleanup]
@@ -85,6 +88,14 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int QueryMappedSimpleRuntimeFallback()
+    {
+        return _connection.QueryMapped<QueryMappedSimpleCustomer>(
+                "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
     public int QueryMappedImmutableConstructor()
     {
         return _connection.QueryMapped<ImmutableCustomer>(
@@ -101,10 +112,26 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int QueryMappedNestedObjectRuntimeFallback()
+    {
+        return _connection.QueryMapped<NestedCustomer>(
+                "SELECT City AS city, Id AS customer_id, Name AS full_name, PostalCode AS postal_code, Country AS country FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
     public int QueryMappedValueObject()
     {
         return _connection.QueryMapped<ValueObjectCustomer>(
                 "SELECT Id AS customer_id, Cpf AS cpf, Balance AS amount, Currency AS currency FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedValueObjectRuntimeFallback()
+    {
+        return _connection.QueryMapped<ValueObjectCustomer>(
+                "SELECT Cpf AS cpf, Id AS customer_id, Balance AS amount, Currency AS currency FROM BenchmarkRows;")
             .Count();
     }
 

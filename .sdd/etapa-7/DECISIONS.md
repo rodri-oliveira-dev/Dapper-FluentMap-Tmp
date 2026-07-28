@@ -320,3 +320,48 @@ Cada generated node carrega os ordinais materializados da sua subarvore. O codig
 - Subarvore parcialmente preenchida cria objeto.
 - Value Objects usados como argumentos de construtor recebem `null` quando todos os componentes sao `NULL`.
 - A semantica fica alinhada ao runtime sem alocar arrays por linha no hot path gerado.
+
+## ADR-7.6-001 - Dispatch Generated Acontece Por Query, Antes Da Iteracao
+
+### Contexto
+
+`QueryMapped*` ja le o shape de colunas uma vez antes de materializar as linhas. O materializer gerado usa ordinais fixos e nao deve pagar lookup custoso por linha.
+
+### Decisao
+
+O runtime deve procurar um generated materializer por entidade, profile e shape ordenado imediatamente depois de abrir o reader e coletar os nomes das colunas. Quando o descriptor for encontrado e validado contra o mapping efetivo, o loop de linhas chama diretamente o delegate gerado. Caso contrario, o runtime cria/usa o `NestedMaterializationPlan` cacheado.
+
+### Alternativas
+
+- Procurar descriptor gerado dentro do loop de linhas.
+- Criar uma API separada para generated materialization.
+- Sempre criar o plano runtime antes de tentar generated.
+
+### Consequencias
+
+- Evita lookup e reflection no hot path por linha.
+- Mantem fallback runtime sem mudar a API do consumidor.
+- O custo de validacao generated fica por query/shape.
+- Shapes inesperados continuam exercitando o cache runtime existente.
+
+## ADR-7.6-002 - Diagnostics Publicos Permanecem Conservadores
+
+### Contexto
+
+`Explain<T>()` nao recebe SQL nem `IDataReader`, portanto nao conhece a ordem real das colunas. Informar que uma query especifica usara generated materializer nesse ponto criaria um contrato fragil.
+
+### Decisao
+
+`MappingExplanation.Diagnostics` pode indicar que descriptors generated estao registrados para a entidade/profile e explicar que `QueryMapped*` so os seleciona quando o shape do reader e o mapping efetivo ainda batem. Fallback reason por query nao sera exposto em API publica nesta etapa.
+
+### Alternativas
+
+- Adicionar `Generated` em `MappingMaterialization`.
+- Expor fallback reason no `Explain<T>()` sem shape de colunas.
+- Nao adicionar nenhum diagnostico publico.
+
+### Consequencias
+
+- Usuarios conseguem ver que ha cobertura generated registrada.
+- A API nao promete dispatch generated para queries que `Explain<T>()` nao consegue avaliar.
+- Uma API futura pode receber explicitamente um column shape e retornar diagnostico de dispatch mais preciso.

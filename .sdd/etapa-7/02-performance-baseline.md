@@ -227,3 +227,70 @@ Job: `ShortRun`, `LaunchCount=1`, `WarmupCount=3`, `IterationCount=3`.
 
 - Nao foi executada rodada cold dedicada para generated complex. O benchmark cold existente registra maps manualmente por `AddMap(...)` e continua representando o fallback/runtime.
 - Os resultados continuam locais e devem ser usados como indicio de alocacao, nao como contrato de performance.
+
+## Apos Prompt 7.6
+
+Prompt 7.6 manteve o dispatch generated antes da iteracao de linhas em `QueryMapped*`, adicionou diagnostics seguros em `Explain<T>()` para presenca de descriptors generated e expandiu o benchmark steady state com cenarios de fallback runtime por shape equivalente em ordem diferente.
+
+### Comandos Executados
+
+Rodada steady state:
+
+```bash
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+Rodada cold start:
+
+```bash
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationColdStartBenchmarks*
+```
+
+### Resultados - Steady State
+
+Job: `ShortRun`, `LaunchCount=1`, `WarmupCount=3`, `IterationCount=3`.
+
+| Method | Mean | StdDev | Ratio | Gen0 | Gen1 | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| QueryMappedValueObjectRuntimeFallback | 1.256 ms | 0.1222 ms | 0.92 | 138.6719 | 27.3438 | 587.9 KB | 2.08 |
+| QueryMappedNestedObjectRuntimeFallback | 1.291 ms | 0.0129 ms | 0.95 | 91.7969 | 29.2969 | 377.06 KB | 1.33 |
+| DapperWithFluentMapRootMapping | 1.359 ms | 0.0276 ms | 1.00 | 68.3594 | - | 283.3 KB | 1.00 |
+| DapperPure | 1.360 ms | 0.0383 ms | 1.00 | 68.3594 | - | 283.17 KB | 1.00 |
+| QueryMappedValueObject | 1.435 ms | 0.0619 ms | 1.06 | 62.5000 | 19.5313 | 276.47 KB | 0.98 |
+| QueryMappedSimpleRuntimeFallback | 1.572 ms | 0.0932 ms | 1.16 | 87.8906 | 19.5313 | 361.48 KB | 1.28 |
+| QueryMappedNestedObject | 1.683 ms | 0.0671 ms | 1.24 | 70.3125 | 21.4844 | 292.44 KB | 1.03 |
+| QueryMappedSimple | 1.838 ms | 0.1143 ms | 1.35 | 62.5000 | 5.8594 | 261.12 KB | 0.92 |
+| QueryMappedImmutableConstructor | 1.843 ms | 0.0743 ms | 1.36 | 62.5000 | 11.7188 | 261.05 KB | 0.92 |
+
+### Leitura - Steady State
+
+- O benchmark agora explicita `QueryMapped*` generated e `QueryMapped*` runtime fallback lado a lado.
+- O ganho mais confiavel permanece em alocacao:
+  - simple: generated `261.12 KB` vs runtime fallback `361.48 KB`;
+  - nested: generated `292.44 KB` vs runtime fallback `377.06 KB`;
+  - Value Object: generated `276.47 KB` vs runtime fallback `587.9 KB`.
+- Tempo continua ruidoso no `ShortRun`; nesta rodada os fallback runtime de nested/value object apareceram mais rapidos que os shapes generated, mas isso nao deve ser interpretado como regressao funcional ou promessa de tempo. A diferenca de alocacao e mais estavel e alinhada as rodadas anteriores.
+- `DapperWithFluentMapRootMapping` continuou alinhado com Dapper puro em tempo e alocacao.
+
+### Resultados - Cold Start
+
+Job: `RunStrategy=ColdStart`, `LaunchCount=8`, `WarmupCount=0`, `IterationCount=1`.
+
+| Method | Mean | StdDev | Ratio | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| DapperPureColdStart | 165.7 ms | 33.08 ms | 1.03 | 285.95 KB | 1.00 |
+| FluentMapRootMappingColdStart | 219.5 ms | 55.54 ms | 1.37 | 353.13 KB | 1.23 |
+| QueryMappedNestedColdStart | 228.4 ms | 32.89 ms | 1.42 | 442.84 KB | 1.55 |
+| QueryMappedValueObjectColdStart | 271.0 ms | 47.20 ms | 1.69 | 645.09 KB | 2.26 |
+
+### Leitura - Cold Start
+
+- Cold start continua com variancia alta e outliers.
+- A rodada cold existente continua representando configuracao manual/runtime fallback, nao generated cold start dedicado.
+- Nao foi criada API publica de reset/isolamento apenas para medir cold generated.
+
+### Limitacoes
+
+- Benchmarks locais usam SQLite em memoria e medem tambem provider/SQL/reader.
+- `ShortRun` serve para acompanhamento rapido, nao para afirmar SLA de performance.
+- O comparativo runtime fallback por ordem diferente valida dispatch por shape, mas a ordem de colunas tambem pode afetar ruido do provider.

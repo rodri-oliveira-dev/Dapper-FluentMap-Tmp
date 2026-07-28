@@ -115,6 +115,39 @@ Definir a arquitetura e a especificacao inicial para materializacao gerada no Fl
   - QueryMappedImmutableConstructor: 1.734 ms, 261.05 KB;
   - QueryMappedNestedObject: 1.670 ms, 292.44 KB;
   - QueryMappedValueObject: 1.392 ms, 276.47 KB.
+- Criada a especificacao `.sdd/etapa-7/06-runtime-integration.md`.
+- Confirmado que `QueryMapped*` faz dispatch generated antes da iteracao de linhas e preserva fallback runtime por `NestedMaterializationPlan`.
+- Adicionado diagnostic seguro em `Explain<T>()` / `Explain<T, TProfile>()` quando descriptors generated estao registrados para a entidade/profile.
+- Mantido fallback reason por query fora da API publica porque `Explain<T>()` nao conhece o shape real do reader.
+- Adicionados testes de integracao para:
+  - generated materializer default selecionado;
+  - generated materializer por profile;
+  - fallback runtime quando generated esta ausente;
+  - fallback runtime quando metadata generated nao bate com o mapping efetivo;
+  - queries repetidas com cache runtime estavel;
+  - concorrencia de queries no caminho generated;
+  - equivalencia funcional entre generated e runtime fallback para immutable, nested, Value Object, mesmo terminal e profile nested.
+- Atualizado benchmark steady state para comparar `QueryMapped*` generated e runtime fallback por shape equivalente em ordem diferente.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~GeneratedMaterializerContractTests|FullyQualifiedName~DiagnosticsApiTests"`: sucesso, 25 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release`: sucesso, 2 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 253 testes aprovados.
+- Executada rodada benchmark steady state `MaterializationSteadyStateBenchmarks`: sucesso.
+- Executada rodada benchmark cold start `MaterializationColdStartBenchmarks`: sucesso.
+- Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso, gerou `Dapper.FluentMap.2.0.0.nupkg`.
+- Warnings conhecidos no pack: `NU5125` por `PackageLicenseUrl` legado e recomendacao NuGet para README de pacote.
+- Atualizada a secao `Apos Prompt 7.6` em `.sdd/etapa-7/02-performance-baseline.md`.
+- Benchmark steady state resumido apos 7.6:
+  - DapperPure: 1.360 ms, 283.17 KB;
+  - DapperWithFluentMapRootMapping: 1.359 ms, 283.3 KB;
+  - QueryMappedSimple generated: 1.838 ms, 261.12 KB;
+  - QueryMappedSimple runtime fallback: 1.572 ms, 361.48 KB;
+  - QueryMappedImmutableConstructor generated: 1.843 ms, 261.05 KB;
+  - QueryMappedNestedObject generated: 1.683 ms, 292.44 KB;
+  - QueryMappedNestedObject runtime fallback: 1.291 ms, 377.06 KB;
+  - QueryMappedValueObject generated: 1.435 ms, 276.47 KB;
+  - QueryMappedValueObject runtime fallback: 1.256 ms, 587.9 KB.
 
 ## Em andamento
 
@@ -122,10 +155,8 @@ Nenhum no escopo deste prompt apos o commit local.
 
 ## Proximos passos
 
-1. Adicionar diagnostics runtime de generated/fallback.
-2. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
-3. Avaliar uma forma segura de medir cold start generated sem expor reset publico desnecessario.
-4. Validar trimming, Native AOT e performance antes de documentar ganhos.
+1. Avaliar uma forma segura de medir cold start generated sem expor reset publico desnecessario.
+2. Validar trimming, Native AOT e performance antes de documentar ganhos.
 
 ## Decisoes relevantes
 
@@ -173,7 +204,8 @@ Nenhum no escopo deste prompt apos o commit local.
 - `.sdd/etapa-7/03-generated-materializer-contracts.md`
 - `.sdd/etapa-7/04-flat-generated-materializers.md`
 - `.sdd/etapa-7/05-complex-generated-materialization.md`
+- `.sdd/etapa-7/06-runtime-integration.md`
 
 ## Ultimo prompt executado
 
-7.5
+7.6

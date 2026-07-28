@@ -96,6 +96,80 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
             }
         }
 
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void GeneratedQueryMappedShouldMatchRuntimeFallbackForEquivalentComplexShapes()
+        {
+            ResetMapper();
+
+            try
+            {
+                GeneratedImmutableCustomer generatedImmutable;
+                GeneratedNestedCustomer generatedNested;
+                GeneratedValueObjectCustomer generatedValueObject;
+                GeneratedSameTerminalCustomer generatedSameTerminal;
+                GeneratedProfileNestedCustomer generatedProfileNested;
+
+                FluentMapper.Initialize(configuration => configuration.AddGeneratedMappings());
+
+                using (var connection = OpenConnection())
+                {
+                    generatedImmutable = connection.QueryMappedSingle<GeneratedImmutableCustomer>(
+                        "SELECT 21 AS immutable_id, 'Generated Constructor' AS name;");
+                    generatedNested = connection.QueryMappedSingle<GeneratedNestedCustomer>(
+                        "SELECT 22 AS customer_id, 'Sao Paulo' AS city;");
+                    generatedValueObject = connection.QueryMappedSingle<GeneratedValueObjectCustomer>(
+                        "SELECT 23 AS customer_id, '12345678909' AS cpf;");
+                    generatedSameTerminal = connection.QueryMappedSingle<GeneratedSameTerminalCustomer>(
+                        "SELECT 3 AS rank_level, 8 AS seniority_level;");
+                    generatedProfileNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
+                        "SELECT 'Profile City' AS legacy_city;");
+
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+
+                ResetMapper();
+
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap<GeneratedImmutableCustomerMap>();
+                    configuration.AddMap<GeneratedNestedCustomerMap>();
+                    configuration.AddMap<GeneratedValueObjectCustomerMap>();
+                    configuration.AddMap<GeneratedSameTerminalCustomerMap>();
+                    configuration.AddProfile<GeneratedLegacyProfileNestedCustomerMap>();
+                });
+
+                using (var connection = OpenConnection())
+                {
+                    var runtimeImmutable = connection.QueryMappedSingle<GeneratedImmutableCustomer>(
+                        "SELECT 21 AS immutable_id, 'Generated Constructor' AS name;");
+                    var runtimeNested = connection.QueryMappedSingle<GeneratedNestedCustomer>(
+                        "SELECT 22 AS customer_id, 'Sao Paulo' AS city;");
+                    var runtimeValueObject = connection.QueryMappedSingle<GeneratedValueObjectCustomer>(
+                        "SELECT 23 AS customer_id, '12345678909' AS cpf;");
+                    var runtimeSameTerminal = connection.QueryMappedSingle<GeneratedSameTerminalCustomer>(
+                        "SELECT 3 AS rank_level, 8 AS seniority_level;");
+                    var runtimeProfileNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
+                        "SELECT 'Profile City' AS legacy_city;");
+
+                    Assert.Equal(generatedImmutable.Id, runtimeImmutable.Id);
+                    Assert.Equal(generatedImmutable.Name, runtimeImmutable.Name);
+                    Assert.Equal(generatedNested.Id, runtimeNested.Id);
+                    Assert.Equal(generatedNested.Address.City, runtimeNested.Address.City);
+                    Assert.Equal(generatedValueObject.Id, runtimeValueObject.Id);
+                    Assert.Equal(generatedValueObject.Cpf.Number, runtimeValueObject.Cpf.Number);
+                    Assert.Equal(generatedSameTerminal.Rank.Level, runtimeSameTerminal.Rank.Level);
+                    Assert.Equal(generatedSameTerminal.Seniority.Level, runtimeSameTerminal.Seniority.Level);
+                    Assert.Equal(generatedProfileNested.Address.City, runtimeProfileNested.Address.City);
+                    Assert.Equal(5, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                ResetMapper();
+            }
+        }
+
         private static SqliteConnection OpenConnection()
         {
             var connection = new SqliteConnection("Data Source=:memory:");

@@ -426,6 +426,15 @@ namespace Dapper.FluentMap
                 diagnostics.Add("No FluentMap entity map or convention is registered for this entity. Dapper default mapping is used.");
             }
 
+            var generatedMaterializerCount = CountGeneratedMaterializers(type, profileType);
+            if (generatedMaterializerCount > 0)
+            {
+                diagnostics.Add(
+                    generatedMaterializerCount == 1
+                        ? "One generated QueryMapped materializer descriptor is registered for this entity/profile. QueryMapped selects it only when the reader column order and effective mapping still match; otherwise it uses the runtime materializer fallback."
+                        : generatedMaterializerCount + " generated QueryMapped materializer descriptors are registered for this entity/profile. QueryMapped selects one only when the reader column order and effective mapping still match; otherwise it uses the runtime materializer fallback.");
+            }
+
             return new MappingExplanation(
                 type,
                 profileType,
@@ -433,6 +442,11 @@ namespace Dapper.FluentMap
                 conventionTypes,
                 members.OrderBy(m => m.MemberPath, StringComparer.Ordinal).ThenBy(m => m.ColumnName, StringComparer.Ordinal),
                 diagnostics);
+        }
+
+        private int CountGeneratedMaterializers(Type type, Type profileType)
+        {
+            return _generatedMaterializers.Keys.Count(key => key.Type == type && key.ProfileType == profileType);
         }
 
         internal void Reset(params Type[] dapperTypes)

@@ -1,6 +1,7 @@
 using System;
 using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Materialization;
@@ -245,6 +246,165 @@ namespace Dapper.FluentMap.Tests
                     Assert.Equal("Runtime", customer.Name);
                     Assert.Equal(1, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
                 }
+            }
+            finally
+            {
+                PreTest(typeof(GeneratedContractCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedShouldUseGeneratedProfileMaterializerWhenRegistered()
+        {
+            PreTest(typeof(GeneratedContractCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddProfile<GeneratedContractCustomerLegacyMap>();
+                    configuration.AddGeneratedMaterializer<GeneratedContractCustomer, GeneratedLegacyProfile>(
+                        LegacyColumns(),
+                        ReadLegacyGeneratedCustomer);
+                });
+
+                using (var connection = OpenConnection())
+                {
+                    var customer = connection.QueryMappedSingle<GeneratedContractCustomer, GeneratedLegacyProfile>(
+                        "SELECT 51 AS legacy_id, 'Ada' AS legal_name;");
+
+                    Assert.Equal(51, customer.Id);
+                    Assert.Equal("legacy:Ada", customer.Name);
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(GeneratedContractCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedShouldFallBackToRuntimeWhenGeneratedContractDoesNotMatchEffectiveMapping()
+        {
+            PreTest(typeof(GeneratedContractCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new GeneratedContractCustomerMap());
+                    configuration.AddGeneratedMaterializer(
+                        new[]
+                        {
+                            GeneratedMaterializerColumn.Map("customer_id", nameof(GeneratedContractCustomer.Name)),
+                            GeneratedMaterializerColumn.Map("full_name", nameof(GeneratedContractCustomer.Name))
+                        },
+                        ReadDefaultGeneratedCustomer);
+                });
+
+                using (var connection = OpenConnection())
+                {
+                    var customer = connection.QueryMappedSingle<GeneratedContractCustomer>(
+                        "SELECT 61 AS customer_id, 'Runtime' AS full_name;");
+
+                    Assert.Equal(61, customer.Id);
+                    Assert.Equal("Runtime", customer.Name);
+                    Assert.Equal(1, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(GeneratedContractCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedGeneratedAndRuntimeFallbackShouldReturnEquivalentResults()
+        {
+            PreTest(typeof(GeneratedContractCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new GeneratedContractCustomerMap());
+                    configuration.AddGeneratedMaterializer(
+                        DefaultColumns(),
+                        record => new GeneratedContractCustomer
+                        {
+                            Id = Convert.ToInt32(record.GetValue(0)),
+                            Name = Convert.ToString(record.GetValue(1))
+                        });
+                });
+
+                using (var connection = OpenConnection())
+                {
+                    var generated = connection.QueryMappedSingle<GeneratedContractCustomer>(
+                        "SELECT 71 AS customer_id, 'Equivalent' AS full_name;");
+                    var runtimeFallback = connection.QueryMappedSingle<GeneratedContractCustomer>(
+                        "SELECT 'Equivalent' AS full_name, 71 AS customer_id;");
+                    var repeatedRuntimeFallback = connection.QueryMappedSingle<GeneratedContractCustomer>(
+                        "SELECT 'Equivalent' AS full_name, 71 AS customer_id;");
+
+                    Assert.Equal(generated.Id, runtimeFallback.Id);
+                    Assert.Equal(generated.Name, runtimeFallback.Name);
+                    Assert.Equal(runtimeFallback.Id, repeatedRuntimeFallback.Id);
+                    Assert.Equal(runtimeFallback.Name, repeatedRuntimeFallback.Name);
+                    Assert.Equal(1, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(GeneratedContractCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedGeneratedMaterializerShouldRemainStableUnderConcurrentQueries()
+        {
+            PreTest(typeof(GeneratedContractCustomer));
+
+            try
+            {
+                var materializedRows = 0;
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new GeneratedContractCustomerMap());
+                    configuration.AddGeneratedMaterializer(
+                        DefaultColumns(),
+                        record =>
+                        {
+                            Interlocked.Increment(ref materializedRows);
+                            return new GeneratedContractCustomer
+                            {
+                                Id = Convert.ToInt32(record.GetValue(0)),
+                                Name = Convert.ToString(record.GetValue(1))
+                            };
+                        });
+                });
+
+                var results = Enumerable.Range(0, 50)
+                    .AsParallel()
+                    .Select(index =>
+                    {
+                        using (var connection = OpenConnection())
+                        {
+                            var customer = connection.QueryMappedSingle<GeneratedContractCustomer>(
+                                $"SELECT {index} AS customer_id, 'generated-{index}' AS full_name;");
+
+                            return customer.Id == index && customer.Name == $"generated-{index}";
+                        }
+                    })
+                    .ToList();
+
+                Assert.All(results, Assert.True);
+                Assert.Equal(50, materializedRows);
+                Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
             }
             finally
             {

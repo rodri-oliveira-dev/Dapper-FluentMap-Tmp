@@ -4,6 +4,7 @@ using System.Linq;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.Naming;
 using Xunit;
 
@@ -259,6 +260,37 @@ namespace Dapper.FluentMap.Tests
                     first.Members.Select(m => m.MemberPath + ":" + m.ColumnName + ":" + m.Source),
                     second.Members.Select(m => m.MemberPath + ":" + m.ColumnName + ":" + m.Source));
                 Assert.Equal(0, FluentMapper.Registry.CacheEntryCount);
+            }
+            finally
+            {
+                PreTest(typeof(ExplicitDiagnosticEntity));
+            }
+        }
+
+        [Fact]
+        public void ExplainShouldMentionGeneratedQueryMaterializersWhenDescriptorsAreRegistered()
+        {
+            PreTest(typeof(ExplicitDiagnosticEntity));
+
+            try
+            {
+                FluentMapper.Initialize(c =>
+                {
+                    c.AddMap(new ExplicitDiagnosticMap());
+                    c.AddGeneratedMaterializer<ExplicitDiagnosticEntity>(
+                        new[]
+                        {
+                            GeneratedMaterializerColumn.Map("explicit_id", nameof(ExplicitDiagnosticEntity.Id))
+                        },
+                        record => new ExplicitDiagnosticEntity { Id = Convert.ToInt32(record.GetValue(0)) });
+                });
+
+                var explanation = FluentMapper.Explain<ExplicitDiagnosticEntity>();
+
+                Assert.Contains(
+                    explanation.Diagnostics,
+                    diagnostic => diagnostic.Contains("generated QueryMapped materializer descriptor") &&
+                                  diagnostic.Contains("runtime materializer fallback"));
             }
             finally
             {
