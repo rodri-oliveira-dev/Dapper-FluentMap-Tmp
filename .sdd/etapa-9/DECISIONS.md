@@ -300,3 +300,36 @@ Nao adicionar `QueryMultipleMappedAsync`, `IAsyncDisposable` ou
 A API publica nova e aditiva e alinhada ao nome `QueryMultiple` do Dapper. O
 primeiro incremento e buffered e sequencial. Streaming e async continuam
 decisoes separadas para prompts posteriores.
+
+## ADR-12 - QueryMappedUnbuffered sincrono
+
+### Contexto
+
+`QueryMapped*` bufferiza resultados em `List<TEntity>` antes de retornar. Isso
+mantem lifetime simples, mas penaliza datasets grandes. Dapper 2.1.79 oferece
+leitura sincronica unbuffered pela convencao `Query<T>(..., buffered: false)`,
+mas esse caminho nao aplica nested/value-object/profile/generated do FluentMap.
+
+### Decisao
+
+Adicionar APIs `QueryMappedUnbuffered<TEntity>` e
+`QueryMappedUnbuffered<TEntity, TProfile>` como caminhos lazy e explicitos.
+
+O FluentMap executa por `SqlMapper.ExecuteReader`, resolve o materializer uma
+vez por shape e materializa uma linha por `MoveNext()`. O reader e descartado
+quando a enumeracao termina, quando o enumerator e descartado ou quando uma
+excecao interrompe o loop.
+
+### Alternativas consideradas
+
+- Tornar `QueryMapped<T>` lazy: descartado por breaking change.
+- Adicionar parametro `buffered` a `QueryMapped<T>`: descartado por esconder
+  mudanca forte de lifetime em um booleano opcional.
+- Usar `Dapper.Query<T>(buffered: false)`: descartado porque nao aplica a
+  materializacao avancada do FluentMap.
+
+### Consequencias
+
+O usuario ganha processamento incremental sincrono sem async streaming. O
+contrato exige que conexao/transacao externas permanecam validas durante a
+enumeracao. Async streaming permanece para prompt futuro.

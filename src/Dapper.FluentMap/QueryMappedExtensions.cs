@@ -132,6 +132,128 @@ namespace Dapper.FluentMap
         }
 
         /// <summary>
+        /// Creates a lazy unbuffered query that materializes rows using FluentMap's opt-in nested object materializer.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="param">Optional query parameters.</param>
+        /// <param name="transaction">Optional transaction.</param>
+        /// <param name="commandTimeout">Optional command timeout.</param>
+        /// <param name="commandType">Optional command type.</param>
+        /// <returns>A lazy sequence that keeps the underlying reader open until enumeration completes or the enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IEnumerable<TEntity> QueryMappedUnbuffered<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            this IDbConnection connection,
+            string sql,
+            object param = null,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null,
+            CommandType? commandType = null)
+            where TEntity : class
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (sql == null)
+            {
+                throw new ArgumentNullException(nameof(sql));
+            }
+
+            return QueryMappedUnbuffered<TEntity>(
+                connection,
+                new CommandDefinition(sql, param, transaction, commandTimeout, commandType, CommandFlags.None));
+        }
+
+        /// <summary>
+        /// Creates a lazy unbuffered query that materializes rows using the specified FluentMap mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="param">Optional query parameters.</param>
+        /// <param name="transaction">Optional transaction.</param>
+        /// <param name="commandTimeout">Optional command timeout.</param>
+        /// <param name="commandType">Optional command type.</param>
+        /// <returns>A lazy sequence that keeps the underlying reader open until enumeration completes or the enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IEnumerable<TEntity> QueryMappedUnbuffered<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>(
+            this IDbConnection connection,
+            string sql,
+            object param = null,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null,
+            CommandType? commandType = null)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (sql == null)
+            {
+                throw new ArgumentNullException(nameof(sql));
+            }
+
+            return QueryMappedUnbuffered<TEntity, TProfile>(
+                connection,
+                new CommandDefinition(sql, param, transaction, commandTimeout, commandType, CommandFlags.None));
+        }
+
+        /// <summary>
+        /// Creates a lazy unbuffered command that materializes rows using FluentMap's opt-in nested object materializer.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="command">The command to execute.</param>
+        /// <returns>A lazy sequence that keeps the underlying reader open until enumeration completes or the enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IEnumerable<TEntity> QueryMappedUnbuffered<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            this IDbConnection connection,
+            CommandDefinition command)
+            where TEntity : class
+        {
+            return ExecuteMappedUnbuffered<TEntity>(connection, command, profileType: null);
+        }
+
+        /// <summary>
+        /// Creates a lazy unbuffered command that materializes rows using the specified FluentMap mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="command">The command to execute.</param>
+        /// <returns>A lazy sequence that keeps the underlying reader open until enumeration completes or the enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IEnumerable<TEntity> QueryMappedUnbuffered<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>(
+            this IDbConnection connection,
+            CommandDefinition command)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            return ExecuteMappedUnbuffered<TEntity>(connection, command, typeof(TProfile));
+        }
+
+        /// <summary>
         /// Executes a query and materializes exactly one row using FluentMap's opt-in nested object materializer.
         /// </summary>
         /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
@@ -351,6 +473,41 @@ namespace Dapper.FluentMap
             using (var reader = SqlMapper.ExecuteReader(connection, command))
             {
                 return MappedRowMaterializer.Materialize<TEntity>(reader, profileType);
+            }
+        }
+
+        private static IEnumerable<TEntity> ExecuteMappedUnbuffered<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            IDbConnection connection,
+            CommandDefinition command,
+            Type profileType)
+            where TEntity : class
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            return ExecuteMappedUnbufferedIterator<TEntity>(connection, command, profileType);
+        }
+
+        private static IEnumerable<TEntity> ExecuteMappedUnbufferedIterator<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            IDbConnection connection,
+            CommandDefinition command,
+            Type profileType)
+            where TEntity : class
+        {
+            using (var reader = SqlMapper.ExecuteReader(connection, command))
+            {
+                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType);
+
+                while (reader.Read())
+                {
+                    yield return materializer(reader);
+                }
             }
         }
 

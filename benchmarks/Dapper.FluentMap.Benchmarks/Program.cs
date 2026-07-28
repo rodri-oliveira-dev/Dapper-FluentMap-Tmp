@@ -44,9 +44,12 @@ public class MaterializationSteadyStateBenchmarks
         _connection = OpenPopulatedConnection();
 
         DapperPure();
+        DapperPureUnbuffered();
         DapperWithFluentMapRootMapping();
         QueryMappedSimple();
+        QueryMappedSimpleUnbuffered();
         QueryMappedSimpleRuntimeFallback();
+        QueryMappedSimpleUnbufferedRuntimeFallback();
         QueryMappedImmutableConstructor();
         QueryMappedNestedObject();
         QueryMappedNestedObjectRuntimeFallback();
@@ -71,6 +74,15 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int DapperPureUnbuffered()
+    {
+        return _connection.Query<PureCustomer>(
+                "SELECT Id, Name, Age, Balance, CreatedAt FROM BenchmarkRows;",
+                buffered: false)
+            .Count();
+    }
+
+    [Benchmark]
     public int DapperWithFluentMapRootMapping()
     {
         return _connection.Query<RootMappedCustomer>(
@@ -88,9 +100,25 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int QueryMappedSimpleUnbuffered()
+    {
+        return _connection.QueryMappedUnbuffered<QueryMappedSimpleCustomer>(
+                "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
     public int QueryMappedSimpleRuntimeFallback()
     {
         return _connection.QueryMapped<QueryMappedSimpleCustomer>(
+                "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedSimpleUnbufferedRuntimeFallback()
+    {
+        return _connection.QueryMappedUnbuffered<QueryMappedSimpleCustomer>(
                 "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
             .Count();
     }

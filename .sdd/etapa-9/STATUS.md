@@ -66,6 +66,22 @@ equivalencia entre materializacao generated e runtime.
   multiplos result sets de tipos diferentes.
 - Prompt 9.3: adicionadas regressoes minimas para as issues historicas #22 e
   #43 no caminho opt-in `QueryMultipleMapped(...).ReadMapped*`.
+- Prompt 9.4: criada especificacao
+  `.sdd/etapa-9/05-unbuffered-materialization.md`.
+- Prompt 9.4: adicionada API `QueryMappedUnbuffered<TEntity>()`.
+- Prompt 9.4: adicionada API `QueryMappedUnbuffered<TEntity, TProfile>()`.
+- Prompt 9.4: adicionados overloads por `CommandDefinition`.
+- Prompt 9.4: refatorado `MappedRowMaterializer` para resolver o delegate de
+  materializacao uma vez por shape e reutilizar no caminho buffered e
+  unbuffered.
+- Prompt 9.4: adicionada cobertura para flat entity, nested object, Value
+  Object, profile, generated materializer, runtime fallback, empty result,
+  large sequence, lazy execution, early break, dispose explicito, excecao no
+  meio da enumeracao, connection lifetime e transaction externa.
+- Prompt 9.4: adicionados benchmarks de Dapper unbuffered e FluentMap
+  unbuffered generated/runtime fallback.
+- Prompt 9.4: criada
+  `.sdd/etapa-9/06-performance-results.md` para baseline e resultados.
 
 ## Em andamento
 
@@ -104,13 +120,33 @@ Nenhuma feature produtiva em andamento.
   dispatch, apenas reutilizou `MappedRowMaterializer` e adicionou wrappers
   single sobre o caminho buffered existente.
 
+## Validacao do Prompt 9.4
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMappedUnbufferedTests`:
+  sucesso, 14 testes aprovados.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*`:
+  sucesso, 12 benchmarks executados; resultados registrados em
+  `.sdd/etapa-9/06-performance-results.md`.
+- `dotnet restore .\Dapper.FluentMap.sln`:
+  sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 337 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `licenseUrl`.
+- Pacote inspecionado:
+  `lib/netstandard2.0/Dapper.FluentMap.dll` e
+  `lib/netstandard2.0/Dapper.FluentMap.xml` presentes.
+
 ## Proximos passos
 
-1. Unbuffered synchronous path.
-2. Async streaming.
-3. Lifetime/cancellation hardening para caminhos async/streaming.
-4. Regression/performance.
-5. Documentacao final.
+1. Async streaming.
+2. Lifetime/cancellation hardening para caminhos async/streaming.
+3. Regression/performance complementar.
+4. Documentacao final.
 
 ## Decisoes relevantes
 
@@ -121,6 +157,8 @@ Nenhuma feature produtiva em andamento.
 - Prompt 9.2 implementou o caminho buffered sincronico antes de streaming.
 - Buffered deve ser entregue antes de streaming.
 - Streaming deve ter nomes explicitos com `Unbuffered`.
+- Prompt 9.4 implementou `QueryMappedUnbuffered*` sincrono sem misturar com
+  async streaming.
 - `IAsyncEnumerable<T>` deve ser avaliado como mudanca de API/dependencia para
   `netstandard2.0`.
 - Cancellation deve usar `CommandDefinition.CancellationToken` e overloads
@@ -140,7 +178,7 @@ Nenhuma feature produtiva em andamento.
 
 ## APIs propostas
 
-APIs conceituais a avaliar nos prompts de implementacao:
+APIs implementadas e conceituais para prompts futuros:
 
 ```csharp
 using var multi = connection.QueryMultipleMapped(sql);
@@ -163,15 +201,16 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 }
 ```
 
-Nomes finais ainda dependem de revisao de overloads, target framework e
-compatibilidade.
+`QueryMappedUnbuffered*` sincrono foi implementado no Prompt 9.4. O nome async
+ainda depende de revisao de overloads, target framework e compatibilidade.
 
 ## Riscos conhecidos
 
 - `GridReader` nao expoe reader publico suficiente para `ReadMapped`.
 - Implementar wrapper proprio exige lifetime correto de connection, command e
   reader.
-- Streaming pode vazar recursos se enumeradores nao forem descartados.
+- Streaming pode manter recursos abertos por mais tempo se enumeradores nao
+  forem descartados.
 - Cancellation depende do suporte real do provider.
 - `IAsyncEnumerable<T>` em API publica `netstandard2.0` pode alterar
   dependencias/compatibilidade.
@@ -185,6 +224,9 @@ compatibilidade.
 - `.sdd/etapa-9/01-historical-query-issues.md`
 - `.sdd/etapa-9/02-advanced-query-materialization-spec.md`
 - `.sdd/etapa-9/03-query-multiple-design.md`
+- `.sdd/etapa-9/04-read-mapped-spec.md`
+- `.sdd/etapa-9/05-unbuffered-materialization.md`
+- `.sdd/etapa-9/06-performance-results.md`
 - `.sdd/etapa-9/DECISIONS.md`
 - `.sdd/etapa-9/STATUS.md`
 - `src/Dapper.FluentMap/MappedGridReader.cs`
@@ -199,8 +241,9 @@ compatibilidade.
 - `test/Dapper.FluentMap.Tests/MappingProfileTests.cs`
 - `test/Dapper.FluentMap.Tests/GeneratedMaterializerContractTests.cs`
 - `test/Dapper.FluentMap.Tests/QueryMultipleMappedTests.cs`
+- `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 9.3
+Ultimo prompt executado: 9.4

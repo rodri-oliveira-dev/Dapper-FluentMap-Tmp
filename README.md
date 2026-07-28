@@ -433,6 +433,7 @@ Use FluentMap query helpers when you need FluentMap-controlled advanced material
 connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
+connection.QueryMappedUnbuffered<Customer>(sql);
 
 using var multi = connection.QueryMultipleMapped(sql);
 var customers = multi.ReadMapped<Customer>();
@@ -440,6 +441,17 @@ var orders = multi.ReadMapped<Order>();
 ```
 
 `QueryMapped*` and `ReadMapped*` return buffered results and are the paths that support nested object materialization, constructor-built value objects and profile-specific mapping.
+
+Use `QueryMappedUnbuffered<T>()` or `QueryMappedUnbuffered<T, TProfile>()` when you need to process a large result set incrementally:
+
+```csharp
+foreach (var customer in connection.QueryMappedUnbuffered<Customer>(sql))
+{
+    Process(customer);
+}
+```
+
+Unbuffered queries are lazy: the command is executed when enumeration starts, not when the method is called. The underlying reader stays open until enumeration finishes or the enumerator is disposed. If FluentMap opens a closed connection for the enumeration, disposing the reader closes it again; if the connection was already open, it remains open and must stay usable for the whole enumeration. Dispose the enumerator, for example by using `foreach`, when stopping early.
 
 ## Dommel
 
@@ -515,7 +527,7 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Mapping profiles are selected through `QueryMapped<TEntity, TProfile>()` and `ReadMapped<TEntity, TProfile>()` APIs.
-- `QueryMapped*` and `ReadMapped*` are buffered; they do not expose unbuffered streaming.
+- `QueryMapped*` and `ReadMapped*` are buffered. Use `QueryMappedUnbuffered*` for explicit synchronous unbuffered streaming.
 - Value object construction uses matching public constructors, not factory methods.
 
 ## Contributing
@@ -971,6 +983,7 @@ Use os helpers de consulta do FluentMap quando precisar de materialização avan
 connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
+connection.QueryMappedUnbuffered<Customer>(sql);
 
 using var multi = connection.QueryMultipleMapped(sql);
 var customers = multi.ReadMapped<Customer>();
@@ -978,6 +991,17 @@ var orders = multi.ReadMapped<Order>();
 ```
 
 `QueryMapped*` e `ReadMapped*` retornam resultados bufferizados e são os caminhos que suportam materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile.
+
+Use `QueryMappedUnbuffered<T>()` ou `QueryMappedUnbuffered<T, TProfile>()` quando precisar processar um result set grande de forma incremental:
+
+```csharp
+foreach (var customer in connection.QueryMappedUnbuffered<Customer>(sql))
+{
+    Process(customer);
+}
+```
+
+Consultas unbuffered são lazy: o comando é executado quando a enumeração começa, não quando o método é chamado. O reader subjacente permanece aberto até a enumeração terminar ou o enumerator ser descartado. Se o FluentMap abrir uma conexão fechada para a enumeração, o dispose do reader fecha a conexão novamente; se a conexão já estava aberta, ela permanece aberta e precisa continuar válida durante toda a enumeração. Descarte o enumerator, por exemplo usando `foreach`, ao parar cedo.
 
 ## Dommel
 
@@ -1054,7 +1078,7 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
 - `QueryMapped*` pode usar materializadores gerados para shapes flat, aninhados e Value Object suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
 - Mapping profiles são selecionados pelas APIs `QueryMapped<TEntity, TProfile>()` e `ReadMapped<TEntity, TProfile>()`.
-- `QueryMapped*` e `ReadMapped*` são bufferizados; eles não expõem streaming unbuffered.
+- `QueryMapped*` e `ReadMapped*` são bufferizados. Use `QueryMappedUnbuffered*` para streaming unbuffered síncrono explícito.
 - A construção de Value Objects usa construtores públicos compatíveis, não factory methods.
 
 ## Contribuição
