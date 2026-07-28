@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -22,6 +23,9 @@ namespace Dapper.FluentMap
         private readonly ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan> _materializationPlanCache =
             new ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan>();
 
+        private readonly ConcurrentDictionary<MaterializationPlanCacheKey, GeneratedMaterializerEntry> _generatedMaterializers =
+            new ConcurrentDictionary<MaterializationPlanCacheKey, GeneratedMaterializerEntry>();
+
         internal ConcurrentDictionary<Type, IEntityMap> EntityMaps { get; } =
             new ConcurrentDictionary<Type, IEntityMap>();
 
@@ -34,6 +38,8 @@ namespace Dapper.FluentMap
         internal int CacheEntryCount => _propertyMapCache.Count;
 
         internal int MaterializationPlanCacheEntryCount => _materializationPlanCache.Count;
+
+        internal int GeneratedMaterializerCount => _generatedMaterializers.Count;
 
         internal IReadOnlyDictionary<Type, IEntityMap> GetEntityMapsSnapshot()
         {
@@ -231,16 +237,68 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(columnNames));
             }
 
-            if (profileType != null && !ProfileMaps.ContainsKey(new MappingProfileKey(type, profileType)))
-            {
-                throw new FluentMapConfigurationException(
-                    $"Entity '{type.FullName}' does not have a registered mapping profile '{profileType.FullName}'.");
-            }
+            EnsureProfileRegistered(type, profileType);
 
             var cacheKey = new MaterializationPlanCacheKey(type, profileType, columnNames);
             return _materializationPlanCache.GetOrAdd(
                 cacheKey,
                 key => NestedMaterializationPlan.Create(key.Type, key.ProfileType, key.ColumnNames, this));
+        }
+
+        internal void AddGeneratedMaterializer<TEntity>(GeneratedMaterializerDescriptor<TEntity> descriptor)
+            where TEntity : class
+        {
+            if (descriptor == null)
+            {
+                throw new ArgumentNullException(nameof(descriptor));
+            }
+
+            var key = new MaterializationPlanCacheKey(
+                descriptor.EntityType,
+                descriptor.ProfileType,
+                descriptor.Columns.Select(column => column.ColumnName));
+            var entry = GeneratedMaterializerEntry.Create(descriptor);
+
+            if (!_generatedMaterializers.TryAdd(key, entry))
+            {
+                var profileContext = descriptor.ProfileType == null
+                    ? string.Empty
+                    : $" and profile '{descriptor.ProfileType.FullName}'";
+
+                throw new FluentMapConfigurationException(
+                    $"Entity '{descriptor.EntityType.FullName}' already has a generated materializer registered for the same column shape{profileContext}.");
+            }
+        }
+
+        internal bool TryGetGeneratedMaterializer(
+            Type type,
+            Type profileType,
+            string[] columnNames,
+            out Func<IDataRecord, object> materializer)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            if (columnNames == null)
+            {
+                throw new ArgumentNullException(nameof(columnNames));
+            }
+
+            EnsureProfileRegistered(type, profileType);
+
+            var cacheKey = new MaterializationPlanCacheKey(type, profileType, columnNames);
+            GeneratedMaterializerEntry entry;
+            if (!_generatedMaterializers.TryGetValue(cacheKey, out entry) ||
+                !GeneratedMaterializerMatchesEffectiveMapping(type, profileType, entry.Columns))
+            {
+                materializer = null;
+                return false;
+            }
+
+            materializer = entry.Materialize;
+            return true;
         }
 
         internal void ValidateConfiguration()
@@ -384,6 +442,7 @@ namespace Dapper.FluentMap
             TypeConventions.Clear();
             _propertyMapCache.Clear();
             _materializationPlanCache.Clear();
+            _generatedMaterializers.Clear();
 
             if (dapperTypes == null)
             {
@@ -400,6 +459,74 @@ namespace Dapper.FluentMap
         {
             var instance = new FluentMapTypeMap(type);
             SqlMapper.SetTypeMap(type, instance);
+        }
+
+        private void EnsureProfileRegistered(Type type, Type profileType)
+        {
+            if (profileType != null && !ProfileMaps.ContainsKey(new MappingProfileKey(type, profileType)))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity '{type.FullName}' does not have a registered mapping profile '{profileType.FullName}'.");
+            }
+        }
+
+        private bool GeneratedMaterializerMatchesEffectiveMapping(
+            Type type,
+            Type profileType,
+            IReadOnlyList<GeneratedMaterializerColumn> columns)
+        {
+            var defaultTypeMap = new DefaultTypeMap(type);
+
+            foreach (var column in columns)
+            {
+                var fluentMap = GetProfilePropertyMap(type, profileType, column.ColumnName);
+                if (fluentMap != null)
+                {
+                    if (column.Ignored)
+                    {
+                        if (!fluentMap.Ignored)
+                        {
+                            return false;
+                        }
+
+                        continue;
+                    }
+
+                    if (fluentMap.Ignored)
+                    {
+                        return false;
+                    }
+
+                    var memberPath = PropertyMapIdentity.GetMemberPath(fluentMap).ToString();
+                    if (!string.Equals(memberPath, column.MemberPath, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (column.Ignored)
+                {
+                    return false;
+                }
+
+                var defaultMember = defaultTypeMap.GetMember(column.ColumnName);
+                var defaultMemberPath = defaultMember == null
+                    ? null
+                    : defaultMember.Property != null
+                        ? defaultMember.Property.Name
+                        : defaultMember.Field != null
+                            ? defaultMember.Field.Name
+                            : null;
+
+                if (!string.Equals(defaultMemberPath, column.MemberPath, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void InvalidateType(Type type)
@@ -784,6 +911,29 @@ namespace Dapper.FluentMap
             internal IPropertyMap PropertyMap { get; }
 
             internal PropertyInfo PropertyInfo { get; }
+        }
+
+        private sealed class GeneratedMaterializerEntry
+        {
+            private GeneratedMaterializerEntry(
+                IReadOnlyList<GeneratedMaterializerColumn> columns,
+                Func<IDataRecord, object> materialize)
+            {
+                Columns = columns;
+                Materialize = materialize;
+            }
+
+            internal static GeneratedMaterializerEntry Create<TEntity>(GeneratedMaterializerDescriptor<TEntity> descriptor)
+                where TEntity : class
+            {
+                return new GeneratedMaterializerEntry(
+                    descriptor.Columns,
+                    record => descriptor.Materializer(record));
+            }
+
+            internal IReadOnlyList<GeneratedMaterializerColumn> Columns { get; }
+
+            internal Func<IDataRecord, object> Materialize { get; }
         }
 
         private sealed class MappingDiagnosticDescriptor

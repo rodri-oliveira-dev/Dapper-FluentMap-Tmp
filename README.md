@@ -326,6 +326,8 @@ FluentMapper.Initialize(config =>
 
 Generated registration calls the existing `AddMap<TMap>()` / `AddProfile<TMap>()` paths. It does not generate database materializers, scan referenced assemblies or replace `FluentMapper.Validate()`.
 
+The core runtime also exposes low-level generated materializer registration contracts for generator-emitted code. These contracts are additive infrastructure; current consumers do not need to register materializers manually, and missing generated materializers continue to use the existing runtime fallback.
+
 ## Trimming / Native AOT
 
 FluentMap has different levels of support depending on the API:
@@ -746,6 +748,8 @@ FluentMapper.Initialize(config =>
 ```
 
 O registro gerado chama os caminhos existentes `AddMap<TMap>()` / `AddProfile<TMap>()`. Ele não gera materializadores de banco, não escaneia assemblies referenciados e não substitui `FluentMapper.Validate()`.
+
+O runtime principal também expõe contratos de baixo nível para registro de materializadores gerados por código emitido por generator. Esses contratos são infraestrutura aditiva; consumidores atuais não precisam registrar materializadores manualmente, e a ausência de materializadores gerados continua usando o fallback runtime existente.
 
 ## Trimming / Native AOT
 

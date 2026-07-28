@@ -37,6 +37,31 @@ Definir a arquitetura e a especificacao inicial para materializacao gerada no Fl
 - Executado `dotnet restore ./Dapper.FluentMap.sln`: sucesso.
 - Executado `dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
 - Executado `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 231 testes aprovados.
+- Criada a especificacao `.sdd/etapa-7/03-generated-materializer-contracts.md`.
+- Adicionados contratos publicos:
+  - `GeneratedRowMaterializer<TEntity>`;
+  - `GeneratedMaterializerColumn`;
+  - `GeneratedMaterializerDescriptor<TEntity>`.
+- Adicionadas APIs publicas em `FluentMapConfiguration` para registrar generated materializers default e por profile.
+- Adicionado registry interno de generated materializers por entidade, profile e shape ordenado.
+- Integrado lookup generated antes do fallback `NestedMaterializationPlan` em `QueryMapped*`.
+- Mantido fallback runtime quando descriptor esta ausente ou incompativel com o mapping efetivo.
+- Adicionados testes em `GeneratedMaterializerContractTests` cobrindo registro, lookup, missing materializer, fallback, profiles, duplicidade, contrato invalido e concorrencia.
+- Executado `dotnet build .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~GeneratedMaterializerContractTests"`: sucesso, 9 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 240 testes aprovados.
+- Executado benchmark smoke `dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*`: sucesso.
+- Benchmark smoke steady state resumido:
+  - DapperPure: 1.338 ms, 283.17 KB;
+  - DapperWithFluentMapRootMapping: 1.469 ms, 283.3 KB;
+  - QueryMappedSimple: 1.739 ms, 361.42 KB;
+  - QueryMappedImmutableConstructor: 1.670 ms, 423.92 KB;
+  - QueryMappedNestedObject: 1.495 ms, 377 KB;
+  - QueryMappedValueObject: 1.355 ms, 587.84 KB.
+- Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso, gerou `Dapper.FluentMap.2.0.0.nupkg`.
+- Warnings conhecidos no pack: `NU5125` por `PackageLicenseUrl` legado e recomendacao NuGet para README de pacote.
 
 ## Em andamento
 
@@ -44,12 +69,12 @@ Nenhum no escopo deste prompt apos o commit local.
 
 ## Proximos passos
 
-1. Definir contratos runtime minimos para descriptor, lookup e fallback.
+1. Estender generator para descobrir DSL estatica e emitir descriptors/materializers simples.
 2. Prototipar flat/simple generated materialization para explicit maps literais.
 3. Repetir benchmarks root/simple apos 7.4.
 4. Expandir para nested objects, immutable objects e Value Objects.
 5. Repetir benchmarks nested, immutable e Value Object apos 7.5.
-6. Integrar generated lookup ao runtime antes do fallback.
+6. Adicionar diagnostics de generated/fallback.
 7. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
 8. Validar trimming, Native AOT e performance antes de documentar ganhos.
 
@@ -62,6 +87,9 @@ Nenhum no escopo deste prompt apos o commit local.
 - O projeto nao deve replicar Dapper.AOT.
 - Evolucao deve ser aditiva e sem breaking change.
 - Primeira cobertura gerada deve priorizar explicit maps com colunas literais.
+- Generated materializers usam contrato publico por descriptor e delegate.
+- Descritores gerados devem ser validados contra o mapping efetivo antes de uso.
+- `QueryMapped*` mantem annotations de trimming/dynamic-code enquanto houver fallback runtime.
 
 ## Riscos conhecidos
 
@@ -86,10 +114,12 @@ Nenhum no escopo deste prompt apos o commit local.
 - `src/Dapper.FluentMap.Generators/MappingRegistrationGenerator.cs`
 - `src/Dapper.FluentMap.Analyzers/FluentMapConfigurationAnalyzer.cs`
 - `test/Dapper.FluentMap.Tests/GeneratedMaterializerSpikeTests.cs`
+- `test/Dapper.FluentMap.Tests/GeneratedMaterializerContractTests.cs`
 - `docs/sdd/etapa-6/04-generated-materializer-spike.md`
 - `.sdd/etapa-7/02-performance-spec.md`
 - `.sdd/etapa-7/02-performance-baseline.md`
+- `.sdd/etapa-7/03-generated-materializer-contracts.md`
 
 ## Ultimo prompt executado
 
-7.2
+7.3

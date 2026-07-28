@@ -169,3 +169,85 @@ A primeira fase de geracao deve focar explicit maps com `Map(...).ToColumn("lite
 - Nested/value object pode evoluir sobre uma base confiavel.
 - Naming policies built-in podem ser adicionadas depois com regras claras.
 - Conventions customizadas continuam no fallback.
+
+## ADR-7.3-001 - Contrato Publico por Descriptor e Delegate
+
+### Contexto
+
+O source generator emite codigo no assembly consumidor e, portanto, nao pode chamar contratos `internal` do core. Ao mesmo tempo, o runtime nao deve depender de uma classe especifica gerada por uma versao especifica do generator.
+
+### Decisao
+
+Adicionar contratos publicos pequenos em `Dapper.FluentMap.Materialization`:
+
+```text
+GeneratedRowMaterializer<TEntity>
+GeneratedMaterializerColumn
+GeneratedMaterializerDescriptor<TEntity>
+```
+
+O registro acontece por APIs publicas aditivas em `FluentMapConfiguration`. O runtime guarda os descriptors em registry interno e usa delegate direto por linha quando o descriptor corresponde ao mapping efetivo.
+
+### Alternativas
+
+- `IGeneratedMaterializer<T>`.
+- Registro somente por delegate.
+- Descriptor `internal` com `InternalsVisibleTo`.
+- Descoberta por assembly scanning.
+
+### Consequencias
+
+- Generated code pode chamar o core sem permissao especial.
+- O contrato preserva baixo overhead e separacao generator/runtime.
+- A API publica nova e pequena, mas passa a ser contrato SemVer.
+- O descriptor carrega metadata suficiente para validar fallback seguro.
+
+## ADR-7.3-002 - Validar Descriptor Contra Mapping Efetivo Antes de Usar
+
+### Contexto
+
+Descritores gerados podem ficar incompativeis com a configuracao efetiva por mudancas em maps, conventions, profiles ou uso dos dicionarios mutaveis legados.
+
+### Decisao
+
+O lookup generated deve validar, por coluna, se o descriptor corresponde ao mapping efetivo atual:
+
+- coluna materializada deve apontar para o mesmo `MemberPath`;
+- coluna ignorada deve estar ignorada na configuracao efetiva;
+- profile deve estar registrado;
+- shape deve bater por entidade, profile e nomes ordenados.
+
+Quando a validacao falha, o runtime usa `NestedMaterializationPlan`.
+
+### Alternativas
+
+- Confiar sempre no descriptor registrado.
+- Validar apenas entity/profile/shape.
+- Invalidar/remover descriptors quando maps mudarem.
+
+### Consequencias
+
+- Preserva comportamento existente como autoridade funcional.
+- Evita ordinais gerados para configuracao divergente.
+- Adiciona um pequeno custo por query no lookup generated, nao por linha.
+- Diagnostics publicos de motivo de fallback continuam para etapa futura.
+
+## ADR-7.3-003 - Nao Relaxar Annotations de QueryMapped
+
+### Contexto
+
+Mesmo com generated materializer registrado, `QueryMapped*` ainda pode cair no fallback runtime.
+
+### Decisao
+
+Manter `RequiresUnreferencedCode` e `RequiresDynamicCode` em `QueryMapped*`.
+
+### Alternativas
+
+- Remover annotations quando houver generated descriptor.
+- Criar novas APIs AOT-only nesta etapa.
+
+### Consequencias
+
+- As APIs publicas continuam conservadoras para trimming/AOT.
+- A reducao futura de warnings exige caminho dedicado ou garantia de generated-only ainda nao especificada.

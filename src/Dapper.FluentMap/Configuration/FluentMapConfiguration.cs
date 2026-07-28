@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.Naming;
 
 namespace Dapper.FluentMap.Configuration
@@ -70,6 +71,57 @@ namespace Dapper.FluentMap.Configuration
             var mapper = CreateEntityMap<TMap>();
 
             FluentMapper.Registry.AddProfileMap(entityType, profileType, mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// Registers a generated materializer for the default mapping of the specified entity type.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <param name="columns">The ordered column shape and member bindings expected by the materializer.</param>
+        /// <param name="materializer">The generated row materializer.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity>(
+            IEnumerable<GeneratedMaterializerColumn> columns,
+            GeneratedRowMaterializer<TEntity> materializer)
+            where TEntity : class
+        {
+            return AddGeneratedMaterializer(new GeneratedMaterializerDescriptor<TEntity>(columns, materializer));
+        }
+
+        /// <summary>
+        /// Registers a generated materializer for the specified entity type and mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type used by the materializer.</typeparam>
+        /// <param name="columns">The ordered column shape and member bindings expected by the materializer.</param>
+        /// <param name="materializer">The generated row materializer.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity, TProfile>(
+            IEnumerable<GeneratedMaterializerColumn> columns,
+            GeneratedRowMaterializer<TEntity> materializer)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            return AddGeneratedMaterializer(new GeneratedMaterializerDescriptor<TEntity>(typeof(TProfile), columns, materializer));
+        }
+
+        /// <summary>
+        /// Registers a generated materializer descriptor.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <param name="descriptor">The generated materializer descriptor.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity>(
+            GeneratedMaterializerDescriptor<TEntity> descriptor)
+            where TEntity : class
+        {
+            if (descriptor == null)
+            {
+                throw new ArgumentNullException(nameof(descriptor));
+            }
+
+            FluentMapper.Registry.AddGeneratedMaterializer(descriptor);
             return this;
         }
 

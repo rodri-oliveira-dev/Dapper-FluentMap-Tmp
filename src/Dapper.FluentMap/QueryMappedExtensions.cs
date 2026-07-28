@@ -341,8 +341,24 @@ namespace Dapper.FluentMap
             where TEntity : class
         {
             var columnNames = GetColumnNames(reader);
-            var plan = FluentMapper.Registry.GetMaterializationPlan(typeof(TEntity), profileType, columnNames);
             var results = new List<TEntity>();
+
+            Func<IDataRecord, object> generatedMaterializer;
+            if (FluentMapper.Registry.TryGetGeneratedMaterializer(
+                typeof(TEntity),
+                profileType,
+                columnNames,
+                out generatedMaterializer))
+            {
+                while (reader.Read())
+                {
+                    results.Add((TEntity)generatedMaterializer(reader));
+                }
+
+                return results;
+            }
+
+            var plan = FluentMapper.Registry.GetMaterializationPlan(typeof(TEntity), profileType, columnNames);
 
             while (reader.Read())
             {
