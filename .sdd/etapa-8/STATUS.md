@@ -152,6 +152,30 @@ execucao de CRUD ao core.
   sucesso.
 - Inspecionados `Dapper.FluentMap.2.0.0.nupkg` e
   `Dapper.FluentMap.Analyzers.2.0.0.nupkg`; conteudos esperados preservados.
+- Revalidadas no GitHub arquivado as issues historicas #94, #114, #122, #123,
+  #126, #130 e #133; todas continuam fechadas no projeto original.
+- Criado `.sdd/etapa-8/07-historical-regression-suite.md` com matriz
+  issue/teste/projeto/status.
+- Criada suite explicita em
+  `test/Dapper.FluentMap.Tests/HistoricalRegression/HistoricalCoreRegressionTests.cs`.
+- Criada suite explicita em
+  `test/Dapper.FluentMap.Dommel.Tests/HistoricalRegression/DommelHistoricalRegressionTests.cs`.
+- Cobertas regressions historicas de core mapping, materializacao, nested
+  mapping, Dommel e persistence behavior.
+- Adicionado teste diferencial runtime/generated para semanticas historicas de
+  leitura.
+- Atualizado `.sdd/etapa-8/01-historical-issues.md` com evidencia precisa dos
+  testes do Prompt 8.6.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "Category=HistoricalRegression"`:
+  sucesso, 4 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --filter "Category=HistoricalRegression"`:
+  sucesso, 4 testes aprovados apos repetir isoladamente uma tentativa paralela
+  que encontrou lock de build.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 296 testes aprovados.
 
 ## Em andamento
 
@@ -198,6 +222,8 @@ Nenhum apos a validacao final deste prompt.
   original, preservar.
 - Prompt 8.3 adicionou cobertura explicita para #114, #126 e #133 na semantica
   de leitura/materializacao.
+- Prompt 8.6 consolidou a suite historica permanente com testes explicitos para
+  #94, #114, #122, #123, #126, #130 e #133.
 
 ## Riscos conhecidos
 
@@ -242,7 +268,10 @@ Nenhum apos a validacao final deste prompt.
 - `.sdd/etapa-8/04-read-semantics.md`
 - `.sdd/etapa-8/05-dommel-persistence-behavior.md`
 - `.sdd/etapa-8/06-persistence-diagnostics.md`
+- `.sdd/etapa-8/07-historical-regression-suite.md`
+- `test/Dapper.FluentMap.Tests/HistoricalRegression/HistoricalCoreRegressionTests.cs`
+- `test/Dapper.FluentMap.Dommel.Tests/HistoricalRegression/DommelHistoricalRegressionTests.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 8.5
+Ultimo prompt executado: 8.6

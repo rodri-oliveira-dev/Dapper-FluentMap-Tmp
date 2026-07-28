@@ -70,6 +70,17 @@ Evidencia: `ReadOnly()` e consumido pelo `Dapper.FluentMap.Dommel` como
 `DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`,
 que valida insert, update e leitura posterior via Dommel/SQLite.
 
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `DommelHistoricalRegressionTests.ReadOnlyPropertyShouldBeMaterializedButExcludedFromWrites`
+  valida que a coluna read-only e omitida de INSERT/UPDATE e ainda e lida por
+  `Dommel.Get`.
+- `HistoricalCoreRegressionTests.GeneratedAndRuntimeMaterializersShouldAgreeForHistoricalReadSemantics`
+  valida que read-only continua materializando igualmente no runtime materializer
+  e no generated materializer.
+
 ### Evidencia historica
 
 - `src/Dapper.FluentMap/Mapping/PropertyMap.cs`
@@ -141,6 +152,14 @@ e nao entram no SET do UPDATE. Coberto por
 Observacao de compatibilidade: `IsKey()` sem `SetGeneratedOption(None)` continua
 identity operacional no key resolver Dommel para preservar maps antigos.
 
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `DommelHistoricalRegressionTests.NonIdentityKeyShouldBeInsertedAndOnlyUsedForUpdateWhereClause`
+  valida INSERT real contendo a key atribuida pela aplicacao e UPDATE real usando
+  a key apenas no `WHERE`, nao no `SET`.
+
 ### Evidencia historica
 
 - `src/Dapper.FluentMap.Dommel/Mapping/DommelPropertyMap.cs`
@@ -205,6 +224,17 @@ sao traduzidos para omissao de INSERT e UPDATE, preservando leitura. Coberto por
 `DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`
 com coluna SQLite generated.
 
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `DommelHistoricalRegressionTests.ComputedPropertyShouldBeReadButExcludedFromInsertAndUpdate`
+  usa a API historica `SetGeneratedOption(DatabaseGeneratedOption.Computed)`,
+  valida SQL real sem a coluna computed em INSERT/UPDATE e confirma leitura do
+  valor gerado pelo SQLite.
+- `HistoricalCoreRegressionTests.GeneratedAndRuntimeMaterializersShouldAgreeForHistoricalReadSemantics`
+  confirma que metadata computed nao desabilita materializacao de leitura.
+
 ### Evidencia historica
 
 - `src/Dapper.FluentMap.Dommel/Resolvers/DommelPropertyResolver.cs`
@@ -263,6 +293,16 @@ posterior e preserva UPDATE por default. A regressao usa coluna
 `created_at TEXT DEFAULT CURRENT_TIMESTAMP` em
 `DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`.
 
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `DommelHistoricalRegressionTests.DatabaseDefaultOnInsertShouldOmitInsertColumnAndReadDatabaseValue`
+  valida que `DatabaseDefaultOnInsert()` omite a coluna no INSERT e le o valor
+  default do banco sem `Ignore()`.
+- `HistoricalCoreRegressionTests.GeneratedAndRuntimeMaterializersShouldAgreeForHistoricalReadSemantics`
+  confirma que database-default-on-insert continua neutro para materializacao.
+
 ### Evidencia historica
 
 - `src/Dapper.FluentMap/Compatibility/DapperIgnoredMemberMap.cs`
@@ -316,6 +356,14 @@ nome.
 
 Ja resolvido; manter como regression boundary.
 
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `HistoricalCoreRegressionTests.PropertyNamedLikeBclMemberShouldMapExpressionProperty`
+  valida materializacao Dapper de propriedade chamada `Format`, preservando o
+  uso do `MemberInfo` real da expression tree.
+
 ### Evidencia
 
 - `src/Dapper.FluentMap/Utils/ReflectionHelper.cs`
@@ -368,6 +416,16 @@ flat.
 
 Ja resolvido no core/generated; apenas regression test se a etapa tocar nessa
 area.
+
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `HistoricalCoreRegressionTests.NestedMemberPathsWithSameTerminalNameShouldMaterializeDistinctValues`
+  valida tres caminhos aninhados terminando em `Level` com valores distintos.
+- `HistoricalCoreRegressionTests.GeneratedAndRuntimeMaterializersShouldAgreeForHistoricalReadSemantics`
+  compara runtime e generated materializer para paths `Rank.Level` e
+  `Seniority.Level`.
 
 ### Evidencia
 
@@ -428,6 +486,17 @@ participacao em leitura e escrita.
 
 Ja resolvido para o bug original; manter regression boundary e nao reutilizar
 `Ignore()` para semantica de escrita.
+
+### Evidencia apos Prompt 8.6
+
+Regression suite explicita:
+
+- `HistoricalCoreRegressionTests.IgnoredPropertySelectedByDapperShouldRemainUnmappedWithoutThrowing`
+  valida `Dapper.Query<T>()` selecionando coluna ignorada sem
+  `NotImplementedException` e sem materializar a propriedade.
+- `HistoricalCoreRegressionTests.GeneratedAndRuntimeMaterializersShouldAgreeForHistoricalReadSemantics`
+  confirma que `Ignore()` permanece semantica de leitura tanto no runtime quanto
+  no generated materializer.
 
 ### Evidencia
 
