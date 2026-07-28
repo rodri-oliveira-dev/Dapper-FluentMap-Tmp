@@ -2,9 +2,9 @@
 
 ## Objetivo
 
-Definir a arquitetura e a especificacao inicial de semantica de persistencia de
-propriedades, separando materializacao/leitura de insert/update, sem implementar
-features produtivas significativas.
+Definir e implementar o modelo inicial de metadata de persistencia de
+propriedades, separando materializacao/leitura de insert/update, sem adicionar
+execucao de CRUD ao core.
 
 ## Concluido
 
@@ -25,21 +25,64 @@ features produtivas significativas.
 - Executado `dotnet restore ./Dapper.FluentMap.sln`: sucesso.
 - Executado `dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
 - Executado `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 254 testes aprovados.
+- Confirmado que o Prompt 8.1 estava aplicado nos documentos da Etapa 8 e no
+  estado do README/codigo ja existente.
+- Nao encontrada divergencia entre a documentacao da Etapa 8.1 e a
+  implementacao atual que exigisse registro corretivo separado.
+- Implementado `PropertyPersistenceMetadata`.
+- Implementado `IPropertyMapWithPersistenceMetadata`.
+- Adicionada metadata `Persistence` em `PropertyMapBase<TPropertyMap>`.
+- Adicionadas APIs fluent:
+  - `ExcludeFromInsert()`;
+  - `ExcludeFromUpdate()`;
+  - `ReadOnly()`;
+  - `Computed()`;
+  - `DatabaseDefaultOnInsert()`.
+- Preservado `Ignore()` como `Read=no`, `Insert=no`, `Update=no`.
+- Conectado `DommelPropertyMap.IsKey()`, `IsIdentity()` e
+  `SetGeneratedOption(...)` a metadata de persistencia.
+- Adicionada ponte conservadora `EffectiveGeneratedOption` para os resolvers
+  Dommel.
+- Adicionada metadata em `MemberMappingExplanation.Persistence` para
+  `Explain<T>()` e `Explain<T, TProfile>()`.
+- Criado `.sdd/etapa-8/03-persistence-metadata-design.md`.
+- Atualizado `.sdd/etapa-8/02-persistence-semantics-spec.md` com o modelo
+  efetivo.
+- Atualizado `README.md` com a API publica nova.
+- Adicionados testes de metadata no core e em Dommel.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build`:
+  sucesso, 228 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`:
+  sucesso, 13 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado novamente `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado novamente `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 274 testes aprovados.
+- Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `PackageLicenseUrl`/`licenseUrl`.
+- Inspecionado `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`:
+  contem `lib/netstandard2.0/Dapper.FluentMap.dll`,
+  `lib/netstandard2.0/Dapper.FluentMap.xml`, nuspec e metadados NuGet; dependencia
+  `Dapper` 2.1.79 preservada.
 
 ## Em andamento
 
-Nenhum apos o commit local deste prompt.
+Nenhum apos a validacao final deste prompt.
 
 ## Proximos passos
 
-1. Criar modelo de metadata aditivo no core.
-2. Definir e implementar APIs publicas pequenas para semantica de escrita.
-3. Adaptar FluentMap.Dommel para consumir a metadata sem gerar SQL no core.
-4. Criar suite de regressao historica para #94, #122, #123, #130, #114, #126 e
+1. Adaptar FluentMap.Dommel para consumo operacional completo de metadata
+   `Insert`/`Update` quando houver contrato seguro para nao confundir update com
+   generated.
+2. Criar suite de regressao historica para #94, #122, #123, #130, #114, #126 e
    #133.
-5. Atualizar diagnostics/analyzers.
-6. Atualizar README e XML docs.
-7. Fazer hardening de cache, profiles, generated materializers e Dommel SQL real.
+3. Atualizar analyzers/source generator para reconhecer a nova DSL.
+4. Fazer hardening de cache, profiles, generated materializers e Dommel SQL real.
 
 ## Decisoes relevantes
 
@@ -52,6 +95,8 @@ Nenhum apos o commit local deste prompt.
 - `Key` nao implica `Identity`.
 - Dommel traduz metadata para `ColumnPropertyInfo` e seus resolvers.
 - Generated materializers observam apenas semantica de leitura.
+- `IPropertyMap` nao foi alterada; metadata nova fica em interface opcional.
+- `Explain<T>()` ja expoe metadata de persistencia.
 
 ## Issues historicas
 
@@ -79,6 +124,11 @@ Nenhum apos o commit local deste prompt.
 - Nested paths usam `MemberPath`, mas Dommel trabalha com propriedades flat.
 - `Generated` e amplo demais para representar sozinho default, computed e
   identity.
+- Dommel ainda tem uma ponte de compatibilidade: `IsKey()` sem
+  `SetGeneratedOption(None)` continua identity operacional nos resolvers, embora
+  a metadata de core diferencie key de identity.
+- `ExcludeFromInsert()` isolado e `DatabaseDefaultOnInsert()` com update ativo
+  ainda nao podem ser traduzidos fielmente para `ColumnPropertyInfo.IsGenerated`.
 
 ## Arquivos importantes
 
@@ -87,6 +137,7 @@ Nenhum apos o commit local deste prompt.
 - `.sdd/etapa-8/DECISIONS.md`
 - `.sdd/etapa-8/STATUS.md`
 - `src/Dapper.FluentMap/Mapping/PropertyMap.cs`
+- `src/Dapper.FluentMap/Mapping/PropertyPersistenceMetadata.cs`
 - `src/Dapper.FluentMap/Mapping/EntityMap.cs`
 - `src/Dapper.FluentMap/Mapping/MemberPath.cs`
 - `src/Dapper.FluentMap/Compatibility/DapperFluentPropertyTypeMap.cs`
@@ -102,4 +153,4 @@ Nenhum apos o commit local deste prompt.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 8.1
+Ultimo prompt executado: 8.2

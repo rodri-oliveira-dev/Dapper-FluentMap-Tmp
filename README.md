@@ -93,6 +93,23 @@ public sealed class ProductMap : EntityMap<Product>
 
 Explicit mappings take precedence over convention mappings. Unmapped members fall back to Dapper's normal behavior.
 
+Persistence metadata can describe write participation without changing read materialization:
+
+```csharp
+Map(product => product.CreatedAt)
+    .ToColumn("created_at")
+    .DatabaseDefaultOnInsert();
+
+Map(product => product.UpdatedAt)
+    .ToColumn("updated_at")
+    .ReadOnly();
+
+Map(product => product.Total)
+    .Computed();
+```
+
+`Ignore()` keeps its historical meaning: the property does not participate in FluentMap materialization or generated persistence metadata. `ReadOnly()` still allows materialization, but excludes the property from INSERT and UPDATE metadata.
+
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
 ```csharp
@@ -515,6 +532,23 @@ public sealed class ProductMap : EntityMap<Product>
 ```
 
 Mapeamentos explícitos têm precedência sobre convenções. Membros não mapeados usam o comportamento normal do Dapper.
+
+Metadata de persistência pode descrever participação em escrita sem alterar a materialização de leitura:
+
+```csharp
+Map(product => product.CreatedAt)
+    .ToColumn("created_at")
+    .DatabaseDefaultOnInsert();
+
+Map(product => product.UpdatedAt)
+    .ToColumn("updated_at")
+    .ReadOnly();
+
+Map(product => product.Total)
+    .Computed();
+```
+
+`Ignore()` mantém seu significado histórico: a propriedade não participa da materialização do FluentMap nem da metadata de persistência gerada. `ReadOnly()` ainda permite materialização, mas exclui a propriedade da metadata de INSERT e UPDATE.
 
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 

@@ -184,3 +184,81 @@ alterar `Read`.
 Evita acoplamento entre leitura e escrita. O generator/analyzer pode reconhecer
 a nova API para diagnostics, mas nao deve mudar delegates de leitura por causa
 de insert/update.
+
+## ADR-9 - Metadata imutavel exposta por interface aditiva
+
+### Contexto
+
+`IPropertyMap` e superficie publica sensivel. Adicionar propriedades diretamente
+seria breaking para implementacoes customizadas.
+
+### Decisao
+
+Criar `PropertyPersistenceMetadata` como objeto imutavel e
+`IPropertyMapWithPersistenceMetadata` como interface opcional. `PropertyMapBase`
+implementa a interface.
+
+### Alternativas consideradas
+
+- Adicionar propriedades a `IPropertyMap`.
+- Espalhar bools independentes em `PropertyMapBase`.
+- Usar somente enum flags.
+
+### Consequencias
+
+Compatibilidade binaria preservada. O modelo fica coeso e inspecionavel por
+diagnostics e extensoes.
+
+## ADR-10 - API publica minima no core
+
+### Contexto
+
+A Etapa 8 precisa expressar escrita sem transformar o core em CRUD.
+
+### Decisao
+
+Adicionar somente:
+
+- `ExcludeFromInsert()`;
+- `ExcludeFromUpdate()`;
+- `ReadOnly()`;
+- `Computed()`;
+- `DatabaseDefaultOnInsert()`.
+
+### Consequencias
+
+O core descreve intencao e participacao, mas nao gera SQL. APIs de Dommel
+existentes continuam responsaveis por key/identity.
+
+## ADR-11 - Ponte Dommel conservadora
+
+### Contexto
+
+Dommel 3.5.3 possui `ColumnPropertyInfo.IsGenerated`, mas nao separa insert e
+update no contrato consumido hoje.
+
+### Decisao
+
+`DommelPropertyMap` grava metadata. Os resolvers traduzem apenas estados que o
+contrato atual consegue representar sem perder semantica critica. Key sem
+`GeneratedOption` preserva o legado operacional como identity.
+
+### Consequencias
+
+Metadata de `ExcludeFromInsert()` isolado fica disponivel para futuro consumo,
+mas nao e forcada como `IsGenerated` quando isso tambem removeria update.
+
+## ADR-12 - Explain expoe persistence metadata
+
+### Contexto
+
+Diagnostics futuros precisam diferenciar leitura, ignore e escrita.
+
+### Decisao
+
+Adicionar `MemberMappingExplanation.Persistence`.
+
+### Consequencias
+
+`FluentMapper.Explain<T>()` passa a expor a metadata efetiva sem acoplar
+diagnostics a SQL ou a Dommel.

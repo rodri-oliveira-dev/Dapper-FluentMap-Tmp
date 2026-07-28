@@ -46,11 +46,14 @@ namespace Dapper.FluentMap.Dommel.Resolvers
                         var dommelPropertyMap = propertyMap as DommelPropertyMap;
                         if (dommelPropertyMap != null)
                         {
-                            yield return new ColumnPropertyInfo(property, dommelPropertyMap.GeneratedOption ?? (dommelPropertyMap.Key ? DatabaseGeneratedOption.Identity : DatabaseGeneratedOption.None));
+                            yield return new ColumnPropertyInfo(property, dommelPropertyMap.EffectiveGeneratedOption);
                         }
                         else
                         {
-                            yield return new ColumnPropertyInfo(property);
+                            var mapWithPersistence = propertyMap as IPropertyMapWithPersistenceMetadata;
+                            yield return mapWithPersistence == null
+                                ? new ColumnPropertyInfo(property)
+                                : new ColumnPropertyInfo(property, ResolveGeneratedOption(mapWithPersistence.Persistence));
                         }
                     }
                 }
@@ -62,6 +65,21 @@ namespace Dapper.FluentMap.Dommel.Resolvers
                     yield return property;
                 }
             }
+        }
+
+        private static DatabaseGeneratedOption ResolveGeneratedOption(PropertyPersistenceMetadata persistence)
+        {
+            if (persistence.IsIdentity)
+            {
+                return DatabaseGeneratedOption.Identity;
+            }
+
+            if (!persistence.ParticipatesInInsert && !persistence.ParticipatesInUpdate)
+            {
+                return DatabaseGeneratedOption.Computed;
+            }
+
+            return DatabaseGeneratedOption.None;
         }
     }
 }

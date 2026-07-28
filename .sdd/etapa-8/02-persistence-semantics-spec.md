@@ -1,6 +1,6 @@
 # Etapa 8 - Persistence Semantics Specification
 
-Status: especificacao inicial, sem implementacao produtiva.
+Status: refinada e aplicada no Prompt 8.2.
 
 ## Objetivo
 
@@ -299,11 +299,89 @@ Racional:
 - o core nao deve gerar SQL, mas pode descrever metadata;
 - Dommel deve continuar responsavel por traduzir metadata para comandos CRUD.
 
-## Forma recomendada para API futura
+## Modelo efetivamente escolhido no Prompt 8.2
 
-Nao implementar neste prompt. Direcao preferida para prompts seguintes:
+O core passa a expor um modelo aditivo:
 
-1. Introduzir metadata interna/aditiva de persistencia com defaults compativeis:
+- `PropertyPersistenceMetadata`;
+- `IPropertyMapWithPersistenceMetadata`;
+- `PropertyMapBase<TPropertyMap>.Persistence`.
+
+`IPropertyMap` nao foi alterada para preservar compatibilidade binaria. Maps que
+nao implementam a interface opcional continuam sendo interpretados por defaults:
+
+```text
+Ignored=true  => PropertyPersistenceMetadata.Ignored
+Ignored=false => PropertyPersistenceMetadata.Default
+```
+
+Defaults efetivos:
+
+```text
+Read/Materialization = yes
+Insert               = yes
+Update               = yes
+Ignore               = no
+Key                  = no
+Identity             = no
+Generated            = no
+Computed             = no
+DefaultOnInsert      = no
+```
+
+`Ignore()` preserva a semantica historica:
+
+```text
+Ignore
+=> Read/Materialization = no
+=> Insert               = no
+=> Update               = no
+=> Key/Identity/etc.    = no
+```
+
+APIs publicas adicionadas ao `PropertyMapBase<TPropertyMap>`:
+
+```csharp
+ExcludeFromInsert();
+ExcludeFromUpdate();
+ReadOnly();
+Computed();
+DatabaseDefaultOnInsert();
+```
+
+`ReadOnly()` e um atalho para excluir insert e update sem afetar leitura.
+`Computed()` e `ReadOnly()` mais metadata `Generated` e `Computed`.
+`DatabaseDefaultOnInsert()` exclui insert, preserva update por default e marca
+`Generated` + `DefaultOnInsert`.
+
+Dommel conecta suas APIs existentes ao mesmo modelo:
+
+```csharp
+IsKey();
+IsIdentity();
+SetGeneratedOption(DatabaseGeneratedOption option);
+```
+
+No core, key nao implica identity. Na ponte Dommel, o resolver ainda preserva o
+comportamento historico de `IsKey()` sem `SetGeneratedOption(None)` como identity
+operacional para `ColumnPropertyInfo`, porque mudar isso agora alteraria SQL
+gerado por consumidores existentes. A metadata de core, entretanto, diferencia:
+
+```text
+IsKey()      => Key=yes, Identity=no, Insert=yes, Update=no
+IsIdentity() => Key=yes, Identity=yes, Generated=yes, Insert=no, Update=no
+```
+
+`ExcludeFromInsert()` isolado e `DatabaseDefaultOnInsert()` com update habilitado
+ficam representados corretamente na metadata, mas nao sao traduzidos para
+`ColumnPropertyInfo.IsGenerated` quando essa traducao omitiria tambem o update.
+Essa traducao operacional pertence a prompt posterior de Dommel/CRUD.
+
+## Forma recomendada para API publica
+
+Implementada parcialmente neste prompt, mantendo a direcao:
+
+1. Introduzir metadata aditiva de persistencia com defaults compativeis:
    `Read=yes`, `Insert=yes`, `Update=yes`, `Key=no`, `Generated=no`.
 2. Preservar `Ignore()` como `Read=no`, `Insert=no`, `Update=no`.
 3. Oferecer API composavel por operacao:
@@ -312,7 +390,7 @@ Nao implementar neste prompt. Direcao preferida para prompts seguintes:
    `ReadOnly()` como `ExcludeFromInsert().ExcludeFromUpdate()`;
    `Computed()` como `ReadOnly()` + `Generated/Computed`;
    `DatabaseDefaultOnInsert()` como `ExcludeFromInsert()` + generated default.
-5. Manter ou adaptar Dommel APIs existentes:
+5. Manter e adaptar Dommel APIs existentes:
    `IsKey()`, `IsIdentity()`, `SetGeneratedOption(...)`.
 
 ## Compatibilidade

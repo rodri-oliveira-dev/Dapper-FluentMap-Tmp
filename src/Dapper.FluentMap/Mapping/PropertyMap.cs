@@ -34,7 +34,7 @@ namespace Dapper.FluentMap.Mapping
     /// Serves as the base class for all property mapping implementations.
     /// </summary>
     /// <typeparam name="TPropertyMap">The type of the property mapping.</typeparam>
-    public abstract class PropertyMapBase<TPropertyMap> : IPropertyMapWithMemberPath
+    public abstract class PropertyMapBase<TPropertyMap> : IPropertyMapWithMemberPath, IPropertyMapWithPersistenceMetadata
         where TPropertyMap : class, IPropertyMap
     {
         /// <summary>
@@ -52,6 +52,7 @@ namespace Dapper.FluentMap.Mapping
             PropertyInfo = info;
             MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = info.Name;
+            Persistence = PropertyPersistenceMetadata.Default;
         }
 
         /// <summary>
@@ -71,6 +72,7 @@ namespace Dapper.FluentMap.Mapping
             PropertyInfo = info;
             MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = columnName;
+            Persistence = PropertyPersistenceMetadata.Default;
         }
 
         /// <summary>
@@ -92,6 +94,7 @@ namespace Dapper.FluentMap.Mapping
             MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = columnName;
             CaseSensitive = caseSensitive;
+            Persistence = PropertyPersistenceMetadata.Default;
         }
 
         /// <summary>
@@ -113,6 +116,11 @@ namespace Dapper.FluentMap.Mapping
         /// Gets a reference to the <see cref="System.Reflection.PropertyInfo"/> of this mapping.
         /// </summary>
         public PropertyInfo PropertyInfo { get; }
+
+        /// <summary>
+        /// Gets the persistence metadata configured for this property.
+        /// </summary>
+        public PropertyPersistenceMetadata Persistence { get; private set; }
 
         internal MemberPath MemberPath { get; private set; }
 
@@ -148,7 +156,105 @@ namespace Dapper.FluentMap.Mapping
         public TPropertyMap Ignore()
         {
             Ignored = true;
+            Persistence = PropertyPersistenceMetadata.Ignored;
             return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Excludes the current property from generated INSERT operations while preserving read materialization.
+        /// </summary>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ExcludeFromInsert()
+        {
+            Persistence = Persistence.ExcludeFromInsert();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Excludes the current property from generated UPDATE operations while preserving read materialization.
+        /// </summary>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ExcludeFromUpdate()
+        {
+            Persistence = Persistence.ExcludeFromUpdate();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Marks the current property as read-only for generated persistence operations.
+        /// </summary>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ReadOnly()
+        {
+            Persistence = Persistence.ReadOnly();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Marks the current property as computed by the database.
+        /// </summary>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap Computed()
+        {
+            Persistence = Persistence.Computed();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Marks the current property as having a database default value when omitted from INSERT.
+        /// </summary>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap DatabaseDefaultOnInsert()
+        {
+            Persistence = Persistence.DatabaseDefaultOnInsert();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Applies persistence metadata configured by derived mapping types.
+        /// </summary>
+        /// <param name="persistence">The persistence metadata to apply.</param>
+        protected void UsePersistence(PropertyPersistenceMetadata persistence)
+        {
+            if (persistence == null)
+            {
+                throw new ArgumentNullException(nameof(persistence));
+            }
+
+            Persistence = persistence;
+            Ignored = persistence.IgnoredByFluentMap;
+        }
+
+        /// <summary>
+        /// Marks the current property as a persistence key.
+        /// </summary>
+        protected void MarkAsKey()
+        {
+            UsePersistence(Persistence.Key());
+        }
+
+        /// <summary>
+        /// Marks the current property as an identity generated by the database.
+        /// </summary>
+        protected void MarkAsIdentity()
+        {
+            UsePersistence(Persistence.Identity());
+        }
+
+        /// <summary>
+        /// Clears database-generated semantics from the current property.
+        /// </summary>
+        protected void MarkAsNotGenerated()
+        {
+            UsePersistence(Persistence.GeneratedNone());
+        }
+
+        /// <summary>
+        /// Marks the current property as computed by the database.
+        /// </summary>
+        protected void MarkAsComputed()
+        {
+            UsePersistence(Persistence.Computed());
         }
 
         #region EditorBrowsableStates

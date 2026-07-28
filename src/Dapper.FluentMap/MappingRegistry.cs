@@ -756,7 +756,8 @@ namespace Dapper.FluentMap
                     inheritedFrom: null,
                     conventionType: null,
                     constructorParameters: constructorParameters,
-                    materialization: MappingMaterialization.Dapper));
+                    materialization: MappingMaterialization.Dapper,
+                    persistence: PropertyPersistenceMetadata.Default));
                 configuredPaths.Add(memberPath);
             }
         }
@@ -784,7 +785,8 @@ namespace Dapper.FluentMap
                 descriptor.InheritedFrom,
                 descriptor.ConventionType,
                 constructorParameters,
-                materialization));
+                materialization,
+                PropertyMapPersistence.GetPersistence(descriptor.Map)));
             configuredPaths.Add(memberPath);
         }
 

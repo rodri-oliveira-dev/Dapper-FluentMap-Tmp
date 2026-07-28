@@ -1,4 +1,5 @@
 using Dapper.FluentMap.Dommel.Mapping;
+using Dapper.FluentMap.Mapping;
 using System;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
@@ -124,6 +125,97 @@ namespace Dapper.FluentMap.Dommel.Tests
             Assert.All(properties, p => Assert.False(p.IsGenerated));
         }
 
+        [Fact]
+        public void KeyShouldBeRepresentedInPersistenceMetadataWithoutImplyingIdentity()
+        {
+            PreTest();
+
+            var map = new MapSingleCustomIdPropertyMap();
+            var customId = map.PropertyMaps.Single(x => x.PropertyInfo.Name == nameof(DoubleIdEntity.CustomId));
+            var persistence = ((IPropertyMapWithPersistenceMetadata)customId).Persistence;
+
+            Assert.True(persistence.IsKey);
+            Assert.False(persistence.IsIdentity);
+            Assert.False(persistence.IsGenerated);
+            Assert.True(persistence.ParticipatesInInsert);
+            Assert.False(persistence.ParticipatesInUpdate);
+            Assert.True(persistence.ParticipatesInMaterialization);
+        }
+
+        [Fact]
+        public void IdentityShouldBeRepresentedAsGeneratedKeyMetadata()
+        {
+            PreTest();
+
+            var map = new MapWithCustomIdPropertyMap();
+            var customId = map.PropertyMaps.Single();
+            var persistence = ((IPropertyMapWithPersistenceMetadata)customId).Persistence;
+
+            Assert.True(persistence.IsKey);
+            Assert.True(persistence.IsIdentity);
+            Assert.True(persistence.IsGenerated);
+            Assert.False(persistence.ParticipatesInInsert);
+            Assert.False(persistence.ParticipatesInUpdate);
+            Assert.True(persistence.ParticipatesInMaterialization);
+        }
+
+        [Fact]
+        public void ComputedShouldBeRepresentedAsGeneratedReadOnlyMetadata()
+        {
+            PreTest();
+
+            var map = new MapComputedProperty();
+            var property = map.PropertyMaps.Single();
+            var persistence = ((IPropertyMapWithPersistenceMetadata)property).Persistence;
+
+            Assert.True(persistence.IsGenerated);
+            Assert.True(persistence.IsComputed);
+            Assert.False(persistence.ParticipatesInInsert);
+            Assert.False(persistence.ParticipatesInUpdate);
+            Assert.True(persistence.ParticipatesInMaterialization);
+        }
+
+        [Fact]
+        public void GeneratedOptionNoneShouldKeepNonIdentityKeyInsertable()
+        {
+            PreTest();
+
+            var map = new MapCompositeKeyPropertyMap();
+            var key = map.PropertyMaps.First();
+            var persistence = ((IPropertyMapWithPersistenceMetadata)key).Persistence;
+
+            Assert.True(persistence.IsKey);
+            Assert.False(persistence.IsIdentity);
+            Assert.False(persistence.IsGenerated);
+            Assert.True(persistence.ParticipatesInInsert);
+            Assert.False(persistence.ParticipatesInUpdate);
+        }
+
+        [Fact]
+        public void ComputedKeyShouldThrowConfigurationException()
+        {
+            PreTest();
+
+            var exception = Assert.Throws<FluentMapConfigurationException>(() => new InvalidComputedKeyMap());
+
+            Assert.Contains("computed", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("key", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void CoreReadOnlyMetadataShouldBeConsumableByDommelPropertyResolver()
+        {
+            PreTest();
+
+            FluentMapper.Initialize(c => c.AddMap(new CoreReadOnlyMap()));
+
+            var propertyResolver = new Dommel.Resolvers.DommelPropertyResolver();
+            var properties = propertyResolver.ResolveProperties(typeof(DoubleIdEntity));
+            var name = properties.Single(p => p.Property.Name == nameof(DoubleIdEntity.Name));
+
+            Assert.True(name.IsGenerated);
+        }
+
         private static void PreTest()
         {
             FluentMapper.EntityMaps.Clear();
@@ -161,6 +253,30 @@ namespace Dapper.FluentMap.Dommel.Tests
             {
                 Map(p => p.KeyPartOne).IsKey().SetGeneratedOption(DatabaseGeneratedOption.None);
                 Map(p => p.KeyPartTwo).IsKey().SetGeneratedOption(DatabaseGeneratedOption.None);
+            }
+        }
+
+        private class MapComputedProperty : DommelEntityMap<DoubleIdEntity>
+        {
+            public MapComputedProperty()
+            {
+                Map(p => p.Name).Computed();
+            }
+        }
+
+        private class InvalidComputedKeyMap : DommelEntityMap<DoubleIdEntity>
+        {
+            public InvalidComputedKeyMap()
+            {
+                Map(p => p.CustomId).Computed().IsKey();
+            }
+        }
+
+        private class CoreReadOnlyMap : EntityMap<DoubleIdEntity>
+        {
+            public CoreReadOnlyMap()
+            {
+                Map(p => p.Name).ReadOnly();
             }
         }
     }
