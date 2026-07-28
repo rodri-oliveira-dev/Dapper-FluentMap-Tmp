@@ -251,6 +251,131 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
+        public void ReadConverterTypeShouldGenerateConvertedMaterializer()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Status Status { get; set; }
+}
+
+public enum Status
+{
+    Unknown,
+    Active
+}
+
+public sealed class StatusConverter : IReadPropertyConverter<string, Status>
+{
+    public Status ConvertFromDatabase(string value)
+    {
+        return value == ""A"" ? Status.Active : Status.Unknown;
+    }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Status)
+            .ToColumn(""status"")
+            .ConvertFromDatabaseUsing<StatusConverter, string>();
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"status\", \"Status\", typeof(global::StatusConverter), typeof(string), typeof(global::Status))", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("private static readonly global::StatusConverter Read0Converter0 = new global::StatusConverter();", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.Status = ReadConverted<string, global::Status, global::Status>(record, 0, Read0Converter0", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReadConverterInstanceShouldUseRuntimeMaterializerFallback()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Name { get; set; }
+}
+
+public sealed class NameConverter : IReadPropertyConverter<string, string>
+{
+    public string ConvertFromDatabase(string value)
+    {
+        return value;
+    }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Name)
+            .ToColumn(""name"")
+            .ConvertFromDatabaseUsing<string, string>(new NameConverter());
+    }
+}";
+
+            var result = RunGenerator(source);
+            var diagnostic = Assert.Single(result.DfmDiagnostics);
+
+            Assert.Equal(MappingRegistrationGenerator.SkippedGeneratedMaterializerDiagnosticId, diagnostic.Id);
+            Assert.Contains("instances and delegates", diagnostic.GetMessage(), StringComparison.Ordinal);
+            Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.DoesNotContain(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void InvalidReadConverterContractShouldReportDiagnostic()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Status Status { get; set; }
+}
+
+public enum Status
+{
+    Unknown,
+    Active
+}
+
+public sealed class InvalidStatusConverter : IReadPropertyConverter<int, string>
+{
+    public string ConvertFromDatabase(int value)
+    {
+        return value.ToString();
+    }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Status)
+            .ToColumn(""status"")
+            .ConvertFromDatabaseUsing<InvalidStatusConverter, int>();
+    }
+}";
+
+            var result = RunGenerator(source, assertCompiles: false);
+            var diagnostic = Assert.Single(result.DfmDiagnostics);
+
+            Assert.Equal(MappingRegistrationGenerator.InvalidGeneratedReadConverterDiagnosticId, diagnostic.Id);
+            Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+            Assert.Contains("cannot be assigned", diagnostic.GetMessage(), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void MultipleMappingsShouldBeGeneratedInDeterministicOrder()
         {
             var source = @"

@@ -511,7 +511,9 @@ namespace Dapper.FluentMap
                         return false;
                     }
 
-                    if (PropertyMapConversion.GetConversion(fluentMap).HasReadConverter)
+                    if (!GeneratedReadConverterMatchesEffectiveMapping(
+                        PropertyMapConversion.GetConversion(fluentMap),
+                        column))
                     {
                         return false;
                     }
@@ -543,9 +545,31 @@ namespace Dapper.FluentMap
                 {
                     return false;
                 }
+
+                if (column.ReadConverterType != null)
+                {
+                    return false;
+                }
             }
 
             return true;
+        }
+
+        private static bool GeneratedReadConverterMatchesEffectiveMapping(
+            PropertyConversionMetadata conversion,
+            GeneratedMaterializerColumn column)
+        {
+            if (conversion == null || !conversion.HasReadConverter)
+            {
+                return column.ReadConverterType == null &&
+                       column.ReadConverterDatabaseType == null &&
+                       column.ReadConverterPropertyType == null;
+            }
+
+            var readConverter = conversion.ReadConverter;
+            return column.ReadConverterType == readConverter.ConverterType &&
+                   column.ReadConverterDatabaseType == readConverter.DatabaseType &&
+                   column.ReadConverterPropertyType == readConverter.PropertyType;
         }
 
         private void InvalidateType(Type type)

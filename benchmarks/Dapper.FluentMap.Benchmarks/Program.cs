@@ -63,8 +63,10 @@ public class MaterializationSteadyStateBenchmarks
         QueryMultipleMappedSimple();
         QueryMultipleMappedSimpleRuntimeFallback();
         QueryMappedRuntimeNoConverter();
+        QueryMappedGeneratedSimpleConverter();
         QueryMappedRuntimeSimpleConverter();
         QueryMappedRuntimeTypeHandler();
+        QueryMappedGeneratedPropertyConverter();
         QueryMappedRuntimePropertyConverter();
     }
 
@@ -237,6 +239,14 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int QueryMappedGeneratedSimpleConverter()
+    {
+        return _connection.QueryMapped<RuntimeSimpleConverterCustomer>(
+                "SELECT Id AS customer_id, Name AS full_name FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
     public int QueryMappedRuntimeSimpleConverter()
     {
         return _connection.QueryMapped<RuntimeSimpleConverterCustomer>(
@@ -249,6 +259,14 @@ public class MaterializationSteadyStateBenchmarks
     {
         return _connection.QueryMapped<RuntimeTypeHandlerCustomer>(
                 "SELECT Cpf AS code, Id AS customer_id FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedGeneratedPropertyConverter()
+    {
+        return _connection.QueryMapped<RuntimePropertyConverterCustomer>(
+                "SELECT Id AS customer_id, Cpf AS code FROM BenchmarkRows;")
             .Count();
     }
 

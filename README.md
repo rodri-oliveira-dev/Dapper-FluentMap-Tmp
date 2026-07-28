@@ -176,6 +176,10 @@ Dapper `TypeHandler<TProperty>` or FluentMap's default conversion. Normal Dapper
 queries (`Query<T>()`) and Dommel write operations are unchanged; write
 converter metadata is stored for a later parameter-conversion increment.
 
+Generated materializers can emit property read converter calls for statically
+supported converter-type mappings. Converter instances and delegates continue to
+use the runtime fallback.
+
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
 ```csharp
@@ -418,7 +422,7 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-Generated registration calls the existing `AddMap<TMap>()` / `AddProfile<TMap>()` paths. For explicit maps with literal columns and supported deterministic construction, it also registers generated row materializers for the matching ordered column shape, including flat properties, nested object paths and constructor-built Value Objects. Unsupported maps and unexpected shapes continue to use the runtime fallback. It does not scan referenced assemblies, execute map constructors during generation or replace `FluentMapper.Validate()`.
+Generated registration calls the existing `AddMap<TMap>()` / `AddProfile<TMap>()` paths. For explicit maps with literal columns and supported deterministic construction, it also registers generated row materializers for the matching ordered column shape, including flat properties, nested object paths, constructor-built Value Objects and statically supported property read converters. Unsupported maps and unexpected shapes continue to use the runtime fallback. It does not scan referenced assemblies, execute map constructors during generation or replace `FluentMapper.Validate()`.
 
 The core runtime also exposes low-level generated materializer registration contracts for generator-emitted code. These contracts are additive infrastructure; current consumers do not need to register materializers manually, and missing generated materializers continue to use the existing runtime fallback.
 
@@ -790,6 +794,10 @@ Consultas Dapper normais (`Query<T>()`) e escritas Dommel nao mudam; metadata de
 write converter fica armazenada para um incremento futuro de conversao de
 parametros.
 
+Materializadores gerados podem emitir chamadas de read converter por propriedade
+quando o mapping usa um converter por tipo suportado estaticamente. Converters
+por instancia e delegate continuam usando runtime fallback.
+
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 
 ```csharp
@@ -1032,7 +1040,7 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-O registro gerado chama os caminhos existentes `AddMap<TMap>()` / `AddProfile<TMap>()`. Para maps explícitos com colunas literais e construção determinística suportada, ele também registra materializadores de linha gerados para o shape ordenado de colunas correspondente, incluindo propriedades flat, caminhos aninhados e Value Objects construídos por construtor. Maps não suportados e shapes inesperados continuam usando o fallback runtime. Ele não escaneia assemblies referenciados, não executa construtores de maps durante a geração e não substitui `FluentMapper.Validate()`.
+O registro gerado chama os caminhos existentes `AddMap<TMap>()` / `AddProfile<TMap>()`. Para maps explícitos com colunas literais e construção determinística suportada, ele também registra materializadores de linha gerados para o shape ordenado de colunas correspondente, incluindo propriedades flat, caminhos aninhados, Value Objects construídos por construtor e property read converters suportados estaticamente. Maps não suportados e shapes inesperados continuam usando o fallback runtime. Ele não escaneia assemblies referenciados, não executa construtores de maps durante a geração e não substitui `FluentMapper.Validate()`.
 
 O runtime principal também expõe contratos de baixo nível para registro de materializadores gerados por código emitido por generator. Esses contratos são infraestrutura aditiva; consumidores atuais não precisam registrar materializadores manualmente, e a ausência de materializadores gerados continua usando o fallback runtime existente.
 

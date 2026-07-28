@@ -135,6 +135,13 @@ static void AssertGeneratedQueryMappedMaterializer()
     {
         throw new InvalidOperationException("Generated Value Object QueryMapped materializer was not used correctly.");
     }
+
+    var converted = connection.QueryMappedSingle<ConvertedCustomer>(
+        "SELECT 'A' AS status;");
+    if (converted.Status != AccountStatus.Active)
+    {
+        throw new InvalidOperationException("Generated property converter materializer was not used correctly.");
+    }
 }
 #endif
 
@@ -217,5 +224,34 @@ public sealed class ValueObjectCustomerMap : EntityMap<ValueObjectCustomer>
     public ValueObjectCustomerMap()
     {
         Map(customer => customer.Cpf.Number).ToColumn("cpf");
+    }
+}
+
+public enum AccountStatus
+{
+    Unknown,
+    Active
+}
+
+public sealed class ConvertedCustomer
+{
+    public AccountStatus Status { get; set; }
+}
+
+public sealed class ConvertedCustomerMap : EntityMap<ConvertedCustomer>
+{
+    public ConvertedCustomerMap()
+    {
+        Map(customer => customer.Status)
+            .ToColumn("status")
+            .ConvertFromDatabaseUsing<AccountStatusConverter, string>();
+    }
+}
+
+public sealed class AccountStatusConverter : IReadPropertyConverter<string, AccountStatus>
+{
+    public AccountStatus ConvertFromDatabase(string value)
+    {
+        return value == "A" ? AccountStatus.Active : AccountStatus.Unknown;
     }
 }

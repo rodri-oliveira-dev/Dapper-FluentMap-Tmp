@@ -67,3 +67,52 @@ O resultado confirma que o caminho novo compila e executa sem regressao obvia de
 alocacao por linha. A diferenca favoravel dos converters nesta execucao parece
 mais ligada ao shape simples e ao custo da conversao padrao sem converter do que
 a uma otimizacao deliberada. Nao foi feita otimizacao prematura antes da medida.
+
+## Apos Prompt 10.4
+
+O Prompt 10.4 adicionou materializacao gerada para read converters por tipo
+estaticamente suportados. Foram executados benchmarks curtos em 2026-07-28,
+mantendo `--job Dry`, `--warmupCount 1`, `--minIterationCount 1` e
+`--maxIterationCount 2`.
+
+Comando para converter/no-converter em shapes de duas colunas:
+
+```powershell
+dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2
+```
+
+Resultado observado:
+
+| Method | Mean | Allocated |
+|---|---:|---:|
+| QueryMappedGeneratedSimpleConverter | 1.421 ms | 189.99 KB |
+| QueryMappedRuntimePropertyConverter | 1.453 ms | 165.98 KB |
+| QueryMappedRuntimeNoConverter | 1.579 ms | 142.55 KB |
+| QueryMappedRuntimeSimpleConverter | 1.885 ms | 189.43 KB |
+| QueryMappedGeneratedPropertyConverter | 2.036 ms | 166.55 KB |
+
+Comando para comparar o par gerado/runtime sem converter no shape simples
+historico:
+
+```powershell
+dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMappedSimple*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2
+```
+
+Recorte relevante:
+
+| Method | Mean | Allocated |
+|---|---:|---:|
+| QueryMappedSimpleRuntimeFallback | 3.100 ms | 361.63 KB |
+| QueryMappedSimple | 3.270 ms | 362.82 KB |
+
+Interpretacao:
+
+- A execucao e smoke de performance, nao conclusao estatistica; o
+  BenchmarkDotNet alertou que os tempos de iteracao ficaram abaixo de 100 ms.
+- O generated converter remove fallback runtime quando o shape casa, compila e
+  executa sem regressao obvia de alocacao.
+- O resultado local ficou ruidoso: o converter simples gerado apareceu mais
+  rapido que o runtime equivalente, enquanto o Value Object/property converter
+  gerado apareceu mais lento nesta unica iteracao.
+- A evidencia funcional mais importante do prompt continua sendo equivalencia
+  `runtime == generated` e cache runtime zerado no caminho gerado.

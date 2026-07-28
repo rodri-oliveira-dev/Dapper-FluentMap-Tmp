@@ -198,6 +198,123 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
             }
         }
 
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void GeneratedQueryMappedShouldMatchRuntimeFallbackForReadConverters()
+        {
+            ResetMapper();
+
+            try
+            {
+                GeneratedConvertedCustomer generatedScalar;
+                GeneratedConvertedCustomer generatedNull;
+                GeneratedConvertedNestedCustomer generatedNested;
+                GeneratedConvertedImmutableCustomer generatedImmutable;
+                GeneratedConvertedValueObjectCustomer generatedValueObject;
+                GeneratedConvertedProfileCustomer generatedProfileDefault;
+                GeneratedConvertedProfileCustomer generatedProfileLegacy;
+
+                FluentMapper.Initialize(configuration => configuration.AddGeneratedMappings());
+
+                using (var connection = OpenConnection())
+                {
+                    generatedScalar = connection.QueryMappedSingle<GeneratedConvertedCustomer>(
+                        "SELECT 31 AS customer_id, 'A' AS status, '42' AS optional_score;");
+                    generatedNull = connection.QueryMappedSingle<GeneratedConvertedCustomer>(
+                        "SELECT 32 AS customer_id, NULL AS status, NULL AS optional_score;");
+                    generatedNested = connection.QueryMappedSingle<GeneratedConvertedNestedCustomer>(
+                        "SELECT '00123' AS billing_zip, '00456' AS shipping_zip;");
+                    generatedImmutable = connection.QueryMappedSingle<GeneratedConvertedImmutableCustomer>(
+                        "SELECT 'I' AS status;");
+                    generatedValueObject = connection.QueryMappedSingle<GeneratedConvertedValueObjectCustomer>(
+                        "SELECT '12345678909' AS cpf;");
+                    generatedProfileDefault = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer>(
+                        "SELECT 'A' AS status;");
+                    generatedProfileLegacy = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer, GeneratedLegacyProfile>(
+                        "SELECT '1' AS legacy_status;");
+
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+
+                ResetMapper();
+
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap<GeneratedConvertedCustomerMap>();
+                    configuration.AddMap<GeneratedConvertedNestedCustomerMap>();
+                    configuration.AddMap<GeneratedConvertedImmutableCustomerMap>();
+                    configuration.AddMap<GeneratedConvertedValueObjectCustomerMap>();
+                    configuration.AddMap<GeneratedConvertedProfileCustomerMap>();
+                    configuration.AddProfile<GeneratedConvertedLegacyProfileCustomerMap>();
+                });
+
+                using (var connection = OpenConnection())
+                {
+                    var runtimeScalar = connection.QueryMappedSingle<GeneratedConvertedCustomer>(
+                        "SELECT 31 AS customer_id, 'A' AS status, '42' AS optional_score;");
+                    var runtimeNull = connection.QueryMappedSingle<GeneratedConvertedCustomer>(
+                        "SELECT 32 AS customer_id, NULL AS status, NULL AS optional_score;");
+                    var runtimeNested = connection.QueryMappedSingle<GeneratedConvertedNestedCustomer>(
+                        "SELECT '00123' AS billing_zip, '00456' AS shipping_zip;");
+                    var runtimeImmutable = connection.QueryMappedSingle<GeneratedConvertedImmutableCustomer>(
+                        "SELECT 'I' AS status;");
+                    var runtimeValueObject = connection.QueryMappedSingle<GeneratedConvertedValueObjectCustomer>(
+                        "SELECT '12345678909' AS cpf;");
+                    var runtimeProfileDefault = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer>(
+                        "SELECT 'A' AS status;");
+                    var runtimeProfileLegacy = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer, GeneratedLegacyProfile>(
+                        "SELECT '1' AS legacy_status;");
+
+                    Assert.Equal(runtimeScalar.Id, generatedScalar.Id);
+                    Assert.Equal(runtimeScalar.Status, generatedScalar.Status);
+                    Assert.Equal(runtimeScalar.OptionalScore, generatedScalar.OptionalScore);
+                    Assert.Equal(runtimeNull.Id, generatedNull.Id);
+                    Assert.Equal(runtimeNull.Status, generatedNull.Status);
+                    Assert.Equal(runtimeNull.OptionalScore, generatedNull.OptionalScore);
+                    Assert.Equal(runtimeNested.BillingAddress.ZipCode, generatedNested.BillingAddress.ZipCode);
+                    Assert.Equal(runtimeNested.ShippingAddress.ZipCode, generatedNested.ShippingAddress.ZipCode);
+                    Assert.Equal(runtimeImmutable.Status, generatedImmutable.Status);
+                    Assert.Equal(runtimeValueObject.Cpf.Number, generatedValueObject.Cpf.Number);
+                    Assert.Equal(runtimeProfileDefault.Status, generatedProfileDefault.Status);
+                    Assert.Equal(runtimeProfileLegacy.Status, generatedProfileLegacy.Status);
+                }
+            }
+            finally
+            {
+                ResetMapper();
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void GeneratedQueryMappedShouldWrapReadConverterExceptions()
+        {
+            ResetMapper();
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddGeneratedMappings());
+
+                using (var connection = OpenConnection())
+                {
+                    var exception = Assert.Throws<FluentMapConfigurationException>(
+                        () => connection.QueryMappedSingle<GeneratedThrowingConvertedCustomer>(
+                            "SELECT 'bad' AS status;"));
+
+                    Assert.IsType<InvalidOperationException>(exception.InnerException);
+                    Assert.Contains(typeof(GeneratedThrowingConvertedCustomer).FullName, exception.Message);
+                    Assert.Contains(nameof(GeneratedThrowingConvertedCustomer.Status), exception.Message);
+                    Assert.Contains("status", exception.Message);
+                    Assert.Contains(typeof(GeneratedThrowingStatusConverter).FullName, exception.Message);
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                ResetMapper();
+            }
+        }
+
         private static SqliteConnection OpenConnection()
         {
             var connection = new SqliteConnection("Data Source=:memory:");
@@ -221,7 +338,13 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedSameTerminalCustomer),
                 typeof(GeneratedProfileNestedCustomer),
                 typeof(GeneratedIgnoredCustomer),
-                typeof(GeneratedReadSemanticsCustomer));
+                typeof(GeneratedReadSemanticsCustomer),
+                typeof(GeneratedConvertedCustomer),
+                typeof(GeneratedConvertedNestedCustomer),
+                typeof(GeneratedConvertedImmutableCustomer),
+                typeof(GeneratedConvertedValueObjectCustomer),
+                typeof(GeneratedConvertedProfileCustomer),
+                typeof(GeneratedThrowingConvertedCustomer));
         }
     }
 
@@ -500,6 +623,182 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
             Map(customer => customer.InsertExcluded).ToColumn("insert_excluded").ExcludeFromInsert();
             Map(customer => customer.UpdateExcluded).ToColumn("update_excluded").ExcludeFromUpdate();
             Map(customer => customer.Secret).ToColumn("secret").Ignore();
+        }
+    }
+
+    public enum GeneratedAccountStatus
+    {
+        Unknown,
+        Active,
+        Inactive
+    }
+
+    public sealed class GeneratedConvertedCustomer
+    {
+        public int Id { get; set; }
+
+        public GeneratedAccountStatus Status { get; set; }
+
+        public int? OptionalScore { get; set; }
+    }
+
+    public sealed class GeneratedConvertedCustomerMap : EntityMap<GeneratedConvertedCustomer>
+    {
+        public GeneratedConvertedCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.Status).ToColumn("status").ConvertFromDatabaseUsing<GeneratedStatusConverter, string>();
+            Map(customer => customer.OptionalScore).ToColumn("optional_score").ConvertFromDatabaseUsing<GeneratedScoreConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedStatusConverter : IReadPropertyConverter<string, GeneratedAccountStatus>
+    {
+        public GeneratedAccountStatus ConvertFromDatabase(string value)
+        {
+            return value == "A" ? GeneratedAccountStatus.Active : GeneratedAccountStatus.Unknown;
+        }
+    }
+
+    public sealed class GeneratedScoreConverter : IReadPropertyConverter<string, int>
+    {
+        public int ConvertFromDatabase(string value)
+        {
+            return int.Parse(value);
+        }
+    }
+
+    public sealed class GeneratedConvertedNestedCustomer
+    {
+        public GeneratedConvertedAddress BillingAddress { get; set; }
+
+        public GeneratedConvertedAddress ShippingAddress { get; set; }
+    }
+
+    public sealed class GeneratedConvertedAddress
+    {
+        public string ZipCode { get; set; }
+    }
+
+    public sealed class GeneratedConvertedNestedCustomerMap : EntityMap<GeneratedConvertedNestedCustomer>
+    {
+        public GeneratedConvertedNestedCustomerMap()
+        {
+            Map(customer => customer.BillingAddress.ZipCode)
+                .ToColumn("billing_zip")
+                .ConvertFromDatabaseUsing<GeneratedZipCodeConverter, string>();
+            Map(customer => customer.ShippingAddress.ZipCode).ToColumn("shipping_zip");
+        }
+    }
+
+    public sealed class GeneratedZipCodeConverter : IReadPropertyConverter<string, string>
+    {
+        public string ConvertFromDatabase(string value)
+        {
+            return "ZIP-" + value;
+        }
+    }
+
+    public sealed class GeneratedConvertedImmutableCustomer
+    {
+        public GeneratedConvertedImmutableCustomer(GeneratedAccountStatus status)
+        {
+            Status = status;
+        }
+
+        public GeneratedAccountStatus Status { get; }
+    }
+
+    public sealed class GeneratedConvertedImmutableCustomerMap : EntityMap<GeneratedConvertedImmutableCustomer>
+    {
+        public GeneratedConvertedImmutableCustomerMap()
+        {
+            Map(customer => customer.Status).ToColumn("status").ConvertFromDatabaseUsing<GeneratedLegacyStatusConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedLegacyStatusConverter : IReadPropertyConverter<string, GeneratedAccountStatus>
+    {
+        public GeneratedAccountStatus ConvertFromDatabase(string value)
+        {
+            return value == "1" || value == "I"
+                ? GeneratedAccountStatus.Inactive
+                : GeneratedAccountStatus.Active;
+        }
+    }
+
+    public sealed class GeneratedConvertedValueObjectCustomer
+    {
+        public GeneratedConvertedCpf Cpf { get; set; }
+    }
+
+    public sealed class GeneratedConvertedCpf
+    {
+        public GeneratedConvertedCpf(string number)
+        {
+            Number = number;
+        }
+
+        public string Number { get; }
+    }
+
+    public sealed class GeneratedConvertedValueObjectCustomerMap : EntityMap<GeneratedConvertedValueObjectCustomer>
+    {
+        public GeneratedConvertedValueObjectCustomerMap()
+        {
+            Map(customer => customer.Cpf).ToColumn("cpf").ConvertFromDatabaseUsing<GeneratedCpfConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedCpfConverter : IReadPropertyConverter<string, GeneratedConvertedCpf>
+    {
+        public GeneratedConvertedCpf ConvertFromDatabase(string value)
+        {
+            return new GeneratedConvertedCpf("converted:" + value);
+        }
+    }
+
+    public sealed class GeneratedConvertedProfileCustomer
+    {
+        public GeneratedAccountStatus Status { get; set; }
+    }
+
+    public sealed class GeneratedConvertedProfileCustomerMap : EntityMap<GeneratedConvertedProfileCustomer>
+    {
+        public GeneratedConvertedProfileCustomerMap()
+        {
+            Map(customer => customer.Status).ToColumn("status").ConvertFromDatabaseUsing<GeneratedStatusConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedConvertedLegacyProfileCustomerMap :
+        EntityMap<GeneratedConvertedProfileCustomer>,
+        IProfileMap<GeneratedLegacyProfile>
+    {
+        public GeneratedConvertedLegacyProfileCustomerMap()
+        {
+            Map(customer => customer.Status).ToColumn("legacy_status").ConvertFromDatabaseUsing<GeneratedLegacyStatusConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedThrowingConvertedCustomer
+    {
+        public GeneratedAccountStatus Status { get; set; }
+    }
+
+    public sealed class GeneratedThrowingConvertedCustomerMap : EntityMap<GeneratedThrowingConvertedCustomer>
+    {
+        public GeneratedThrowingConvertedCustomerMap()
+        {
+            Map(customer => customer.Status).ToColumn("status").ConvertFromDatabaseUsing<GeneratedThrowingStatusConverter, string>();
+        }
+    }
+
+    public sealed class GeneratedThrowingStatusConverter : IReadPropertyConverter<string, GeneratedAccountStatus>
+    {
+        public GeneratedAccountStatus ConvertFromDatabase(string value)
+        {
+            throw new InvalidOperationException("Invalid status.");
         }
     }
 }

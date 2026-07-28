@@ -341,3 +341,40 @@ Todas as APIs que usam `MappedRowMaterializer` compartilham a mesma semantica:
 streaming assincrono. Generated materializers continuam caindo para runtime
 fallback quando o mapping efetivo possui read converter. Escrita/Dommel e
 execucao generated de converters permanecem incrementos separados.
+
+## ADR-13 - Prompt 10.4 generated read conversion
+
+### Contexto
+
+O runtime materializer ja executava read converters por propriedade, mas o
+generated materializer recusava qualquer mapping efetivo com read converter e
+caia para runtime fallback. Isso preservava corretude, mas impedia o beneficio
+generated em cenarios simples e AOT-friendly.
+
+### Decisao
+
+Generated materializers passam a emitir read conversion somente quando o
+converter e por tipo, acessivel ao codigo gerado, possui construtor publico
+parameterless e implementa um contrato `IReadPropertyConverter<TDatabase,
+TProperty>` compativel com o member path.
+
+O codigo gerado usa um campo estatico por binding de coluna/converter e chama
+um helper generico fortemente tipado. O descriptor de coluna gerado declara
+tipo do converter, tipo de banco/provider e tipo de propriedade retornado pelo
+converter. O registry so seleciona o descriptor quando essa metadata coincide
+com o mapping efetivo do default map ou profile selecionado.
+
+Converters por instancia/delegate e converters inacessiveis para o codigo
+gerado continuam usando runtime fallback.
+
+### Consequencias
+
+O caminho gerado passa a cobrir scalar, nullable, nested, immutable constructor,
+Value Object escalar e profiles com property read converter, sem reflection por
+linha nem `Activator.CreateInstance` no hot path. A semantica de null usa o tipo
+alvo real da propriedade/parametro, preservando equivalencia para casos como
+`IReadPropertyConverter<string, int>` aplicado a `int?`.
+
+O novo diagnostic `DFM012` reporta contrato read invalido quando isso pode ser
+provado em compile-time. Fallback continua sendo uma limitacao de otimizacao,
+nao breaking change para cenarios suportados pelo runtime.

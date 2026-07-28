@@ -70,19 +70,33 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
 - Adicionados benchmarks especificos para no converter, simple converter,
   TypeHandler e property converter.
 - Criado `.sdd/etapa-10/05-performance-baseline.md`.
+- Criado `.sdd/etapa-10/06-generated-conversion.md`.
+- Generated materializers passam a emitir property read converters por tipo
+  quando o converter e estaticamente suportado.
+- `GeneratedMaterializerColumn` passou a declarar metadata opcional de read
+  converter: converter type, database/provider type e converter property type.
+- O registry valida descriptors gerados com converter contra o mapping efetivo,
+  separando default map e profiles sem colisao.
+- O source generator emite campos estaticos de converter e chamadas genericas
+  fortemente tipadas para `ReadConverted<TDatabase, TProperty, TTarget>`.
+- Preservada a semantica `null/DBNull` externa ao converter, incluindo o caso
+  converter `T` aplicado a target `Nullable<T>`.
+- Adicionado diagnostic `DFM012` para contrato read converter invalido
+  comprovavel em compile-time.
+- Converters por instancia/delegate e converters inacessiveis ao codigo gerado
+  continuam usando runtime fallback.
+- Smoke AOT generated atualizado para cobrir property read converter.
 
 ## Em andamento
 
-Generated materializer read conversion e write/Dommel conversion permanecem
-adiadas para incrementos seguintes.
+Write/Dommel conversion permanece adiada para incremento seguinte.
 
 ## Proximos passos
 
-1. Evoluir generated read conversion ou fallback seguro quando houver converter.
-2. Investigar e implementar write conversion/Dommel somente apos definir hook
+1. Investigar e implementar write conversion/Dommel somente apos definir hook
    de parametros por propriedade.
-3. Evoluir diagnostics/analyzers para reconhecer `Convert...`.
-4. Aumentar benchmark formal quando houver decisao de otimizacao.
+2. Evoluir diagnostics/analyzers alem do generator para reconhecer `Convert...`.
+3. Aumentar benchmark formal quando houver decisao de otimizacao.
 
 ## Decisoes relevantes
 
@@ -104,6 +118,9 @@ adiadas para incrementos seguintes.
   diagnostics, mantendo execucao de conversores para incremento posterior.
 - Prompt 10.3 executa read converters no runtime materializer comum e mantem
   generated/write conversion fora do escopo.
+- Prompt 10.4 executa read converters no generated materializer somente para
+  converters por tipo estaticamente suportados e mantem fallback runtime para
+  instancia/delegate/inacessivel.
 
 ## APIs implementadas no Prompt 10.2
 
@@ -158,11 +175,12 @@ public interface IPropertyConverter<TDatabase, TProperty> :
 - Converter por reflection precisa de anotacoes de trimming e estrategia AOT.
 - Caches atuais assumem configuracao efetivamente imutavel apos registro.
 - Converter metadata ja existe, mas generated materializers ainda nao executam
-  read converters. Isso e intencional no Prompt 10.3 para evitar divergencia
-  runtime/generated antes da implementacao generated.
+  read converters por instancia/delegate; esses cenarios continuam no runtime
+  fallback.
 - `Convert...Using<TConverter, TDatabase>()` valida contrato por reflection de
   interfaces em configuration time; overloads por instancia/delegate oferecem
   caminho mais favoravel a AOT.
+- TypeHandler no generated path permanece fora do escopo.
 
 ## Validacao do Prompt 10.1
 
@@ -206,6 +224,39 @@ public interface IPropertyConverter<TDatabase, TProperty> :
   iteracao ficaram abaixo de 100 ms; usar como baseline curta, nao como
   conclusao estatistica final.
 
+## Validacao do Prompt 10.4
+
+- `dotnet test .\test\Dapper.FluentMap.Generators.Tests\Dapper.FluentMap.Generators.Tests.csproj --configuration Release --filter FullyQualifiedName~MappingRegistrationGeneratorTests`:
+  sucesso, 26 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --filter FullyQualifiedName~GeneratedRegistrationIntegrationTests`:
+  sucesso, 4 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~PropertyConversionMetadataTests`:
+  sucesso, 18 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 391 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso, pacote criado em `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`;
+  warning conhecido `NU5125` sobre `licenseUrl` depreciado.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Resultado observado: generated simple converter 1.421 ms / 189.99
+  KB, runtime property converter 1.453 ms / 165.98 KB, runtime no converter
+  1.579 ms / 142.55 KB, runtime simple converter 1.885 ms / 189.43 KB,
+  generated property converter 2.036 ms / 166.55 KB.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMappedSimple*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Recorte sem converter: runtime fallback 3.100 ms / 361.63 KB,
+  generated 3.270 ms / 362.82 KB. BenchmarkDotNet alertou que os tempos de
+  iteracao ficaram abaixo de 100 ms; usar como baseline curta.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_GENERATED --output .\.tmp\aot-smoke\generated-trimmed` seguido de execucao do binario:
+  sucesso, executavel retornou `generated:ok`; warnings esperados `IL2026` em
+  `QueryMapped*` e `IL2104` em `Dapper.FluentMap`/`Dapper`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishAot=true -p:DefineConstants=AOT_SMOKE_GENERATED --output .\.tmp\aot-smoke\generated-aot`:
+  bloqueado pelo ambiente com `Platform linker not found`; antes do bloqueio
+  foram emitidos warnings esperados `IL2026` e `IL3050` nas chamadas
+  `QueryMapped*`.
+
 ## Interacao com Dapper TypeHandler
 
 Precedencia proposta para `QueryMapped*`:
@@ -239,12 +290,14 @@ connection.Query<T>()
 - `.sdd/etapa-10/03-converter-contract-design.md`
 - `.sdd/etapa-10/04-runtime-conversion.md`
 - `.sdd/etapa-10/05-performance-baseline.md`
+- `.sdd/etapa-10/06-generated-conversion.md`
 - `.sdd/etapa-10/DECISIONS.md`
 - `.sdd/etapa-10/STATUS.md`
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`
 - `src/Dapper.FluentMap/Materialization/MappedRowMaterializer.cs`
 - `src/Dapper.FluentMap/Compatibility/DapperTypeHandlerAdapter.cs`
 - `src/Dapper.FluentMap.Generators/MappingRegistrationGenerator.cs`
+- `src/Dapper.FluentMap.Generators/AnalyzerReleases.Unshipped.md`
 - `src/Dapper.FluentMap.Analyzers/FluentMapConfigurationAnalyzer.cs`
 - `src/Dapper.FluentMap/Mapping/PropertyMap.cs`
 - `src/Dapper.FluentMap/Mapping/PropertyConversionMetadata.cs`
@@ -257,8 +310,10 @@ connection.Query<T>()
 - `test/Dapper.FluentMap.Tests/AdvancedQueryHardeningTests.cs`
 - `test/Dapper.FluentMap.Tests/PropertyConversionMetadataTests.cs`
 - `test/Dapper.FluentMap.Tests/RuntimeReadConversionTests.cs`
+- `test/Dapper.FluentMap.GeneratedRegistration.Tests/GeneratedRegistrationIntegrationTests.cs`
+- `test/Dapper.FluentMap.AotSmoke/Program.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 10.3
+Ultimo prompt executado: 10.4

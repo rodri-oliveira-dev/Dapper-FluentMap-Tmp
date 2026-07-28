@@ -18,6 +18,7 @@ namespace Dapper.FluentMap.Generators
         public const string DuplicateGeneratedEntityMapDiagnosticId = "DFM007";
         public const string DuplicateGeneratedProfileMapDiagnosticId = "DFM008";
         public const string SkippedGeneratedMaterializerDiagnosticId = "DFM011";
+        public const string InvalidGeneratedReadConverterDiagnosticId = "DFM012";
 
         private const string Category = "Dapper.FluentMap.Configuration";
         private const string MappingNamespace = "Dapper.FluentMap.Mapping";
@@ -67,6 +68,15 @@ namespace Dapper.FluentMap.Generators
             DiagnosticSeverity.Info,
             isEnabledByDefault: true,
             description: "Generated materializers are emitted only for statically known explicit mappings with supported object construction. Unsupported mappings continue to use the runtime fallback.");
+
+        private static readonly DiagnosticDescriptor InvalidGeneratedReadConverterRule = new DiagnosticDescriptor(
+            InvalidGeneratedReadConverterDiagnosticId,
+            "Generated read converter is invalid",
+            "Read converter '{1}' on entity map type '{0}' cannot be emitted by the generated materializer: {2}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Generated materializers require statically known read converters to implement a compatible IReadPropertyConverter<TDatabase, TProperty> contract.");
 
         private static readonly SymbolDisplayFormat FullyQualifiedTypeFormat = new SymbolDisplayFormat(
             globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
@@ -160,7 +170,8 @@ namespace Dapper.FluentMap.Generators
                 profileTypeName,
                 context.SemanticModel,
                 cancellationToken,
-                out var materializerSkipReason);
+                out var materializerSkipReason,
+                out var materializerDiagnostic);
 
             return MapCandidate.Valid(
                 mapDisplayName,
@@ -170,7 +181,8 @@ namespace Dapper.FluentMap.Generators
                 GetInheritanceDepth(entityType),
                 location,
                 materializer,
-                materializerSkipReason);
+                materializerSkipReason,
+                materializerDiagnostic);
         }
 
         private static void Execute(
@@ -234,6 +246,14 @@ namespace Dapper.FluentMap.Generators
                     candidate.Location,
                     candidate.MapDisplayName,
                     candidate.MaterializerSkipReason));
+            }
+
+            if (candidate.MaterializerDiagnostic != null)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    candidate.MaterializerDiagnostic.Descriptor,
+                    candidate.MaterializerDiagnostic.Location,
+                    candidate.MaterializerDiagnostic.Arguments));
             }
         }
 
@@ -369,6 +389,11 @@ namespace Dapper.FluentMap.Generators
 
                 foreach (var materializer in materializers)
                 {
+                    AppendMaterializerConverterFields(builder, materializer);
+                }
+
+                foreach (var materializer in materializers)
+                {
                     AppendMaterializerMethod(builder, materializer);
                 }
 
@@ -405,6 +430,16 @@ namespace Dapper.FluentMap.Generators
                 {
                     builder.Append(", ");
                     builder.Append(EscapeStringLiteral(column.MemberPath));
+                    if (column.ReadConverter != null)
+                    {
+                        builder.Append(", typeof(");
+                        builder.Append(column.ReadConverter.ConverterTypeName);
+                        builder.Append("), typeof(");
+                        builder.Append(column.ReadConverter.DatabaseTypeName);
+                        builder.Append("), typeof(");
+                        builder.Append(column.ReadConverter.PropertyTypeName);
+                        builder.Append(')');
+                    }
                 }
 
                 builder.Append(index == materializer.Columns.Count - 1 ? ")" : "),");
@@ -415,6 +450,20 @@ namespace Dapper.FluentMap.Generators
             builder.Append("                    global::Dapper.FluentMap.DapperFluentMapGeneratedMaterializers.");
             builder.Append(materializer.MethodName);
             builder.AppendLine(")");
+        }
+
+        private static void AppendMaterializerConverterFields(StringBuilder builder, GeneratedMaterializerInfo materializer)
+        {
+            foreach (var leaf in materializer.Root.GetLeaves().Where(leaf => leaf.ReadConverter != null))
+            {
+                builder.Append("        private static readonly ");
+                builder.Append(leaf.ReadConverter.ConverterTypeName);
+                builder.Append(' ');
+                builder.Append(GetConverterFieldName(materializer, leaf));
+                builder.Append(" = new ");
+                builder.Append(leaf.ReadConverter.ConverterTypeName);
+                builder.AppendLine("();");
+            }
         }
 
         private static void AppendMaterializerMethod(StringBuilder builder, GeneratedMaterializerInfo materializer)
@@ -432,7 +481,7 @@ namespace Dapper.FluentMap.Generators
             builder.AppendLine("            }");
             builder.AppendLine();
 
-            AppendMaterializeNode(builder, materializer.Root, "entity", "            ", null, materializer.EntityTypeName, localAlreadyDeclared: false);
+            AppendMaterializeNode(builder, materializer, materializer.Root, "entity", "            ", null, materializer.EntityTypeName, localAlreadyDeclared: false);
             builder.AppendLine();
             builder.AppendLine("            return entity;");
 
@@ -441,6 +490,7 @@ namespace Dapper.FluentMap.Generators
 
         private static void AppendMaterializeNode(
             StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
             GeneratedMaterializationNode node,
             string localName,
             string indent,
@@ -454,17 +504,17 @@ namespace Dapper.FluentMap.Generators
             }
             else
             {
-                AppendCreateConstructorNode(builder, node, localName, indent, entityTypeName, localAlreadyDeclared);
+                AppendCreateConstructorNode(builder, materializer, node, localName, indent, entityTypeName, localAlreadyDeclared);
             }
 
             foreach (var child in node.PostConstructorChildren)
             {
-                AppendApplyChild(builder, child, localName, indent, entityTypeName);
+                AppendApplyChild(builder, materializer, child, localName, indent, entityTypeName);
             }
 
             foreach (var leaf in node.PostConstructorLeaves)
             {
-                AppendAssignLeaf(builder, leaf, localName, indent);
+                AppendAssignLeaf(builder, materializer, leaf, localName, indent);
             }
         }
 
@@ -529,6 +579,7 @@ namespace Dapper.FluentMap.Generators
 
         private static void AppendCreateConstructorNode(
             StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
             GeneratedMaterializationNode node,
             string localName,
             string indent,
@@ -542,15 +593,13 @@ namespace Dapper.FluentMap.Generators
                     builder.Append(indent);
                     builder.Append("var ");
                     builder.Append(parameter.LocalName);
-                    builder.Append(" = Read<");
-                    builder.Append(parameter.TypeName);
-                    builder.Append(">(record, ");
-                    builder.Append(parameter.Leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    builder.AppendLine(");");
+                    builder.Append(" = ");
+                    AppendReadExpression(builder, materializer, parameter.Leaf);
+                    builder.AppendLine(";");
                     continue;
                 }
 
-                AppendCreateChildValue(builder, parameter.Child, parameter.LocalName, indent, entityTypeName);
+                AppendCreateChildValue(builder, materializer, parameter.Child, parameter.LocalName, indent, entityTypeName);
             }
 
             builder.AppendLine();
@@ -592,6 +641,7 @@ namespace Dapper.FluentMap.Generators
 
         private static void AppendApplyChild(
             StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
             GeneratedMaterializationNode child,
             string parentLocalName,
             string indent,
@@ -604,7 +654,7 @@ namespace Dapper.FluentMap.Generators
             builder.Append(indent);
             builder.AppendLine("{");
             var childLocalName = "node" + child.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            AppendMaterializeNode(builder, child, childLocalName, indent + "    ", parentLocalName, entityTypeName, localAlreadyDeclared: false);
+            AppendMaterializeNode(builder, materializer, child, childLocalName, indent + "    ", parentLocalName, entityTypeName, localAlreadyDeclared: false);
             if (child.HasPublicSetter && (child.Constructor != null || !child.HasPublicGetter))
             {
                 builder.Append(indent);
@@ -638,6 +688,7 @@ namespace Dapper.FluentMap.Generators
 
         private static void AppendCreateChildValue(
             StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
             GeneratedMaterializationNode child,
             string localName,
             string indent,
@@ -654,13 +705,14 @@ namespace Dapper.FluentMap.Generators
             builder.AppendLine(")");
             builder.Append(indent);
             builder.AppendLine("{");
-            AppendMaterializeNode(builder, child, localName, indent + "    ", null, entityTypeName, localAlreadyDeclared: true);
+            AppendMaterializeNode(builder, materializer, child, localName, indent + "    ", null, entityTypeName, localAlreadyDeclared: true);
             builder.Append(indent);
             builder.AppendLine("}");
         }
 
         private static void AppendAssignLeaf(
             StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
             GeneratedPropertyBinding leaf,
             string targetLocalName,
             string indent)
@@ -669,11 +721,60 @@ namespace Dapper.FluentMap.Generators
             builder.Append(targetLocalName);
             builder.Append('.');
             builder.Append(EscapeIdentifier(leaf.PropertyName));
-            builder.Append(" = Read<");
+            builder.Append(" = ");
+            AppendReadExpression(builder, materializer, leaf);
+            builder.AppendLine(";");
+        }
+
+        private static void AppendReadExpression(
+            StringBuilder builder,
+            GeneratedMaterializerInfo materializer,
+            GeneratedPropertyBinding leaf)
+        {
+            if (leaf.ReadConverter == null)
+            {
+                builder.Append("Read<");
+                builder.Append(leaf.TypeName);
+                builder.Append(">(record, ");
+                builder.Append(leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                builder.Append(')');
+                return;
+            }
+
+            builder.Append("ReadConverted<");
+            builder.Append(leaf.ReadConverter.DatabaseTypeName);
+            builder.Append(", ");
+            builder.Append(leaf.ReadConverter.PropertyTypeName);
+            builder.Append(", ");
             builder.Append(leaf.TypeName);
             builder.Append(">(record, ");
             builder.Append(leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            builder.AppendLine(");");
+            builder.Append(", ");
+            builder.Append(GetConverterFieldName(materializer, leaf));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(materializer.EntityTypeName));
+            builder.Append(", ");
+            builder.Append(materializer.ProfileTypeName == null
+                ? "null"
+                : EscapeStringLiteral(materializer.ProfileTypeName));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.MemberPath));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.ColumnName));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.ReadConverter.ConverterTypeName));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.ReadConverter.DatabaseTypeName));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.ReadConverter.PropertyTypeName));
+            builder.Append(", ");
+            builder.Append(EscapeStringLiteral(leaf.TypeName));
+            builder.Append(')');
+        }
+
+        private static string GetConverterFieldName(GeneratedMaterializerInfo materializer, GeneratedPropertyBinding leaf)
+        {
+            return materializer.MethodName + "Converter" + leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static void AppendHasAnyValueExpression(StringBuilder builder, GeneratedMaterializationNode node)
@@ -714,6 +815,56 @@ namespace Dapper.FluentMap.Generators
             builder.AppendLine("            }");
             builder.AppendLine();
             builder.AppendLine("            var value = record.GetValue(ordinal);");
+            builder.AppendLine("            return ConvertValue<T>(value);");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+            builder.AppendLine("        private static TTarget ReadConverted<TDatabase, TProperty, TTarget>(");
+            builder.AppendLine("            global::System.Data.IDataRecord record,");
+            builder.AppendLine("            int ordinal,");
+            builder.AppendLine("            global::Dapper.FluentMap.Mapping.IReadPropertyConverter<TDatabase, TProperty> converter,");
+            builder.AppendLine("            string entityTypeName,");
+            builder.AppendLine("            string profileTypeName,");
+            builder.AppendLine("            string memberPath,");
+            builder.AppendLine("            string columnName,");
+            builder.AppendLine("            string converterTypeName,");
+            builder.AppendLine("            string converterDatabaseTypeName,");
+            builder.AppendLine("            string converterPropertyTypeName,");
+            builder.AppendLine("            string targetTypeName)");
+            builder.AppendLine("        {");
+            builder.AppendLine("            var value = record.GetValue(ordinal);");
+            builder.AppendLine("            if (value == null || value == global::System.DBNull.Value)");
+            builder.AppendLine("            {");
+            builder.AppendLine("                return default(TTarget);");
+            builder.AppendLine("            }");
+            builder.AppendLine();
+            builder.AppendLine("            try");
+            builder.AppendLine("            {");
+            builder.AppendLine("                var converted = converter.ConvertFromDatabase(ConvertValue<TDatabase>(value));");
+            builder.AppendLine("                if ((object)converted == null && (object)default(TTarget) != null)");
+            builder.AppendLine("                {");
+            builder.AppendLine("                    throw new global::System.InvalidOperationException(");
+            builder.AppendLine("                        \"Read converter '\" + converterTypeName + \"' returned null for non-nullable target type '\" + targetTypeName + \"'.\");");
+            builder.AppendLine("                }");
+            builder.AppendLine();
+            builder.AppendLine("                return (TTarget)(object)converted;");
+            builder.AppendLine("            }");
+            builder.AppendLine("            catch (global::System.Exception exception) when (!(exception is global::Dapper.FluentMap.FluentMapConfigurationException))");
+            builder.AppendLine("            {");
+            builder.AppendLine("                var profileContext = profileTypeName == null");
+            builder.AppendLine("                    ? string.Empty");
+            builder.AppendLine("                    : \" Profile: '\" + profileTypeName + \"'.\";");
+            builder.AppendLine("                throw new global::Dapper.FluentMap.FluentMapConfigurationException(");
+            builder.AppendLine("                    \"Read converter failed for entity '\" + entityTypeName + \"'.\" + profileContext +");
+            builder.AppendLine("                    \" Member path: '\" + memberPath + \"'. Column: '\" + columnName + \"'. Converter: '\" + converterTypeName +");
+            builder.AppendLine("                    \"'. Source type: '\" + value.GetType().FullName + \"'. Converter database type: '\" + converterDatabaseTypeName +");
+            builder.AppendLine("                    \"'. Converter property type: '\" + converterPropertyTypeName + \"'. Target type: '\" + targetTypeName +");
+            builder.AppendLine("                    \"'. See the inner exception for the converter failure.\",");
+            builder.AppendLine("                    exception);");
+            builder.AppendLine("            }");
+            builder.AppendLine("        }");
+            builder.AppendLine();
+            builder.AppendLine("        private static T ConvertValue<T>(object value)");
+            builder.AppendLine("        {");
             builder.AppendLine("            if (value is T typedValue)");
             builder.AppendLine("            {");
             builder.AppendLine("                return typedValue;");
@@ -745,9 +896,11 @@ namespace Dapper.FluentMap.Generators
             string profileTypeName,
             SemanticModel semanticModel,
             System.Threading.CancellationToken cancellationToken,
-            out string skipReason)
+            out string skipReason,
+            out GeneratedDiagnostic diagnostic)
         {
             skipReason = null;
+            diagnostic = null;
 
             var constructor = GetPublicParameterlessConstructorDeclaration(classDeclaration, mapType, semanticModel, cancellationToken);
             if (constructor == null || constructor.Body == null)
@@ -770,7 +923,14 @@ namespace Dapper.FluentMap.Generators
                     continue;
                 }
 
-                if (!TryCreateDirectMapInvocation(invocation, semanticModel, cancellationToken, out var mapInvocation, out skipReason))
+                if (!TryCreateDirectMapInvocation(
+                    invocation,
+                    mapType,
+                    semanticModel,
+                    cancellationToken,
+                    out var mapInvocation,
+                    out skipReason,
+                    out diagnostic))
                 {
                     return null;
                 }
@@ -798,7 +958,8 @@ namespace Dapper.FluentMap.Generators
                 columns.Add(new GeneratedColumnBinding(
                     invocation.ColumnName,
                     invocation.MemberPath.Display,
-                    invocation.Ignored));
+                    invocation.Ignored,
+                    invocation.ReadConverter));
 
                 if (invocation.Ignored)
                 {
@@ -846,9 +1007,15 @@ namespace Dapper.FluentMap.Generators
             }
 
             var leaf = properties[properties.Count - 1];
-            if (!IsSupportedScalarType(leaf.Type))
+            if (invocation.ReadConverter == null && !IsSupportedScalarType(leaf.Type))
             {
                 skipReason = $"property '{invocation.MemberPath.Display}' has type '{FormatSymbol(leaf.Type)}', which is not supported by generated materializers";
+                return false;
+            }
+
+            if (invocation.ReadConverter != null && !IsSupportedConvertedPropertyType(leaf.Type))
+            {
+                skipReason = $"property '{invocation.MemberPath.Display}' has converted type '{FormatSymbol(leaf.Type)}', which is not accessible from generated materializers";
                 return false;
             }
 
@@ -865,7 +1032,8 @@ namespace Dapper.FluentMap.Generators
                 leaf.Name,
                 leaf.Type.ToDisplayString(FullyQualifiedTypeFormat),
                 HasPublicSetter(leaf),
-                leaf.Type));
+                leaf.Type,
+                invocation.ReadConverter));
 
             return true;
         }
@@ -910,13 +1078,16 @@ namespace Dapper.FluentMap.Generators
 
         private static bool TryCreateDirectMapInvocation(
             InvocationExpressionSyntax mapInvocation,
+            INamedTypeSymbol mapType,
             SemanticModel semanticModel,
             System.Threading.CancellationToken cancellationToken,
             out GeneratedMapInvocation result,
-            out string skipReason)
+            out string skipReason,
+            out GeneratedDiagnostic diagnostic)
         {
             result = null;
             skipReason = null;
+            diagnostic = null;
 
             if (mapInvocation.ArgumentList.Arguments.Count != 1 ||
                 !TryGetLambda(mapInvocation.ArgumentList.Arguments[0].Expression, out var lambda))
@@ -939,6 +1110,7 @@ namespace Dapper.FluentMap.Generators
 
             var column = memberPath.TerminalName;
             var ignored = false;
+            var readConverter = default(GeneratedReadConverterBinding);
             SyntaxNode current = mapInvocation;
             while (current.Parent is MemberAccessExpressionSyntax memberAccess &&
                    memberAccess.Expression == current &&
@@ -956,6 +1128,46 @@ namespace Dapper.FluentMap.Generators
                 else if (IsIgnoreInvocation(chainedMethod))
                 {
                     ignored = true;
+                }
+                else if (IsGeneratedReadConverterInvocation(chainedMethod))
+                {
+                    if (chainedInvocation.ArgumentList.Arguments.Count != 0)
+                    {
+                        skipReason = "read converter instances and delegates are not statically supported by generated materializers";
+                        return false;
+                    }
+
+                    if (readConverter != null)
+                    {
+                        skipReason = "multiple read converters in the same map chain are not supported by generated materializers";
+                        return false;
+                    }
+
+                    if (!TryCreateReadConverterBinding(
+                        chainedMethod,
+                        memberPath.Properties[memberPath.Properties.Count - 1].Type,
+                        out readConverter,
+                        out var converterReason))
+                    {
+                        if (IsGeneratedReadConverterFallbackReason(converterReason))
+                        {
+                            skipReason = converterReason;
+                            return false;
+                        }
+
+                        diagnostic = GeneratedDiagnostic.InvalidReadConverter(
+                            chainedInvocation.GetLocation(),
+                            mapType.ToDisplayString(FullyQualifiedTypeFormat),
+                            chainedMethod.TypeArguments.Length > 0
+                                ? chainedMethod.TypeArguments[0].ToDisplayString(FullyQualifiedTypeFormat)
+                                : chainedMethod.Name,
+                            converterReason);
+                        return false;
+                    }
+                }
+                else if (IsWriteOnlyConverterInvocation(chainedMethod))
+                {
+                    // Write-only conversion metadata does not change the generated read materializer.
                 }
                 else if (IsReadNeutralPersistenceInvocation(chainedMethod))
                 {
@@ -976,8 +1188,14 @@ namespace Dapper.FluentMap.Generators
                 return false;
             }
 
-            result = new GeneratedMapInvocation(memberPath, column, ignored);
+            result = new GeneratedMapInvocation(memberPath, column, ignored, readConverter);
             return true;
+        }
+
+        private static bool IsGeneratedReadConverterFallbackReason(string reason)
+        {
+            return string.Equals(reason, "the converter type is not accessible from generated code", StringComparison.Ordinal) ||
+                   string.Equals(reason, "the converter type does not have a public parameterless constructor", StringComparison.Ordinal);
         }
 
         private static bool TryGetColumn(
@@ -1283,6 +1501,18 @@ namespace Dapper.FluentMap.Generators
                    IsAccessibleFromGeneratedCode(namedType);
         }
 
+        private static bool IsSupportedConvertedPropertyType(ITypeSymbol type)
+        {
+            var unwrapped = UnwrapNullable(type);
+            if (IsSupportedScalarType(unwrapped))
+            {
+                return true;
+            }
+
+            var namedType = unwrapped as INamedTypeSymbol;
+            return namedType != null && IsAccessibleFromGeneratedCode(namedType);
+        }
+
         private static bool CanAssignNull(ITypeSymbol type)
         {
             var namedType = type as INamedTypeSymbol;
@@ -1355,6 +1585,102 @@ namespace Dapper.FluentMap.Generators
                 default:
                     return false;
             }
+        }
+
+        private static bool IsGeneratedReadConverterInvocation(IMethodSymbol method)
+        {
+            return method != null &&
+                   (method.Name == "ConvertFromDatabaseUsing" || method.Name == "ConvertUsing") &&
+                   method.IsGenericMethod &&
+                   method.TypeArguments.Length == 2;
+        }
+
+        private static bool IsWriteOnlyConverterInvocation(IMethodSymbol method)
+        {
+            return method != null && method.Name == "ConvertToDatabaseUsing";
+        }
+
+        private static bool TryCreateReadConverterBinding(
+            IMethodSymbol method,
+            ITypeSymbol mappedPropertyType,
+            out GeneratedReadConverterBinding binding,
+            out string reason)
+        {
+            binding = null;
+            reason = null;
+
+            var converterType = method.TypeArguments[0] as INamedTypeSymbol;
+            var databaseType = method.TypeArguments[1];
+            if (converterType == null)
+            {
+                reason = "the converter type is not a named type";
+                return false;
+            }
+
+            if (!HasPublicParameterlessConstructor(converterType))
+            {
+                reason = "the converter type does not have a public parameterless constructor";
+                return false;
+            }
+
+            if (!IsAccessibleFromGeneratedCode(converterType))
+            {
+                reason = "the converter type is not accessible from generated code";
+                return false;
+            }
+
+            var databaseMatches = converterType.AllInterfaces
+                .Where(type => IsReadPropertyConverterInterface(type))
+                .Where(type => IsSameOrNullableEquivalent(type.TypeArguments[0], databaseType))
+                .ToList();
+
+            if (databaseMatches.Count == 0)
+            {
+                reason = $"the converter does not implement IReadPropertyConverter<{FormatSymbol(databaseType)}, TProperty>";
+                return false;
+            }
+
+            var propertyMatches = databaseMatches
+                .Where(type => CanAssignValue(mappedPropertyType, type.TypeArguments[1]))
+                .ToList();
+
+            if (propertyMatches.Count == 0)
+            {
+                var converterPropertyType = databaseMatches[0].TypeArguments[1];
+                reason = $"the converter returns '{FormatSymbol(converterPropertyType)}', which cannot be assigned to mapped property type '{FormatSymbol(mappedPropertyType)}'";
+                return false;
+            }
+
+            if (propertyMatches.Count > 1)
+            {
+                reason = "the converter matches more than one compatible IReadPropertyConverter<TDatabase, TProperty> contract";
+                return false;
+            }
+
+            var converterInterface = propertyMatches[0];
+            binding = new GeneratedReadConverterBinding(
+                converterType.ToDisplayString(FullyQualifiedTypeFormat),
+                converterInterface.TypeArguments[0].ToDisplayString(FullyQualifiedTypeFormat),
+                converterInterface.TypeArguments[1].ToDisplayString(FullyQualifiedTypeFormat));
+            return true;
+        }
+
+        private static bool IsReadPropertyConverterInterface(INamedTypeSymbol type)
+        {
+            return type.OriginalDefinition.MetadataName == "IReadPropertyConverter`2" &&
+                   type.OriginalDefinition.ContainingNamespace.ToDisplayString() == MappingNamespace;
+        }
+
+        private static bool CanAssignValue(ITypeSymbol targetType, ITypeSymbol valueType)
+        {
+            return IsSameOrNullableEquivalent(targetType, valueType) || IsAssignableFrom(targetType, valueType);
+        }
+
+        private static bool IsSameOrNullableEquivalent(ITypeSymbol left, ITypeSymbol right)
+        {
+            return SymbolEqualityComparer.Default.Equals(left, right) ||
+                   SymbolEqualityComparer.Default.Equals(UnwrapNullable(left), right) ||
+                   SymbolEqualityComparer.Default.Equals(UnwrapNullable(right), left);
         }
 
         private static bool IsEntityMapInterface(INamedTypeSymbol type)
@@ -1494,7 +1820,8 @@ namespace Dapper.FluentMap.Generators
                 Location location,
                 string skipReason,
                 GeneratedMaterializerInfo materializer,
-                string materializerSkipReason)
+                string materializerSkipReason,
+                GeneratedDiagnostic materializerDiagnostic)
             {
                 Kind = kind;
                 MapDisplayName = mapDisplayName;
@@ -1506,6 +1833,7 @@ namespace Dapper.FluentMap.Generators
                 SkipReason = skipReason;
                 Materializer = materializer;
                 MaterializerSkipReason = materializerSkipReason;
+                MaterializerDiagnostic = materializerDiagnostic;
             }
 
             internal MapCandidateKind Kind { get; }
@@ -1530,6 +1858,8 @@ namespace Dapper.FluentMap.Generators
 
             internal string MaterializerSkipReason { get; }
 
+            internal GeneratedDiagnostic MaterializerDiagnostic { get; }
+
             internal static MapCandidate Valid(
                 string mapDisplayName,
                 string mapTypeName,
@@ -1538,7 +1868,8 @@ namespace Dapper.FluentMap.Generators
                 int entityInheritanceDepth,
                 Location location,
                 GeneratedMaterializerInfo materializer,
-                string materializerSkipReason)
+                string materializerSkipReason,
+                GeneratedDiagnostic materializerDiagnostic)
             {
                 return new MapCandidate(
                     MapCandidateKind.Valid,
@@ -1550,7 +1881,8 @@ namespace Dapper.FluentMap.Generators
                     location,
                     null,
                     materializer,
-                    materializerSkipReason);
+                    materializerSkipReason,
+                    materializerDiagnostic);
             }
 
             internal static MapCandidate InvalidRegistration(string mapDisplayName, Location location)
@@ -1563,6 +1895,7 @@ namespace Dapper.FluentMap.Generators
                     null,
                     0,
                     location,
+                    null,
                     null,
                     null,
                     null);
@@ -1580,6 +1913,7 @@ namespace Dapper.FluentMap.Generators
                     location,
                     reason,
                     null,
+                    null,
                     null);
             }
         }
@@ -1591,13 +1925,65 @@ namespace Dapper.FluentMap.Generators
             Skipped
         }
 
+        private sealed class GeneratedDiagnostic
+        {
+            private GeneratedDiagnostic(DiagnosticDescriptor descriptor, Location location, object[] arguments)
+            {
+                Descriptor = descriptor;
+                Location = location;
+                Arguments = arguments;
+            }
+
+            internal DiagnosticDescriptor Descriptor { get; }
+
+            internal Location Location { get; }
+
+            internal object[] Arguments { get; }
+
+            internal static GeneratedDiagnostic InvalidReadConverter(
+                Location location,
+                string mapTypeName,
+                string converterTypeName,
+                string reason)
+            {
+                return new GeneratedDiagnostic(
+                    InvalidGeneratedReadConverterRule,
+                    location,
+                    new object[] { mapTypeName, converterTypeName, reason });
+            }
+        }
+
+        private sealed class GeneratedReadConverterBinding
+        {
+            internal GeneratedReadConverterBinding(
+                string converterTypeName,
+                string databaseTypeName,
+                string propertyTypeName)
+            {
+                ConverterTypeName = converterTypeName;
+                DatabaseTypeName = databaseTypeName;
+                PropertyTypeName = propertyTypeName;
+            }
+
+            internal string ConverterTypeName { get; }
+
+            internal string DatabaseTypeName { get; }
+
+            internal string PropertyTypeName { get; }
+        }
+
         private sealed class GeneratedMapInvocation
         {
-            internal GeneratedMapInvocation(GeneratedMemberPath memberPath, string columnName, bool ignored)
+            internal GeneratedMapInvocation(
+                GeneratedMemberPath memberPath,
+                string columnName,
+                bool ignored,
+                GeneratedReadConverterBinding readConverter)
             {
                 MemberPath = memberPath;
                 ColumnName = columnName;
                 Ignored = ignored;
+                ReadConverter = readConverter;
             }
 
             internal GeneratedMemberPath MemberPath { get; }
@@ -1605,6 +1991,8 @@ namespace Dapper.FluentMap.Generators
             internal string ColumnName { get; }
 
             internal bool Ignored { get; }
+
+            internal GeneratedReadConverterBinding ReadConverter { get; }
         }
 
         private sealed class GeneratedMemberPath
@@ -1676,11 +2064,16 @@ namespace Dapper.FluentMap.Generators
 
         private sealed class GeneratedColumnBinding
         {
-            internal GeneratedColumnBinding(string columnName, string memberPath, bool ignored)
+            internal GeneratedColumnBinding(
+                string columnName,
+                string memberPath,
+                bool ignored,
+                GeneratedReadConverterBinding readConverter)
             {
                 ColumnName = columnName;
                 MemberPath = memberPath;
                 Ignored = ignored;
+                ReadConverter = readConverter;
             }
 
             internal string ColumnName { get; }
@@ -1688,6 +2081,8 @@ namespace Dapper.FluentMap.Generators
             internal string MemberPath { get; }
 
             internal bool Ignored { get; }
+
+            internal GeneratedReadConverterBinding ReadConverter { get; }
         }
 
         private sealed class GeneratedPropertyBinding
@@ -1699,7 +2094,8 @@ namespace Dapper.FluentMap.Generators
                 string propertyName,
                 string typeName,
                 bool hasPublicSetter,
-                ITypeSymbol propertyTypeSymbol)
+                ITypeSymbol propertyTypeSymbol,
+                GeneratedReadConverterBinding readConverter)
             {
                 Ordinal = ordinal;
                 ColumnName = columnName;
@@ -1708,6 +2104,7 @@ namespace Dapper.FluentMap.Generators
                 TypeName = typeName;
                 HasPublicSetter = hasPublicSetter;
                 PropertyTypeSymbol = propertyTypeSymbol;
+                ReadConverter = readConverter;
             }
 
             internal int Ordinal { get; }
@@ -1725,6 +2122,8 @@ namespace Dapper.FluentMap.Generators
             internal bool CanAssign => HasPublicSetter;
 
             internal ITypeSymbol PropertyTypeSymbol { get; }
+
+            internal GeneratedReadConverterBinding ReadConverter { get; }
         }
 
         private sealed class GeneratedMaterializationNode
@@ -1881,6 +2280,11 @@ namespace Dapper.FluentMap.Generators
             {
                 return _leaves.Select(leaf => leaf.ColumnName)
                     .Concat(_children.SelectMany(child => child.GetColumnNames()));
+            }
+
+            internal IEnumerable<GeneratedPropertyBinding> GetLeaves()
+            {
+                return _leaves.Concat(_children.SelectMany(child => child.GetLeaves()));
             }
         }
 

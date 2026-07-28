@@ -283,6 +283,44 @@ namespace Dapper.FluentMap.Tests
             }
         }
 
+        [Fact]
+        public void GeneratedMaterializerShouldMatchDeclaredReadConverterMetadata()
+        {
+            PreTest(typeof(ConversionEntity));
+
+            try
+            {
+                FluentMapper.Initialize(c =>
+                {
+                    c.AddMap(new ReadOnlyConversionMap());
+                    c.AddGeneratedMaterializer(
+                        new[]
+                        {
+                            GeneratedMaterializerColumn.Map(
+                                "status",
+                                nameof(ConversionEntity.Status),
+                                typeof(StatusReadConverter),
+                                typeof(string),
+                                typeof(AccountStatus))
+                        },
+                        ReadGeneratedConversionEntity);
+                });
+
+                var found = FluentMapper.Registry.TryGetGeneratedMaterializer(
+                    typeof(ConversionEntity),
+                    profileType: null,
+                    columnNames: new[] { "status" },
+                    out var materializer);
+
+                Assert.True(found);
+                Assert.NotNull(materializer);
+            }
+            finally
+            {
+                PreTest(typeof(ConversionEntity));
+            }
+        }
+
         private static PropertyConversionMetadata ConversionOf(IEntityMap map)
         {
             return ((IPropertyMapWithConversionMetadata)map.PropertyMaps.Single()).Conversion;
