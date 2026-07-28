@@ -151,6 +151,15 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void DatabaseDefaultAndComputedShouldThrow()
+        {
+            var exception = Assert.Throws<FluentMapConfigurationException>(() => new DefaultThenComputedPersistenceMap());
+
+            Assert.Contains("database-default", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("computed", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void ExplainShouldExposePersistenceMetadata()
         {
             PreTest(typeof(PersistenceEntity));
@@ -323,6 +332,14 @@ namespace Dapper.FluentMap.Tests
             public ComputedThenDefaultPersistenceMap()
             {
                 Map(e => e.CreatedAt).Computed().DatabaseDefaultOnInsert();
+            }
+        }
+
+        private sealed class DefaultThenComputedPersistenceMap : EntityMap<PersistenceEntity>
+        {
+            public DefaultThenComputedPersistenceMap()
+            {
+                Map(e => e.CreatedAt).DatabaseDefaultOnInsert().Computed();
             }
         }
 

@@ -108,7 +108,56 @@ Map(product => product.Total)
     .Computed();
 ```
 
-`Ignore()` keeps its historical meaning: the property does not participate in FluentMap materialization or generated persistence metadata. `ReadOnly()` still allows materialization, but excludes the property from INSERT and UPDATE metadata.
+### Ignore
+
+`Ignore()` keeps its historical meaning: the property does not participate in FluentMap materialization or generated persistence metadata.
+
+```csharp
+Map(product => product.TransientValue)
+    .Ignore();
+```
+
+Do not use `Ignore()` for database values that should still be selected. It is not the same as read-only persistence metadata.
+
+### Read-only
+
+Use `ReadOnly()` for database values that are selected but not written by generated persistence operations:
+
+```csharp
+Map(product => product.UpdatedAt)
+    .ToColumn("updated_at")
+    .ReadOnly();
+```
+
+```text
+SELECT: participates
+INSERT: excluded
+UPDATE: excluded
+```
+
+### Database Defaults
+
+Use `DatabaseDefaultOnInsert()` when the database supplies the initial value if the column is omitted from `INSERT`, for example a `created_at DEFAULT ...` column:
+
+```csharp
+Map(product => product.CreatedAt)
+    .ToColumn("created_at")
+    .DatabaseDefaultOnInsert();
+```
+
+This excludes the property from generated `INSERT` metadata, keeps it readable, and keeps it updateable by default. Compose `.ExcludeFromUpdate()` when the value should remain database-controlled after insert.
+
+### Computed
+
+Use `Computed()` for values calculated by the database:
+
+```csharp
+Map(product => product.Total)
+    .ToColumn("total")
+    .Computed();
+```
+
+Computed properties participate in reads and are excluded from generated `INSERT` and `UPDATE` metadata.
 
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
@@ -411,13 +460,39 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-Dommel honors FluentMap persistence metadata for generated INSERT and UPDATE
+Dommel honors FluentMap persistence metadata for generated `INSERT` and `UPDATE`
 commands. `ReadOnly()` and `Computed()` are selected but not written,
-`DatabaseDefaultOnInsert()` and `ExcludeFromInsert()` are omitted from INSERT
+`DatabaseDefaultOnInsert()` and `ExcludeFromInsert()` are omitted from `INSERT`
 while remaining updateable, and `ExcludeFromUpdate()` remains insertable but is
-not written by UPDATE. Assigned keys can be configured with
-`IsKey().SetGeneratedOption(DatabaseGeneratedOption.None)` so they participate in
-INSERT instead of being treated as database-generated identities.
+not written by `UPDATE`. These behaviors are metadata in the core package; Dommel
+is the package that turns them into generated SQL behavior.
+
+Key metadata is Dommel-specific:
+
+```csharp
+Map(product => product.Id)
+    .ToColumn("product_id")
+    .IsKey()
+    .IsIdentity();
+
+Map(product => product.Code)
+    .ToColumn("product_code")
+    .IsKey()
+    .SetGeneratedOption(DatabaseGeneratedOption.None);
+```
+
+`IsKey()` identifies the row. `IsIdentity()` marks a database-generated identity
+key, excluded from `INSERT` and from `UPDATE SET`. A non-identity key is assigned
+by the application, participates in `INSERT`, and is used by Dommel in the
+`UPDATE WHERE` clause rather than in `UPDATE SET`.
+
+### Compatibility Notes
+
+Historical FluentMap code sometimes used `Ignore()` to keep a property out of
+Dommel `INSERT` or `UPDATE`. Keep `Ignore()` only for values that should not be
+materialized. For database-generated values that must still be read, use the
+persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
+`DatabaseDefaultOnInsert()`, `ExcludeFromInsert()` or `ExcludeFromUpdate()`.
 
 ## Current Limitations
 
@@ -556,7 +631,56 @@ Map(product => product.Total)
     .Computed();
 ```
 
-`Ignore()` mantém seu significado histórico: a propriedade não participa da materialização do FluentMap nem da metadata de persistência gerada. `ReadOnly()` ainda permite materialização, mas exclui a propriedade da metadata de INSERT e UPDATE.
+### Ignore
+
+`Ignore()` mantém seu significado histórico: a propriedade não participa da materialização do FluentMap nem da metadata de persistência gerada.
+
+```csharp
+Map(product => product.TransientValue)
+    .Ignore();
+```
+
+Não use `Ignore()` para valores do banco que ainda devem ser selecionados. Ele não é o mesmo que metadata de persistência read-only.
+
+### Read-only
+
+Use `ReadOnly()` para valores do banco que são selecionados, mas não escritos por operações de persistência geradas:
+
+```csharp
+Map(product => product.UpdatedAt)
+    .ToColumn("updated_at")
+    .ReadOnly();
+```
+
+```text
+SELECT: participa
+INSERT: excluido
+UPDATE: excluido
+```
+
+### Defaults de Banco
+
+Use `DatabaseDefaultOnInsert()` quando o banco fornece o valor inicial se a coluna for omitida do `INSERT`, por exemplo uma coluna `created_at DEFAULT ...`:
+
+```csharp
+Map(product => product.CreatedAt)
+    .ToColumn("created_at")
+    .DatabaseDefaultOnInsert();
+```
+
+Isso exclui a propriedade da metadata de `INSERT` gerado, mantém a leitura e preserva `UPDATE` por default. Componha `.ExcludeFromUpdate()` quando o valor também deve permanecer controlado pelo banco depois do insert.
+
+### Computed
+
+Use `Computed()` para valores calculados pelo banco:
+
+```csharp
+Map(product => product.Total)
+    .ToColumn("total")
+    .Computed();
+```
+
+Propriedades computed participam de leituras e são excluídas da metadata de `INSERT` e `UPDATE` gerados.
 
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 
@@ -859,13 +983,40 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-A integração Dommel respeita a metadata de persistência em comandos INSERT e
-UPDATE gerados. `ReadOnly()` e `Computed()` são selecionados, mas não escritos;
-`DatabaseDefaultOnInsert()` e `ExcludeFromInsert()` são omitidos do INSERT e
+A integração Dommel respeita a metadata de persistência em comandos `INSERT` e
+`UPDATE` gerados. `ReadOnly()` e `Computed()` são selecionados, mas não escritos;
+`DatabaseDefaultOnInsert()` e `ExcludeFromInsert()` são omitidos do `INSERT` e
 continuam atualizáveis; `ExcludeFromUpdate()` continua inserível, mas não é
-escrito pelo UPDATE. Chaves atribuídas pela aplicação podem ser configuradas com
-`IsKey().SetGeneratedOption(DatabaseGeneratedOption.None)` para participar do
-INSERT em vez de serem tratadas como identities geradas pelo banco.
+escrito pelo `UPDATE`. Esses comportamentos são metadata no pacote core; o
+Dommel é o pacote que os transforma em comportamento de SQL gerado.
+
+Metadata de chave é específica do Dommel:
+
+```csharp
+Map(product => product.Id)
+    .ToColumn("product_id")
+    .IsKey()
+    .IsIdentity();
+
+Map(product => product.Code)
+    .ToColumn("product_code")
+    .IsKey()
+    .SetGeneratedOption(DatabaseGeneratedOption.None);
+```
+
+`IsKey()` identifica a linha. `IsIdentity()` marca uma identity gerada pelo banco,
+excluída de `INSERT` e do `SET` de `UPDATE`. Uma key non-identity é atribuída
+pela aplicação, participa do `INSERT` e é usada pelo Dommel no `WHERE` do
+`UPDATE`, não no `SET`.
+
+### Notas de Compatibilidade
+
+Código FluentMap histórico às vezes usava `Ignore()` para remover uma
+propriedade do `INSERT` ou `UPDATE` do Dommel. Mantenha `Ignore()` apenas para
+valores que não devem ser materializados. Para valores gerados pelo banco que
+ainda devem ser lidos, use o persistence behavior correspondente:
+`ReadOnly()`, `Computed()`, `DatabaseDefaultOnInsert()`, `ExcludeFromInsert()` ou
+`ExcludeFromUpdate()`.
 
 ## Limitações Atuais
 

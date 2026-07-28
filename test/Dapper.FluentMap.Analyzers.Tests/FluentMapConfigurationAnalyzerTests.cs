@@ -280,6 +280,31 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
+        public async Task DatabaseDefaultAndComputedShouldReportDfm012()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Total { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Total).DatabaseDefaultOnInsert().Computed();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "computed values cannot also be configured with DatabaseDefaultOnInsert()");
+            AssertDiagnosticLineContains(source, diagnostic, "Computed()");
+        }
+
+        [Fact]
         public async Task ComputedAndKeyShouldReportDfm012()
         {
             var source = @"

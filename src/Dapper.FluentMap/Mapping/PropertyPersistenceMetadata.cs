@@ -170,6 +170,11 @@ namespace Dapper.FluentMap.Mapping
             EnsureNotIgnored();
             EnsureNotKey(nameof(Computed));
 
+            if (HasDatabaseDefaultOnInsert)
+            {
+                throw new FluentMapConfigurationException("A database-default property cannot also be configured as computed.");
+            }
+
             return With(
                 participatesInInsert: false,
                 participatesInUpdate: false,

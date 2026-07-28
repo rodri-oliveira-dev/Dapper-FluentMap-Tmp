@@ -1,5 +1,9 @@
 # Etapa 8 Status
 
+Status: Concluída
+
+Último prompt executado: 8.7
+
 ## Objetivo
 
 Definir e implementar o modelo inicial de metadata de persistencia de
@@ -176,10 +180,37 @@ execucao de CRUD ao core.
   sucesso, 0 warnings, 0 errors.
 - Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
   sucesso, 296 testes aprovados.
+- Executado Prompt 8.7 de hardening e fechamento.
+- Corrigida combinacao contraditoria `DatabaseDefaultOnInsert().Computed()` para
+  falhar com `FluentMapConfigurationException`.
+- Adicionada regressao runtime para `DatabaseDefaultOnInsert().Computed()`.
+- Adicionada regressao do analyzer `DFM012` para
+  `DatabaseDefaultOnInsert().Computed()`.
+- Atualizado `README.md` com documentacao publica detalhando `Ignore`,
+  read-only, database defaults, computed, keys e integracao Dommel em ingles e
+  portugues.
+- Criado `.sdd/etapa-8/08-compatibility-notes.md`.
+- Criado `.sdd/etapa-8/FINAL-REPORT.md`.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~PropertyPersistenceMetadataTests"`:
+  sucesso, 15 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Analyzers.Tests\Dapper.FluentMap.Analyzers.Tests.csproj --configuration Release --filter "FullyQualifiedName~FluentMapConfigurationAnalyzerTests"`:
+  sucesso, 15 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 298 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`:
+  sucesso, 21 testes aprovados.
+- Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `PackageLicenseUrl`/`licenseUrl`.
+- Inspecionado `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`:
+  contem `lib/netstandard2.0/Dapper.FluentMap.dll` e
+  `lib/netstandard2.0/Dapper.FluentMap.xml`.
 
 ## Em andamento
 
-Nenhum apos a validacao final deste prompt.
+Nenhum. Etapa 8 concluida.
 
 ## Proximos passos
 
@@ -272,6 +303,6 @@ Nenhum apos a validacao final deste prompt.
 - `test/Dapper.FluentMap.Tests/HistoricalRegression/HistoricalCoreRegressionTests.cs`
 - `test/Dapper.FluentMap.Dommel.Tests/HistoricalRegression/DommelHistoricalRegressionTests.cs`
 
-## Ultimo prompt executado
+## Último prompt executado
 
-Ultimo prompt executado: 8.6
+Último prompt executado: 8.7
