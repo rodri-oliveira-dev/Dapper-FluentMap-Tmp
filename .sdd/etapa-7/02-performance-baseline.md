@@ -294,3 +294,63 @@ Job: `RunStrategy=ColdStart`, `LaunchCount=8`, `WarmupCount=0`, `IterationCount=
 - Benchmarks locais usam SQLite em memoria e medem tambem provider/SQL/reader.
 - `ShortRun` serve para acompanhamento rapido, nao para afirmar SLA de performance.
 - O comparativo runtime fallback por ordem diferente valida dispatch por shape, mas a ordem de colunas tambem pode afetar ruido do provider.
+
+## Resultados finais da Etapa 7
+
+Prompt 7.7 executou a rodada final representativa depois do hardening de smoke AOT/trimming e da regressao de ignored properties no caminho gerado.
+
+### Comandos Executados
+
+Rodada steady state:
+
+```bash
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+Rodada cold start:
+
+```bash
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationColdStartBenchmarks*
+```
+
+### Resultados - Steady State
+
+Job: `ShortRun`, `LaunchCount=1`, `WarmupCount=3`, `IterationCount=3`.
+
+| Method | Mean | StdDev | Ratio | Gen0 | Gen1 | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| QueryMappedValueObjectRuntimeFallback | 1.549 ms | 0.1973 ms | 0.74 | 138.6719 | 27.3438 | 587.9 KB | 2.08 |
+| QueryMappedValueObject | 1.769 ms | 0.2233 ms | 0.85 | 62.5000 | 19.5313 | 276.47 KB | 0.98 |
+| QueryMappedNestedObjectRuntimeFallback | 1.842 ms | 0.4287 ms | 0.89 | 89.8438 | 27.3438 | 377.06 KB | 1.33 |
+| QueryMappedNestedObject | 1.994 ms | 0.1169 ms | 0.96 | 70.3125 | 23.4375 | 292.44 KB | 1.03 |
+| DapperWithFluentMapRootMapping | 2.052 ms | 0.4532 ms | 0.99 | 66.4063 | - | 283.3 KB | 1.00 |
+| DapperPure | 2.084 ms | 0.1073 ms | 1.00 | 66.4063 | - | 283.17 KB | 1.00 |
+| QueryMappedSimpleRuntimeFallback | 2.110 ms | 0.2501 ms | 1.01 | 85.9375 | 19.5313 | 361.48 KB | 1.28 |
+| QueryMappedImmutableConstructor | 2.134 ms | 0.3463 ms | 1.03 | 62.5000 | 11.7188 | 261.05 KB | 0.92 |
+| QueryMappedSimple | 2.264 ms | 0.1914 ms | 1.09 | 62.5000 | 11.7188 | 261.12 KB | 0.92 |
+
+### Leitura - Steady State Final
+
+- A diferenca de tempo continua ruidosa no `ShortRun`; nao deve ser convertida em claim publico de latencia.
+- O ganho consistente da Etapa 7 permanece em alocacao por 1000 linhas:
+  - simple: generated `261.12 KB` vs runtime fallback `361.48 KB`;
+  - nested: generated `292.44 KB` vs runtime fallback `377.06 KB`;
+  - Value Object: generated `276.47 KB` vs runtime fallback `587.9 KB`.
+- `DapperWithFluentMapRootMapping` permanece alinhado com Dapper puro em alocacao.
+
+### Resultados - Cold Start
+
+Job: `RunStrategy=ColdStart`, `LaunchCount=8`, `WarmupCount=0`, `IterationCount=1`.
+
+| Method | Mean | StdDev | Ratio | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| DapperPureColdStart | 238.0 ms | 50.51 ms | 1.03 | 285.95 KB | 1.00 |
+| QueryMappedValueObjectColdStart | 253.0 ms | 56.23 ms | 1.10 | 645.2 KB | 2.26 |
+| FluentMapRootMappingColdStart | 268.7 ms | 51.75 ms | 1.17 | 353.05 KB | 1.23 |
+| QueryMappedNestedColdStart | 315.2 ms | 77.67 ms | 1.37 | 442.95 KB | 1.55 |
+
+### Leitura - Cold Start Final
+
+- Cold start continua com alta variancia e outliers, portanto serve como smoke de execucao e tendencia de alocacao.
+- A rodada cold existente mede configuracao manual/runtime fallback, nao cold start generated dedicado.
+- Nao foi adicionada API publica de reset apenas para medir cold generated.

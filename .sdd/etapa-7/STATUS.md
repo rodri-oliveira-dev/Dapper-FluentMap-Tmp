@@ -1,5 +1,26 @@
 # Etapa 7 Status
 
+Status final: CONCLUIDA COM LIMITACOES DOCUMENTADAS
+Ultimo prompt executado: 7.7
+
+## Fechamento 7.7
+
+- Criado `.sdd/etapa-7/FINAL-REPORT.md` com matriz Requirement / Implementation / Tests / Benchmark / AOT/Trim impact / Status.
+- Atualizado `.sdd/etapa-7/02-performance-baseline.md` com `Resultados finais da Etapa 7`.
+- Atualizado `README.md` para reforcar que `QueryMapped*` mantem annotations de trimming/dynamic code mesmo quando generated materializer existe.
+- Endurecido o smoke AOT para executar generated materializer real via `QueryMappedSingle` no modo `AOT_SMOKE_GENERATED`.
+- Adicionada regressao de ignored properties no generator e no teste de integracao de generated registration.
+- Validado publish trimmed explicito: sucesso, executavel retornou `explicit:ok`; warning conhecido `IL2104` em Dapper.
+- Validado publish trimmed gerado: sucesso, executavel retornou `generated:ok`; warnings esperados `IL2026` nas chamadas deliberadas de `QueryMappedSingle` e `IL2104` em `Dapper.FluentMap`/Dapper.
+- Tentado publish Native AOT explicito e gerado: bloqueado pelo ambiente por ausencia do platform linker / Visual Studio C++ workload. Nao foi declarada compatibilidade Native AOT completa.
+- Build Release da solution: sucesso, 0 warnings, 0 errors.
+- Testes Release da solution: sucesso, 254 testes aprovados.
+- Benchmarks finais steady state e cold start executados e registrados em `02-performance-baseline.md`.
+
+## Estado final
+
+A Etapa 7 esta concluida para o escopo implementavel neste ambiente: generated materialization foi integrada com fallback runtime, coberta por regressao, medida em benchmark local e validada em publish trimmed. Native AOT permanece uma limitacao de validacao de ambiente e nao deve ser comunicado como suporte completo.
+
 ## Objetivo
 
 Definir a arquitetura e a especificacao inicial para materializacao gerada no FluentMap, preservando o escopo da biblioteca em `IDataReader / IDataRecord -> metadata de mapping -> object graph` e mantendo fallback runtime.

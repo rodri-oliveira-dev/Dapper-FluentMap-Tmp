@@ -53,6 +53,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 5 AS rank_level, 9 AS seniority_level;");
                     var profiledNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
                         "SELECT 'Profile City' AS legacy_city;");
+                    var ignored = connection.QueryMappedSingle<GeneratedIgnoredCustomer>(
+                        "SELECT 17 AS customer_id, 'do-not-map' AS secret;");
 
                     Assert.Equal(7, customer.Id);
                     Assert.Equal("Ada", customer.Name);
@@ -80,6 +82,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal(5, sameTerminal.Rank.Level);
                     Assert.Equal(9, sameTerminal.Seniority.Level);
                     Assert.Equal("Profile City", profiledNested.Address.City);
+                    Assert.Equal(17, ignored.Id);
+                    Assert.Equal("initial", ignored.Secret);
                     Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
 
                     var fallback = connection.QueryMappedSingle<GeneratedCustomer>(
@@ -191,7 +195,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedNestedCustomer),
                 typeof(GeneratedValueObjectCustomer),
                 typeof(GeneratedSameTerminalCustomer),
-                typeof(GeneratedProfileNestedCustomer));
+                typeof(GeneratedProfileNestedCustomer),
+                typeof(GeneratedIgnoredCustomer));
         }
     }
 
@@ -420,6 +425,22 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
         public GeneratedLegacyProfileNestedCustomerMap()
         {
             Map(customer => customer.Address.City).ToColumn("legacy_city");
+        }
+    }
+
+    public sealed class GeneratedIgnoredCustomer
+    {
+        public int Id { get; set; }
+
+        public string Secret { get; set; } = "initial";
+    }
+
+    public sealed class GeneratedIgnoredCustomerMap : EntityMap<GeneratedIgnoredCustomer>
+    {
+        public GeneratedIgnoredCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.Secret).ToColumn("secret").Ignore();
         }
     }
 }

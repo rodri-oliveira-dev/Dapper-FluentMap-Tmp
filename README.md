@@ -339,7 +339,7 @@ FluentMap has different levels of support depending on the API:
 | Assembly scanning APIs | Reflection-discovery based and annotated as trimming-sensitive. |
 | `QueryMapped*` | Runtime reflection and dynamic-code based; annotated with trimming and dynamic-code warnings. |
 
-Do not treat the package as fully Native AOT safe just because explicit registration works. Prefer explicit or generated registration and avoid reflection scanning in trimmed applications.
+Do not treat the package as fully Native AOT safe just because explicit registration works. Prefer explicit or generated registration and avoid reflection scanning in trimmed applications. `QueryMapped*` keeps its trimming and dynamic-code annotations even when a generated materializer is available, because unsupported shapes can still fall back to the runtime materializer.
 
 ## Dapper Integration
 
@@ -762,7 +762,7 @@ FluentMap tem níveis diferentes de suporte conforme a API:
 | APIs de assembly scanning | Baseadas em descoberta por reflection e anotadas como sensíveis a trimming. |
 | `QueryMapped*` | Baseado em reflection e código dinâmico em runtime; anotado com warnings de trimming e dynamic code. |
 
-Não trate o pacote como totalmente seguro para Native AOT apenas porque o registro explícito funciona. Prefira registro explícito ou gerado e evite scanning por reflection em aplicações com trimming.
+Não trate o pacote como totalmente seguro para Native AOT apenas porque o registro explícito funciona. Prefira registro explícito ou gerado e evite scanning por reflection em aplicações com trimming. `QueryMapped*` mantém suas anotações de trimming e dynamic code mesmo quando um materializador gerado existe, porque shapes não suportados ainda podem cair para o materializador runtime.
 
 ## Integração com Dapper
 

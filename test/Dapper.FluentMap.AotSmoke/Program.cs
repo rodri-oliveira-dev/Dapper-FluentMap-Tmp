@@ -5,6 +5,7 @@ using Dapper.FluentMap;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Naming;
+using Microsoft.Data.Sqlite;
 
 #if AOT_SMOKE_GENERATED
 const string scenario = "generated";
@@ -20,6 +21,7 @@ AssertConstructorMapping();
 AssertExplain();
 AssertValueObjectExplain();
 AssertProfileExplain();
+AssertGeneratedQueryMappedMaterializer();
 #elif AOT_SMOKE_SCANNING
 const string scenario = "scanning";
 FluentMapper.Initialize(configuration => configuration.AddMapsFromAssemblyContaining<CustomerMap>());
@@ -108,6 +110,30 @@ static void AssertProfileExplain()
             member.ColumnName == "legacy_id"))
     {
         throw new InvalidOperationException("Explain did not include the profile mapping.");
+    }
+}
+#endif
+
+#if AOT_SMOKE_GENERATED
+static void AssertGeneratedQueryMappedMaterializer()
+{
+    SQLitePCL.Batteries_V2.Init();
+
+    using var connection = new SqliteConnection("Data Source=:memory:");
+    connection.Open();
+
+    var customer = connection.QueryMappedSingle<Customer>(
+        "SELECT 42 AS customer_id;");
+    if (customer.Id != 42)
+    {
+        throw new InvalidOperationException("Generated flat QueryMapped materializer was not used correctly.");
+    }
+
+    var valueObjectCustomer = connection.QueryMappedSingle<ValueObjectCustomer>(
+        "SELECT '12345678909' AS cpf;");
+    if (valueObjectCustomer.Cpf?.Number != "12345678909")
+    {
+        throw new InvalidOperationException("Generated Value Object QueryMapped materializer was not used correctly.");
     }
 }
 #endif

@@ -168,6 +168,37 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
+        public void IgnoredPropertiesShouldGenerateIgnoredColumnDescriptor()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+
+    public string Secret { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+        Map(customer => customer.Secret).ToColumn(""secret"").Ignore();
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"customer_id\", \"Id\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Ignore(\"secret\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.Id = Read<int>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.DoesNotContain("entity.Secret =", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void MultipleMappingsShouldBeGeneratedInDeterministicOrder()
         {
             var source = @"
