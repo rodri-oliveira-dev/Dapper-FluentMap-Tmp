@@ -66,6 +66,105 @@ public sealed class Startup
 
             Assert.Empty(result.DfmDiagnostics);
             Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"customer_id\", \"Id\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.Id = Read<int>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RenamedColumnsShouldGenerateFlatMaterializerDescriptor()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+
+    public string FullName { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+        Map(customer => customer.FullName).ToColumn(""full_name"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"customer_id\", \"Id\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"full_name\", \"FullName\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.FullName = Read<string>(record, 1);", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ConstructorMappingShouldGenerateFlatConstructorMaterializer()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Customer(int id, string fullName)
+    {
+        Id = id;
+        FullName = fullName;
+    }
+
+    public int Id { get; }
+
+    public string FullName { get; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+        Map(customer => customer.FullName).ToColumn(""full_name"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("var id = Read<int>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("var fullName = Read<string>(record, 1);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("return new global::Customer(id, fullName);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("FluentMapConfigurationException", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NullableValuesShouldUseGeneratedReadHelper()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public int? Age { get; set; }
+
+    public string Note { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Age).ToColumn(""age"");
+        Map(customer => customer.Note).ToColumn(""note"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("entity.Age = Read<int?>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("return default(T);", result.GeneratedSource, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -254,6 +353,42 @@ public sealed class LegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyP
             Assert.Empty(result.DfmDiagnostics);
             Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
             Assert.Contains(".AddProfile<global::LegacyCustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer, global::LegacyProfile>(", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void UnsupportedNestedMappingShouldReportFallbackDiagnostic()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Address Address { get; set; }
+}
+
+public sealed class Address
+{
+    public string City { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Address.City).ToColumn(""city"");
+    }
+}";
+
+            var result = RunGenerator(source);
+            var diagnostic = Assert.Single(result.DfmDiagnostics);
+
+            Assert.Equal(MappingRegistrationGenerator.SkippedGeneratedMaterializerDiagnosticId, diagnostic.Id);
+            Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+            Assert.Contains("nested member paths", diagnostic.GetMessage(), StringComparison.Ordinal);
+            Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.DoesNotContain(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
         }
 
         [Fact]

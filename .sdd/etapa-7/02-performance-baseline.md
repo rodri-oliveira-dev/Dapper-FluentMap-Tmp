@@ -133,3 +133,60 @@ Repetir estes benchmarks:
 - apos 7.4: `DapperPure`, `DapperWithFluentMapRootMapping`, `QueryMappedSimple` e cold root/simple;
 - apos 7.5: `QueryMappedImmutableConstructor`, `QueryMappedNestedObject`, `QueryMappedValueObject` e seus equivalentes generated;
 - apos 7.6: todos os steady state e cold start para validar lookup generated/fallback integrado.
+
+## Apos Prompt 7.4
+
+Prompt 7.4 adicionou materializers gerados para maps flat simples e alterou o benchmark steady state para registrar maps por `AddGeneratedMappings()`. Com isso, `QueryMappedSimple` e `QueryMappedImmutableConstructor` usam generated materializer quando a query retorna o shape canonico gerado. `QueryMappedNestedObject` e `QueryMappedValueObject` continuam no fallback runtime.
+
+### Comandos Executados
+
+Rodada steady state:
+
+```bash
+dotnet run --project ./benchmarks/Dapper.FluentMap.Benchmarks/Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+Rodada cold start existente:
+
+```bash
+dotnet run --project ./benchmarks/Dapper.FluentMap.Benchmarks/Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationColdStartBenchmarks*
+```
+
+Tambem foi tentado adicionar um benchmark cold dedicado para `QueryMapped` flat gerado. A tentativa nao foi mantida porque BenchmarkDotNet invoca o metodo mais de uma vez no mesmo processo para estatisticas extras, e o contrato publico atual nao expoe reset de generated materializers; a segunda chamada a `AddGeneratedMappings()` duplicava o descriptor. Nao foi criada API publica nova apenas para o benchmark.
+
+### Resultados - Steady State
+
+Job: `ShortRun`, `LaunchCount=1`, `WarmupCount=3`, `IterationCount=3`.
+
+| Method | Mean | StdDev | Ratio | Gen0 | Gen1 | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| QueryMappedValueObject | 1.202 ms | 0.0732 ms | 0.89 | 140.6250 | 41.0156 | 587.84 KB | 2.08 |
+| DapperPure | 1.355 ms | 0.0485 ms | 1.00 | 68.3594 | - | 283.17 KB | 1.00 |
+| QueryMappedNestedObject | 1.422 ms | 0.1847 ms | 1.05 | 91.7969 | 29.2969 | 377 KB | 1.33 |
+| DapperWithFluentMapRootMapping | 1.456 ms | 0.0464 ms | 1.08 | 68.3594 | - | 283.3 KB | 1.00 |
+| QueryMappedImmutableConstructor | 1.610 ms | 0.0769 ms | 1.19 | 62.5000 | 11.7188 | 261.05 KB | 0.92 |
+| QueryMappedSimple | 1.617 ms | 0.1008 ms | 1.19 | 62.5000 | 11.7188 | 261.12 KB | 0.92 |
+
+### Leitura - Steady State
+
+- `QueryMappedSimple` reduziu alocacao de aproximadamente `361 KB` para `261 KB` por 1000 linhas quando o generated materializer foi usado.
+- `QueryMappedImmutableConstructor` reduziu alocacao de aproximadamente `424 KB` para `261 KB` por 1000 linhas.
+- O tempo continua ruidoso em `ShortRun`; nao ha base estatistica para prometer ganho de tempo.
+- `QueryMappedNestedObject` e `QueryMappedValueObject` ainda usam fallback runtime. As variacoes de tempo nesses cenarios devem ser tratadas como ruido da rodada, nao como efeito do prompt 7.4.
+
+### Resultados - Cold Start
+
+Job: `RunStrategy=ColdStart`, `LaunchCount=8`, `WarmupCount=0`, `IterationCount=1`.
+
+| Method | Mean | StdDev | Ratio | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| DapperPureColdStart | 183.5 ms | 27.79 ms | 1.02 | 285.95 KB | 1.00 |
+| QueryMappedValueObjectColdStart | 251.8 ms | 25.75 ms | 1.40 | 645.09 KB | 2.26 |
+| FluentMapRootMappingColdStart | 271.1 ms | 59.49 ms | 1.51 | 353.05 KB | 1.23 |
+| QueryMappedNestedColdStart | 276.7 ms | 55.80 ms | 1.54 | 442.84 KB | 1.55 |
+
+### Leitura - Cold Start
+
+- Cold start continuou com variancia alta e outliers.
+- A rodada cold valida que os cenarios existentes continuam executando apos a integracao do generator no projeto de benchmarks.
+- Nao ha numero cold dedicado para generated flat neste prompt por causa da limitacao de reset publico descrita acima.

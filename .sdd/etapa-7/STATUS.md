@@ -62,6 +62,33 @@ Definir a arquitetura e a especificacao inicial para materializacao gerada no Fl
   - QueryMappedValueObject: 1.355 ms, 587.84 KB.
 - Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso, gerou `Dapper.FluentMap.2.0.0.nupkg`.
 - Warnings conhecidos no pack: `NU5125` por `PackageLicenseUrl` legado e recomendacao NuGet para README de pacote.
+- Criada a especificacao `.sdd/etapa-7/04-flat-generated-materializers.md`.
+- Evoluido `Dapper.FluentMap.Generators` para emitir materializers flat para explicit maps literais simples.
+- `AddGeneratedMappings()` agora registra maps/profiles e, quando geravel, registra `AddGeneratedMaterializer(...)` para o shape ordenado canonico.
+- Adicionado diagnostic informativo `DFM011` para maps validos que continuam no fallback runtime por feature ainda nao suportada.
+- Mantido fallback integral para nested paths, value objects, conventions, `IncludeBase`, shapes ausentes/extras/reordenados e maps dinamicos.
+- Adicionados testes do generator para:
+  - entidade simples;
+  - colunas renomeadas;
+  - constructor mapping simples;
+  - nullable values;
+  - profiles;
+  - determinismo existente;
+  - fallback para nested nao suportado.
+- Atualizado teste de integracao de generated registration para validar:
+  - uso de generated materializer em profile flat;
+  - constructor mapping gerado;
+  - nullable values;
+  - fallback quando o shape da query nao corresponde ao descriptor.
+- Atualizados `README.md` e `src/Dapper.FluentMap.Generators/README.md` para documentar materializers flat gerados e fallback.
+- Atualizado benchmark steady state para registrar maps via `AddGeneratedMappings()`, exercitando generated materializers nos cenarios flat suportados.
+- Adicionada referencia do projeto de benchmarks ao generator como analyzer.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 244 testes aprovados.
+- Executada rodada benchmark steady state `MaterializationSteadyStateBenchmarks`: sucesso.
+- Executada rodada benchmark cold start `MaterializationColdStartBenchmarks`: sucesso.
+- Atualizada a secao `Apos Prompt 7.4` em `.sdd/etapa-7/02-performance-baseline.md`.
 
 ## Em andamento
 
@@ -69,14 +96,12 @@ Nenhum no escopo deste prompt apos o commit local.
 
 ## Proximos passos
 
-1. Estender generator para descobrir DSL estatica e emitir descriptors/materializers simples.
-2. Prototipar flat/simple generated materialization para explicit maps literais.
-3. Repetir benchmarks root/simple apos 7.4.
-4. Expandir para nested objects, immutable objects e Value Objects.
-5. Repetir benchmarks nested, immutable e Value Object apos 7.5.
-6. Adicionar diagnostics de generated/fallback.
-7. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
-8. Validar trimming, Native AOT e performance antes de documentar ganhos.
+1. Expandir para nested objects, immutable objects compostos e Value Objects.
+2. Repetir benchmarks nested, immutable e Value Object apos 7.5.
+3. Adicionar diagnostics runtime de generated/fallback.
+4. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
+5. Avaliar uma forma segura de medir cold start generated sem expor reset publico desnecessario.
+6. Validar trimming, Native AOT e performance antes de documentar ganhos.
 
 ## Decisoes relevantes
 
@@ -90,6 +115,7 @@ Nenhum no escopo deste prompt apos o commit local.
 - Generated materializers usam contrato publico por descriptor e delegate.
 - Descritores gerados devem ser validados contra o mapping efetivo antes de uso.
 - `QueryMapped*` mantem annotations de trimming/dynamic-code enquanto houver fallback runtime.
+- Prompt 7.4 nao alterou decisoes arquiteturais existentes; apenas implementou a primeira cobertura flat prevista.
 
 ## Riscos conhecidos
 
@@ -119,7 +145,8 @@ Nenhum no escopo deste prompt apos o commit local.
 - `.sdd/etapa-7/02-performance-spec.md`
 - `.sdd/etapa-7/02-performance-baseline.md`
 - `.sdd/etapa-7/03-generated-materializer-contracts.md`
+- `.sdd/etapa-7/04-flat-generated-materializers.md`
 
 ## Ultimo prompt executado
 
-7.3
+7.4

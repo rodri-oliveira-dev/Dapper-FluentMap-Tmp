@@ -33,6 +33,10 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 9 AS base_id, 'Lovelace' AS derived_name;");
                     var immutable = connection.QuerySingle<GeneratedImmutableCustomer>(
                         "SELECT 10 AS immutable_id, 'Grace' AS name;");
+                    var queryMappedImmutable = connection.QueryMappedSingle<GeneratedImmutableCustomer>(
+                        "SELECT 12 AS immutable_id, 'Generated Constructor' AS name;");
+                    var nullable = connection.QueryMappedSingle<GeneratedNullableCustomer>(
+                        "SELECT NULL AS age, NULL AS note;");
                     var named = connection.QuerySingle<GeneratedNamingCustomer>(
                         "SELECT '2026-07-26T10:30:00' AS created_at;");
                     var profiled = connection.QueryMappedSingle<GeneratedProfileCustomer, GeneratedLegacyProfile>(
@@ -45,9 +49,21 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal("Lovelace", derived.Name);
                     Assert.Equal(10, immutable.Id);
                     Assert.Equal("Grace", immutable.Name);
+                    Assert.Equal(12, queryMappedImmutable.Id);
+                    Assert.Equal("Generated Constructor", queryMappedImmutable.Name);
+                    Assert.Null(nullable.Age);
+                    Assert.Null(nullable.Note);
                     Assert.Equal(new DateTime(2026, 7, 26, 10, 30, 0), named.CreatedAt);
                     Assert.Equal(11, profiled.Id);
                     Assert.Equal("Profiled", profiled.Name);
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+
+                    var fallback = connection.QueryMappedSingle<GeneratedCustomer>(
+                        "SELECT 'Fallback' AS Name;");
+
+                    Assert.Equal(0, fallback.Id);
+                    Assert.Equal("Fallback", fallback.Name);
+                    Assert.Equal(1, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
                 }
             }
             finally
@@ -71,6 +87,7 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedBaseCustomer),
                 typeof(GeneratedDerivedCustomer),
                 typeof(GeneratedImmutableCustomer),
+                typeof(GeneratedNullableCustomer),
                 typeof(GeneratedNamingCustomer),
                 typeof(GeneratedProfileCustomer));
         }
@@ -150,6 +167,22 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
         {
             Map(customer => customer.Id).ToColumn("immutable_id");
             Map(customer => customer.Name).ToColumn("name");
+        }
+    }
+
+    public sealed class GeneratedNullableCustomer
+    {
+        public int? Age { get; set; }
+
+        public string Note { get; set; }
+    }
+
+    public sealed class GeneratedNullableCustomerMap : EntityMap<GeneratedNullableCustomer>
+    {
+        public GeneratedNullableCustomerMap()
+        {
+            Map(customer => customer.Age).ToColumn("age");
+            Map(customer => customer.Note).ToColumn("note");
         }
     }
 

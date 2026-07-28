@@ -38,11 +38,7 @@ public class MaterializationSteadyStateBenchmarks
 
         FluentMapper.Initialize(configuration =>
         {
-            configuration.AddMap(new RootMappedCustomerMap());
-            configuration.AddMap(new QueryMappedSimpleCustomerMap());
-            configuration.AddMap(new ImmutableCustomerMap());
-            configuration.AddMap(new NestedCustomerMap());
-            configuration.AddMap(new ValueObjectCustomerMap());
+            configuration.AddGeneratedMappings();
         });
 
         _connection = OpenPopulatedConnection();
@@ -174,7 +170,7 @@ public class MaterializationSteadyStateBenchmarks
         FluentMapper.EntityMaps.Clear();
         FluentMapper.TypeConventions.Clear();
 
-        foreach (var type in BenchmarkTypes.AllMappedTypes)
+        foreach (var type in BenchmarkTypes.AllBenchmarkTypes)
         {
             SqlMapper.SetTypeMap(type, null);
         }
@@ -246,7 +242,7 @@ public class MaterializationColdStartBenchmarks
         FluentMapper.EntityMaps.Clear();
         FluentMapper.TypeConventions.Clear();
 
-        foreach (var type in BenchmarkTypes.AllColdTypes)
+        foreach (var type in BenchmarkTypes.AllBenchmarkTypes)
         {
             SqlMapper.SetTypeMap(type, null);
         }
@@ -329,6 +325,10 @@ internal static class BenchmarkTypes
         typeof(ColdNestedCustomer),
         typeof(ColdValueObjectCustomer)
     };
+
+    internal static readonly Type[] AllBenchmarkTypes = AllMappedTypes
+        .Concat(AllColdTypes)
+        .ToArray();
 }
 
 public sealed class PureCustomer

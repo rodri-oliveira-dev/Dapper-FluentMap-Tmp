@@ -324,7 +324,7 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-Generated registration calls the existing `AddMap<TMap>()` / `AddProfile<TMap>()` paths. It does not generate database materializers, scan referenced assemblies or replace `FluentMapper.Validate()`.
+Generated registration calls the existing `AddMap<TMap>()` / `AddProfile<TMap>()` paths. For flat explicit maps with literal columns and simple scalar properties, it also registers generated row materializers for the matching ordered column shape. Unsupported maps and unexpected shapes continue to use the runtime fallback. It does not scan referenced assemblies, execute map constructors during generation or replace `FluentMapper.Validate()`.
 
 The core runtime also exposes low-level generated materializer registration contracts for generator-emitted code. These contracts are additive infrastructure; current consumers do not need to register materializers manually, and missing generated materializers continue to use the existing runtime fallback.
 
@@ -398,7 +398,7 @@ FluentMapper.Initialize(config =>
 
 - FluentMap configuration is process-wide. Configure at startup and avoid changing mappings while queries are running.
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
-- `QueryMapped*` uses runtime metadata and dynamic code; it is not the Native AOT-safe materialization path.
+- `QueryMapped*` may use generated materializers for supported flat shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Mapping profiles are selected only through `QueryMapped<TEntity, TProfile>()` APIs.
 - `QueryMapped*` is buffered; it does not expose unbuffered streaming.
 - Value object construction uses matching public constructors, not factory methods.
@@ -747,7 +747,7 @@ FluentMapper.Initialize(config =>
 });
 ```
 
-O registro gerado chama os caminhos existentes `AddMap<TMap>()` / `AddProfile<TMap>()`. Ele não gera materializadores de banco, não escaneia assemblies referenciados e não substitui `FluentMapper.Validate()`.
+O registro gerado chama os caminhos existentes `AddMap<TMap>()` / `AddProfile<TMap>()`. Para maps explícitos flat com colunas literais e propriedades escalares simples, ele também registra materializadores de linha gerados para o shape ordenado de colunas correspondente. Maps não suportados e shapes inesperados continuam usando o fallback runtime. Ele não escaneia assemblies referenciados, não executa construtores de maps durante a geração e não substitui `FluentMapper.Validate()`.
 
 O runtime principal também expõe contratos de baixo nível para registro de materializadores gerados por código emitido por generator. Esses contratos são infraestrutura aditiva; consumidores atuais não precisam registrar materializadores manualmente, e a ausência de materializadores gerados continua usando o fallback runtime existente.
 
@@ -821,7 +821,7 @@ FluentMapper.Initialize(config =>
 
 - A configuração do FluentMap é global no processo. Configure no startup e evite alterar mappings enquanto consultas estão em execução.
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
-- `QueryMapped*` usa metadados de runtime e código dinâmico; ele não é o caminho de materialização seguro para Native AOT.
+- `QueryMapped*` pode usar materializadores gerados para shapes flat suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
 - Mapping profiles são selecionados apenas pelas APIs `QueryMapped<TEntity, TProfile>()`.
 - `QueryMapped*` é bufferizado; ele não expõe streaming unbuffered.
 - A construção de Value Objects usa construtores públicos compatíveis, não factory methods.
