@@ -82,6 +82,29 @@ equivalencia entre materializacao generated e runtime.
   unbuffered generated/runtime fallback.
 - Prompt 9.4: criada
   `.sdd/etapa-9/06-performance-results.md` para baseline e resultados.
+- Prompt 9.5: criada especificacao
+  `.sdd/etapa-9/07-async-streaming-spec.md`.
+- Prompt 9.5: adicionada API `QueryMappedUnbufferedAsync<TEntity>()` baseada
+  em `DbConnection` e `IAsyncEnumerable<TEntity>`.
+- Prompt 9.5: adicionada API
+  `QueryMappedUnbufferedAsync<TEntity, TProfile>()`.
+- Prompt 9.5: adicionados overloads por `CommandDefinition`.
+- Prompt 9.5: cancellation propagada para `CommandDefinition`,
+  `DbDataReader.ReadAsync(...)` e loop de enumeracao com
+  `[EnumeratorCancellation]`.
+- Prompt 9.5: reader descartado em `finally`, usando `DisposeAsync()` quando o
+  provider implementa `IAsyncDisposable` e `Dispose()` como fallback.
+- Prompt 9.5: materializers generated e runtime continuam sincronos por linha;
+  async fica concentrado em execute/read.
+- Prompt 9.5: core fixado em `LangVersion` `8.0` e dependencia publica direta
+  de `Microsoft.Bcl.AsyncInterfaces` 10.0.8 adicionada para
+  `IAsyncEnumerable<T>` em `netstandard2.0`.
+- Prompt 9.5: adicionada cobertura para async streaming normal, empty result,
+  nested, Value Object, profile, generated, fallback, cancellation antes da
+  execucao, cancellation durante enumeracao, cancellation apos consumo parcial,
+  partial consumption, excecoes, disposal, transaction e connection state.
+- Prompt 9.5: adicionados benchmarks de Dapper async unbuffered e FluentMap
+  async unbuffered generated/runtime fallback.
 
 ## Em andamento
 
@@ -141,12 +164,34 @@ Nenhuma feature produtiva em andamento.
   `lib/netstandard2.0/Dapper.FluentMap.dll` e
   `lib/netstandard2.0/Dapper.FluentMap.xml` presentes.
 
+## Validacao do Prompt 9.5
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMappedUnbufferedAsyncTests`:
+  sucesso, 15 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`:
+  sucesso.
+- `dotnet build benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 352 testes aprovados no total.
+- `dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*`:
+  sucesso, 15 benchmarks executados; resultados registrados em
+  `.sdd/etapa-9/06-performance-results.md`.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `licenseUrl`.
+- Pacote inspecionado:
+  `lib/netstandard2.0/Dapper.FluentMap.dll` e
+  `lib/netstandard2.0/Dapper.FluentMap.xml` presentes; nuspec inclui
+  dependencias `Dapper` 2.1.79 e `Microsoft.Bcl.AsyncInterfaces` 10.0.8.
+
 ## Proximos passos
 
-1. Async streaming.
-2. Lifetime/cancellation hardening para caminhos async/streaming.
-3. Regression/performance complementar.
-4. Documentacao final.
+1. Documentacao final da Etapa 9, se solicitada.
+2. Avaliar `QueryMultipleMappedAsync`/`ReadMappedUnbufferedAsync` em prompt
+   proprio, se houver demanda.
+3. Avaliar caminho generated-only/AOT-safe em prompt proprio.
 
 ## Decisoes relevantes
 
@@ -159,10 +204,10 @@ Nenhuma feature produtiva em andamento.
 - Streaming deve ter nomes explicitos com `Unbuffered`.
 - Prompt 9.4 implementou `QueryMappedUnbuffered*` sincrono sem misturar com
   async streaming.
-- `IAsyncEnumerable<T>` deve ser avaliado como mudanca de API/dependencia para
-  `netstandard2.0`.
-- Cancellation deve usar `CommandDefinition.CancellationToken` e overloads
-  discoverable quando aprovados.
+- Prompt 9.5 implementou `QueryMappedUnbufferedAsync*` com `IAsyncEnumerable<T>`
+  como mudanca aditiva de API/dependencia para `netstandard2.0`.
+- Cancellation usa `CommandDefinition.CancellationToken`, overloads
+  discoverable e token efetivo do async enumerator.
 - FluentMap nao deve abstrair SQL alem do necessario para aplicar
   materializacao avancada.
 
@@ -201,8 +246,9 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 }
 ```
 
-`QueryMappedUnbuffered*` sincrono foi implementado no Prompt 9.4. O nome async
-ainda depende de revisao de overloads, target framework e compatibilidade.
+`QueryMappedUnbuffered*` sincrono foi implementado no Prompt 9.4.
+`QueryMappedUnbufferedAsync*` foi implementado no Prompt 9.5 com receiver
+`DbConnection`.
 
 ## Riscos conhecidos
 
@@ -212,8 +258,8 @@ ainda depende de revisao de overloads, target framework e compatibilidade.
 - Streaming pode manter recursos abertos por mais tempo se enumeradores nao
   forem descartados.
 - Cancellation depende do suporte real do provider.
-- `IAsyncEnumerable<T>` em API publica `netstandard2.0` pode alterar
-  dependencias/compatibilidade.
+- `IAsyncEnumerable<T>` em API publica `netstandard2.0` alterou a dependencia
+  publica ao adicionar `Microsoft.Bcl.AsyncInterfaces` 10.0.8.
 - SQLite pode nao cobrir todos os cenarios reais de multiple result sets.
 - Generated-only para AOT ainda nao existe; fallback runtime preserva warnings
   de trimming/dynamic code.
@@ -227,6 +273,7 @@ ainda depende de revisao de overloads, target framework e compatibilidade.
 - `.sdd/etapa-9/04-read-mapped-spec.md`
 - `.sdd/etapa-9/05-unbuffered-materialization.md`
 - `.sdd/etapa-9/06-performance-results.md`
+- `.sdd/etapa-9/07-async-streaming-spec.md`
 - `.sdd/etapa-9/DECISIONS.md`
 - `.sdd/etapa-9/STATUS.md`
 - `src/Dapper.FluentMap/MappedGridReader.cs`
@@ -242,8 +289,9 @@ ainda depende de revisao de overloads, target framework e compatibilidade.
 - `test/Dapper.FluentMap.Tests/GeneratedMaterializerContractTests.cs`
 - `test/Dapper.FluentMap.Tests/QueryMultipleMappedTests.cs`
 - `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedTests.cs`
+- `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedAsyncTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 9.4
+Ultimo prompt executado: 9.5

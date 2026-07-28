@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.Mapping;
@@ -251,6 +254,201 @@ namespace Dapper.FluentMap
             where TProfile : IMappingProfile
         {
             return ExecuteMappedUnbuffered<TEntity>(connection, command, typeof(TProfile));
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered query that materializes rows using FluentMap's opt-in nested object materializer.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="cancellationToken">A token to cancel asynchronous execution or enumeration.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            this DbConnection connection,
+            string sql,
+            CancellationToken cancellationToken)
+            where TEntity : class
+        {
+            return QueryMappedUnbufferedAsync<TEntity>(
+                connection,
+                sql,
+                param: null,
+                transaction: null,
+                commandTimeout: null,
+                commandType: null,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered query that materializes rows using FluentMap's opt-in nested object materializer.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="param">Optional query parameters.</param>
+        /// <param name="transaction">Optional transaction.</param>
+        /// <param name="commandTimeout">Optional command timeout.</param>
+        /// <param name="commandType">Optional command type.</param>
+        /// <param name="cancellationToken">A token to cancel asynchronous execution or enumeration.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            this DbConnection connection,
+            string sql,
+            object param = null,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null,
+            CommandType? commandType = null,
+            CancellationToken cancellationToken = default)
+            where TEntity : class
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (sql == null)
+            {
+                throw new ArgumentNullException(nameof(sql));
+            }
+
+            return QueryMappedUnbufferedAsync<TEntity>(
+                connection,
+                new CommandDefinition(sql, param, transaction, commandTimeout, commandType, CommandFlags.None, cancellationToken));
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered query that materializes rows using the specified FluentMap mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="cancellationToken">A token to cancel asynchronous execution or enumeration.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>(
+            this DbConnection connection,
+            string sql,
+            CancellationToken cancellationToken)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            return QueryMappedUnbufferedAsync<TEntity, TProfile>(
+                connection,
+                sql,
+                param: null,
+                transaction: null,
+                commandTimeout: null,
+                commandType: null,
+                cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered query that materializes rows using the specified FluentMap mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="sql">The SQL query to execute.</param>
+        /// <param name="param">Optional query parameters.</param>
+        /// <param name="transaction">Optional transaction.</param>
+        /// <param name="commandTimeout">Optional command timeout.</param>
+        /// <param name="commandType">Optional command type.</param>
+        /// <param name="cancellationToken">A token to cancel asynchronous execution or enumeration.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>(
+            this DbConnection connection,
+            string sql,
+            object param = null,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null,
+            CommandType? commandType = null,
+            CancellationToken cancellationToken = default)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (sql == null)
+            {
+                throw new ArgumentNullException(nameof(sql));
+            }
+
+            return QueryMappedUnbufferedAsync<TEntity, TProfile>(
+                connection,
+                new CommandDefinition(sql, param, transaction, commandTimeout, commandType, CommandFlags.None, cancellationToken));
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered command that materializes rows using FluentMap's opt-in nested object materializer.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="command">The command to execute.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            this DbConnection connection,
+            CommandDefinition command)
+            where TEntity : class
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, profileType: null, command.CancellationToken);
+        }
+
+        /// <summary>
+        /// Creates a lazy asynchronous unbuffered command that materializes rows using the specified FluentMap mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <param name="connection">The database connection.</param>
+        /// <param name="command">The command to execute.</param>
+        /// <returns>A lazy asynchronous sequence that keeps the underlying reader open until enumeration completes or the async enumerator is disposed.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public static IAsyncEnumerable<TEntity> QueryMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>(
+            this DbConnection connection,
+            CommandDefinition command)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, typeof(TProfile), command.CancellationToken);
         }
 
         /// <summary>
@@ -528,6 +726,74 @@ namespace Dapper.FluentMap
             {
                 return MappedRowMaterializer.Materialize<TEntity>(reader, profileType);
             }
+        }
+
+        private static async IAsyncEnumerable<TEntity> ExecuteMappedUnbufferedAsync<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>(
+            DbConnection connection,
+            CommandDefinition command,
+            Type profileType,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            where TEntity : class
+        {
+            if (connection == null)
+            {
+                throw new ArgumentNullException(nameof(connection));
+            }
+
+            DbDataReader reader = null;
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var effectiveCommand = WithCancellation(command, cancellationToken);
+                reader = await SqlMapper.ExecuteReaderAsync(connection, effectiveCommand).ConfigureAwait(false);
+                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType);
+
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        yield break;
+                    }
+
+                    yield return materializer(reader);
+                }
+            }
+            finally
+            {
+                if (reader != null)
+                {
+                    await DisposeReaderAsync(reader).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private static CommandDefinition WithCancellation(CommandDefinition command, CancellationToken cancellationToken)
+        {
+            return new CommandDefinition(
+                command.CommandText,
+                command.Parameters,
+                command.Transaction,
+                command.CommandTimeout,
+                command.CommandType,
+                command.Flags,
+                cancellationToken);
+        }
+
+        private static ValueTask DisposeReaderAsync(DbDataReader reader)
+        {
+            if (reader is IAsyncDisposable asyncDisposable)
+            {
+                return asyncDisposable.DisposeAsync();
+            }
+
+            reader.Dispose();
+            return default;
         }
     }
 }

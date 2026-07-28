@@ -31,7 +31,7 @@ public class MaterializationSteadyStateBenchmarks
     private SqliteConnection _connection = null!;
 
     [GlobalSetup]
-    public void GlobalSetup()
+    public async Task GlobalSetup()
     {
         SQLitePCL.Batteries_V2.Init();
         ResetPublicFluentState();
@@ -45,11 +45,14 @@ public class MaterializationSteadyStateBenchmarks
 
         DapperPure();
         DapperPureUnbuffered();
+        await DapperPureUnbufferedAsync();
         DapperWithFluentMapRootMapping();
         QueryMappedSimple();
         QueryMappedSimpleUnbuffered();
+        await QueryMappedSimpleUnbufferedAsync();
         QueryMappedSimpleRuntimeFallback();
         QueryMappedSimpleUnbufferedRuntimeFallback();
+        await QueryMappedSimpleUnbufferedAsyncRuntimeFallback();
         QueryMappedImmutableConstructor();
         QueryMappedNestedObject();
         QueryMappedNestedObjectRuntimeFallback();
@@ -83,6 +86,13 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public Task<int> DapperPureUnbufferedAsync()
+    {
+        return CountAsync(_connection.QueryUnbufferedAsync<PureCustomer>(
+            "SELECT Id, Name, Age, Balance, CreatedAt FROM BenchmarkRows;"));
+    }
+
+    [Benchmark]
     public int DapperWithFluentMapRootMapping()
     {
         return _connection.Query<RootMappedCustomer>(
@@ -108,6 +118,13 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public Task<int> QueryMappedSimpleUnbufferedAsync()
+    {
+        return CountAsync(_connection.QueryMappedUnbufferedAsync<QueryMappedSimpleCustomer>(
+            "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;"));
+    }
+
+    [Benchmark]
     public int QueryMappedSimpleRuntimeFallback()
     {
         return _connection.QueryMapped<QueryMappedSimpleCustomer>(
@@ -121,6 +138,13 @@ public class MaterializationSteadyStateBenchmarks
         return _connection.QueryMappedUnbuffered<QueryMappedSimpleCustomer>(
                 "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
             .Count();
+    }
+
+    [Benchmark]
+    public Task<int> QueryMappedSimpleUnbufferedAsyncRuntimeFallback()
+    {
+        return CountAsync(_connection.QueryMappedUnbufferedAsync<QueryMappedSimpleCustomer>(
+            "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;"));
     }
 
     [Benchmark]
@@ -229,6 +253,19 @@ public class MaterializationSteadyStateBenchmarks
         {
             SqlMapper.SetTypeMap(type, null);
         }
+    }
+
+    private static async Task<int> CountAsync<T>(IAsyncEnumerable<T> source)
+    {
+        var count = 0;
+
+        await foreach (var item in source)
+        {
+            _ = item;
+            count++;
+        }
+
+        return count;
     }
 }
 

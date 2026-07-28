@@ -333,3 +333,47 @@ excecao interrompe o loop.
 O usuario ganha processamento incremental sincrono sem async streaming. O
 contrato exige que conexao/transacao externas permanecam validas durante a
 enumeracao. Async streaming permanece para prompt futuro.
+
+## ADR-13 - QueryMappedUnbufferedAsync
+
+### Contexto
+
+O Prompt 9.5 precisava entregar streaming assincrono real, sem materializar uma
+lista via `QueryAsync`. A API publica do pacote core permanece em
+`netstandard2.0`, enquanto `IAsyncEnumerable<T>` e async streams exigem suporte
+de compilador e assemblies auxiliares nesse target.
+
+### Decisao
+
+Adicionar `QueryMappedUnbufferedAsync<TEntity>` e
+`QueryMappedUnbufferedAsync<TEntity, TProfile>` como APIs lazy baseadas em
+`DbConnection`, retornando `IAsyncEnumerable<TEntity>`.
+
+O receiver e `DbConnection`, nao `IDbConnection`, porque a implementacao precisa
+de `DbDataReader.ReadAsync(CancellationToken)` para streaming async real.
+
+Fixar `LangVersion` do core em `8.0` e declarar dependencia direta de
+`Microsoft.Bcl.AsyncInterfaces` 10.0.8, pois `IAsyncEnumerable<T>` entrou na
+superficie publica `netstandard2.0`.
+
+### Alternativas consideradas
+
+- Usar `QueryAsync` e converter para `IAsyncEnumerable`: descartado porque seria
+  falso streaming.
+- Usar `IDbConnection` e o overload async do Dapper que retorna `IDataReader`:
+  descartado porque `IDataReader` nao expoe `ReadAsync`.
+- Criar materializers async: descartado porque a leitura de I/O ja ocorreu
+  antes da materializacao da linha.
+
+### Consequencias
+
+O caminho async streaming executa `SqlMapper.ExecuteReaderAsync`, resolve o
+materializer uma vez por shape, chama `ReadAsync` por linha e materializa a
+linha de forma sincrona.
+
+Cancellation e parte do contrato: o token e aplicado ao `CommandDefinition`,
+ao `ReadAsync` e ao loop do async iterator com `[EnumeratorCancellation]`.
+
+Projetos de teste/benchmark que tambem traziam `Microsoft.Bcl.AsyncInterfaces`
+6.0 por dependencias de tooling passaram a fixar 10.0.8 explicitamente para
+evitar conflitos MSBuild de assembly.

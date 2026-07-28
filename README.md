@@ -434,6 +434,7 @@ connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
 connection.QueryMappedUnbuffered<Customer>(sql);
+connection.QueryMappedUnbufferedAsync<Customer>(sql, cancellationToken);
 
 using var multi = connection.QueryMultipleMapped(sql);
 var customers = multi.ReadMapped<Customer>();
@@ -452,6 +453,19 @@ foreach (var customer in connection.QueryMappedUnbuffered<Customer>(sql))
 ```
 
 Unbuffered queries are lazy: the command is executed when enumeration starts, not when the method is called. The underlying reader stays open until enumeration finishes or the enumerator is disposed. If FluentMap opens a closed connection for the enumeration, disposing the reader closes it again; if the connection was already open, it remains open and must stay usable for the whole enumeration. Dispose the enumerator, for example by using `foreach`, when stopping early.
+
+Use `QueryMappedUnbufferedAsync<T>()` or `QueryMappedUnbufferedAsync<T, TProfile>()` on `DbConnection` when the provider supports asynchronous readers:
+
+```csharp
+await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
+    sql,
+    cancellationToken))
+{
+    await ProcessAsync(customer, cancellationToken);
+}
+```
+
+Async unbuffered queries are also lazy and incremental. FluentMap awaits command execution and `DbDataReader.ReadAsync(...)`, propagates cancellation to supported async operations, and disposes the reader when enumeration completes, stops early, is canceled or throws. Row materialization remains synchronous after the row has been read; generated materializers and runtime fallback use the same dispatch as buffered and synchronous unbuffered queries.
 
 ## Dommel
 
@@ -527,7 +541,7 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Mapping profiles are selected through `QueryMapped<TEntity, TProfile>()` and `ReadMapped<TEntity, TProfile>()` APIs.
-- `QueryMapped*` and `ReadMapped*` are buffered. Use `QueryMappedUnbuffered*` for explicit synchronous unbuffered streaming.
+- `QueryMapped*` and `ReadMapped*` are buffered. Use `QueryMappedUnbuffered*` for explicit synchronous or asynchronous unbuffered streaming.
 - Value object construction uses matching public constructors, not factory methods.
 
 ## Contributing
@@ -984,6 +998,7 @@ connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
 connection.QueryMappedUnbuffered<Customer>(sql);
+connection.QueryMappedUnbufferedAsync<Customer>(sql, cancellationToken);
 
 using var multi = connection.QueryMultipleMapped(sql);
 var customers = multi.ReadMapped<Customer>();
@@ -1002,6 +1017,19 @@ foreach (var customer in connection.QueryMappedUnbuffered<Customer>(sql))
 ```
 
 Consultas unbuffered são lazy: o comando é executado quando a enumeração começa, não quando o método é chamado. O reader subjacente permanece aberto até a enumeração terminar ou o enumerator ser descartado. Se o FluentMap abrir uma conexão fechada para a enumeração, o dispose do reader fecha a conexão novamente; se a conexão já estava aberta, ela permanece aberta e precisa continuar válida durante toda a enumeração. Descarte o enumerator, por exemplo usando `foreach`, ao parar cedo.
+
+Use `QueryMappedUnbufferedAsync<T>()` ou `QueryMappedUnbufferedAsync<T, TProfile>()` em `DbConnection` quando o provider suportar readers assíncronos:
+
+```csharp
+await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
+    sql,
+    cancellationToken))
+{
+    await ProcessAsync(customer, cancellationToken);
+}
+```
+
+Consultas async unbuffered também são lazy e incrementais. O FluentMap aguarda a execução do comando e `DbDataReader.ReadAsync(...)`, propaga cancellation para operações async suportadas e descarta o reader quando a enumeração termina, para cedo, é cancelada ou falha. A materialização da linha continua síncrona depois que a linha foi lida; materializers gerados e fallback runtime usam o mesmo dispatch dos caminhos buffered e unbuffered síncrono.
 
 ## Dommel
 
@@ -1078,7 +1106,7 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
 - `QueryMapped*` pode usar materializadores gerados para shapes flat, aninhados e Value Object suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
 - Mapping profiles são selecionados pelas APIs `QueryMapped<TEntity, TProfile>()` e `ReadMapped<TEntity, TProfile>()`.
-- `QueryMapped*` e `ReadMapped*` são bufferizados. Use `QueryMappedUnbuffered*` para streaming unbuffered síncrono explícito.
+- `QueryMapped*` e `ReadMapped*` são bufferizados. Use `QueryMappedUnbuffered*` para streaming unbuffered síncrono ou assíncrono explícito.
 - A construção de Value Objects usa construtores públicos compatíveis, não factory methods.
 
 ## Contribuição
