@@ -35,6 +35,7 @@ public class MaterializationSteadyStateBenchmarks
     {
         SQLitePCL.Batteries_V2.Init();
         ResetPublicFluentState();
+        SqlMapper.AddTypeHandler(new BenchmarkHandledCodeTypeHandler());
 
         FluentMapper.Initialize(configuration =>
         {
@@ -61,6 +62,10 @@ public class MaterializationSteadyStateBenchmarks
         DapperQueryMultipleBuffered();
         QueryMultipleMappedSimple();
         QueryMultipleMappedSimpleRuntimeFallback();
+        QueryMappedRuntimeNoConverter();
+        QueryMappedRuntimeSimpleConverter();
+        QueryMappedRuntimeTypeHandler();
+        QueryMappedRuntimePropertyConverter();
     }
 
     [GlobalCleanup]
@@ -223,6 +228,38 @@ public class MaterializationSteadyStateBenchmarks
                multi.ReadMapped<QueryMappedSimpleCustomer>().Count();
     }
 
+    [Benchmark]
+    public int QueryMappedRuntimeNoConverter()
+    {
+        return _connection.QueryMapped<RuntimeNoConverterCustomer>(
+                "SELECT Name AS full_name, Id AS customer_id FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedRuntimeSimpleConverter()
+    {
+        return _connection.QueryMapped<RuntimeSimpleConverterCustomer>(
+                "SELECT Name AS full_name, Id AS customer_id FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedRuntimeTypeHandler()
+    {
+        return _connection.QueryMapped<RuntimeTypeHandlerCustomer>(
+                "SELECT Cpf AS code, Id AS customer_id FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int QueryMappedRuntimePropertyConverter()
+    {
+        return _connection.QueryMapped<RuntimePropertyConverterCustomer>(
+                "SELECT Cpf AS code, Id AS customer_id FROM BenchmarkRows;")
+            .Count();
+    }
+
     private static SqliteConnection OpenPopulatedConnection()
     {
         var connection = new SqliteConnection("Data Source=:memory:");
@@ -284,6 +321,7 @@ public class MaterializationSteadyStateBenchmarks
     {
         FluentMapper.EntityMaps.Clear();
         FluentMapper.TypeConventions.Clear();
+        SqlMapper.ResetTypeHandlers();
 
         foreach (var type in BenchmarkTypes.AllBenchmarkTypes)
         {
@@ -444,7 +482,11 @@ internal static class BenchmarkTypes
         typeof(QueryMappedSimpleCustomer),
         typeof(ImmutableCustomer),
         typeof(NestedCustomer),
-        typeof(ValueObjectCustomer)
+        typeof(ValueObjectCustomer),
+        typeof(RuntimeNoConverterCustomer),
+        typeof(RuntimeSimpleConverterCustomer),
+        typeof(RuntimeTypeHandlerCustomer),
+        typeof(RuntimePropertyConverterCustomer)
     };
 
     internal static readonly Type[] AllColdTypes =
@@ -633,6 +675,113 @@ public sealed class ValueObjectCustomerMap : EntityMap<ValueObjectCustomer>
         Map(customer => customer.Cpf.Number).ToColumn("cpf");
         Map(customer => customer.Balance.Amount).ToColumn("amount");
         Map(customer => customer.Balance.Currency).ToColumn("currency");
+    }
+}
+
+public sealed class RuntimeNoConverterCustomer
+{
+    public int Id { get; set; }
+
+    public string FullName { get; set; } = string.Empty;
+}
+
+public sealed class RuntimeNoConverterCustomerMap : EntityMap<RuntimeNoConverterCustomer>
+{
+    public RuntimeNoConverterCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn("customer_id");
+        Map(customer => customer.FullName).ToColumn("full_name");
+    }
+}
+
+public sealed class RuntimeSimpleConverterCustomer
+{
+    public int Id { get; set; }
+
+    public string FullName { get; set; } = string.Empty;
+}
+
+public sealed class RuntimeSimpleConverterCustomerMap : EntityMap<RuntimeSimpleConverterCustomer>
+{
+    public RuntimeSimpleConverterCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn("customer_id");
+        Map(customer => customer.FullName)
+            .ToColumn("full_name")
+            .ConvertFromDatabaseUsing<BenchmarkUpperNameConverter, string>();
+    }
+}
+
+public sealed class BenchmarkUpperNameConverter : IReadPropertyConverter<string, string>
+{
+    public string ConvertFromDatabase(string value)
+    {
+        return value.ToUpperInvariant();
+    }
+}
+
+public sealed class RuntimeTypeHandlerCustomer
+{
+    public int Id { get; set; }
+
+    public BenchmarkHandledCode Code { get; set; } = null!;
+}
+
+public sealed class RuntimeTypeHandlerCustomerMap : EntityMap<RuntimeTypeHandlerCustomer>
+{
+    public RuntimeTypeHandlerCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn("customer_id");
+        Map(customer => customer.Code).ToColumn("code");
+    }
+}
+
+public sealed class RuntimePropertyConverterCustomer
+{
+    public int Id { get; set; }
+
+    public BenchmarkHandledCode Code { get; set; } = null!;
+}
+
+public sealed class RuntimePropertyConverterCustomerMap : EntityMap<RuntimePropertyConverterCustomer>
+{
+    public RuntimePropertyConverterCustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn("customer_id");
+        Map(customer => customer.Code)
+            .ToColumn("code")
+            .ConvertFromDatabaseUsing<BenchmarkHandledCodeConverter, string>();
+    }
+}
+
+public sealed class BenchmarkHandledCode
+{
+    public BenchmarkHandledCode(string value)
+    {
+        Value = value;
+    }
+
+    public string Value { get; }
+}
+
+public sealed class BenchmarkHandledCodeTypeHandler : SqlMapper.TypeHandler<BenchmarkHandledCode>
+{
+    public override BenchmarkHandledCode Parse(object value)
+    {
+        return new BenchmarkHandledCode((string)value);
+    }
+
+    public override void SetValue(IDbDataParameter parameter, BenchmarkHandledCode? value)
+    {
+        parameter.Value = value == null ? DBNull.Value : value.Value;
+    }
+}
+
+public sealed class BenchmarkHandledCodeConverter : IReadPropertyConverter<string, BenchmarkHandledCode>
+{
+    public BenchmarkHandledCode ConvertFromDatabase(string value)
+    {
+        return new BenchmarkHandledCode(value);
     }
 }
 

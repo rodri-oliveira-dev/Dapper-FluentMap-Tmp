@@ -308,3 +308,36 @@ leitura.
 O projeto passa a conseguir validar e inspecionar converters por propriedade,
 profile e heranca, mantendo comportamento de valor inalterado ate a etapa que
 implementar execucao. A API e aditiva e preserva `IPropertyMap`.
+
+## ADR-12 - Prompt 10.3 runtime read conversion
+
+### Contexto
+
+O Prompt 10.3 pediu que o runtime materializer aplicasse read converters
+configurados por propriedade sem duplicar indevidamente `TypeHandler<T>` do
+Dapper e sem espalhar logica pelas APIs `QueryMapped*`, `ReadMapped*` e
+streaming.
+
+### Decisao
+
+Read converters por propriedade executam em `NestedMaterializationPlan`, na
+folha terminal que le `IDataRecord.GetValue`. A precedencia efetiva e:
+
+```text
+null/DBNull handling
+    -> property read converter
+    -> Dapper TypeHandler<TProperty>
+    -> FluentMap default conversion
+```
+
+Quando um property converter existe para a folha, o `TypeHandler<TProperty>` nao
+e chamado para aquela propriedade. Sem converter, o caminho antigo com
+`TypeHandler<TProperty>` e conversao padrao permanece.
+
+### Consequencias
+
+Todas as APIs que usam `MappedRowMaterializer` compartilham a mesma semantica:
+`QueryMapped`, `QueryMultipleMapped`/`ReadMapped`, unbuffered sincrono e
+streaming assincrono. Generated materializers continuam caindo para runtime
+fallback quando o mapping efetivo possui read converter. Escrita/Dommel e
+execucao generated de converters permanecem incrementos separados.

@@ -52,22 +52,37 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
 - Adicionados testes de metadata/fluent API/read-only/write-only/bidirecional,
   delegates, lifetime por property map, heranca, profile, invalid types,
   duplicidade, nullability, profile collision e generated fallback defensivo.
+- Criado `.sdd/etapa-10/04-runtime-conversion.md`.
+- Implementada execucao de read converters por propriedade no runtime
+  materializer comum (`NestedMaterializationPlan`).
+- Preservada precedencia:
+  `null/DBNull -> property read converter -> Dapper TypeHandler<TProperty> -> default conversion`.
+- Garantido que property converter configurado nao recebe valor ja convertido
+  por `TypeHandler<TProperty>` e que `TypeHandler<TProperty>` nao roda depois
+  do property converter da mesma folha.
+- Mantida a selecao generated-then-runtime existente; generated descriptors
+  com read converter continuam recusados e caem para runtime fallback.
+- Adicionados testes de execucao para scalar conversion, nullable, null, enum,
+  nested member path, constructor parameter, Value Object escalar, profile,
+  exception wrapping, coexistencia com TypeHandler, unbuffered e async
+  streaming.
+- Atualizado README para documentar read conversion em runtime mapped.
+- Adicionados benchmarks especificos para no converter, simple converter,
+  TypeHandler e property converter.
+- Criado `.sdd/etapa-10/05-performance-baseline.md`.
 
 ## Em andamento
 
-Execucao real de converters em runtime materializer, generated materializer e
-write/Dommel permanece adiada para incrementos seguintes.
+Generated materializer read conversion e write/Dommel conversion permanecem
+adiadas para incrementos seguintes.
 
 ## Proximos passos
 
-1. Adicionar read conversion no runtime materializer com testes de regressao.
-2. Evoluir generated read conversion ou fallback seguro quando houver converter.
-3. Cobrir nested leaves e Value Objects com execucao real de converter.
-4. Investigar e implementar write conversion/Dommel somente apos definir hook
+1. Evoluir generated read conversion ou fallback seguro quando houver converter.
+2. Investigar e implementar write conversion/Dommel somente apos definir hook
    de parametros por propriedade.
-5. Evoluir diagnostics/analyzers para reconhecer `Convert...`.
-6. Medir performance e documentar API publica no README quando a execucao for
-   ativada.
+3. Evoluir diagnostics/analyzers para reconhecer `Convert...`.
+4. Aumentar benchmark formal quando houver decisao de otimizacao.
 
 ## Decisoes relevantes
 
@@ -87,6 +102,8 @@ write/Dommel permanece adiada para incrementos seguintes.
   deve depender de ativacao reflection-only.
 - Prompt 10.2 decidiu implementar somente contracts/metadata/fluent API e
   diagnostics, mantendo execucao de conversores para incremento posterior.
+- Prompt 10.3 executa read converters no runtime materializer comum e mantem
+  generated/write conversion fora do escopo.
 
 ## APIs implementadas no Prompt 10.2
 
@@ -140,9 +157,9 @@ public interface IPropertyConverter<TDatabase, TProperty> :
   introduzida cedo demais.
 - Converter por reflection precisa de anotacoes de trimming e estrategia AOT.
 - Caches atuais assumem configuracao efetivamente imutavel apos registro.
-- Converter metadata ja existe, mas `QueryMapped*` ainda nao executa os
-  conversores. Isso e intencional no Prompt 10.2 para evitar divergencia
-  runtime/generated antes da proxima implementacao.
+- Converter metadata ja existe, mas generated materializers ainda nao executam
+  read converters. Isso e intencional no Prompt 10.3 para evitar divergencia
+  runtime/generated antes da implementacao generated.
 - `Convert...Using<TConverter, TDatabase>()` valida contrato por reflection de
   interfaces em configuration time; overloads por instancia/delegate oferecem
   caminho mais favoravel a AOT.
@@ -169,6 +186,25 @@ public interface IPropertyConverter<TDatabase, TProperty> :
 - `dotnet pack ./src/Dapper.FluentMap/Dapper.FluentMap.csproj --configuration Release --no-build --output ./artifacts/packages`:
   sucesso, pacote criado em `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`;
   warning conhecido `NU5125` sobre `licenseUrl` depreciado.
+
+## Validacao do Prompt 10.3
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~RuntimeReadConversionTests`:
+  sucesso, 11 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 385 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso, pacote criado em `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`;
+  warning conhecido `NU5125` sobre `licenseUrl` depreciado.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMappedRuntime*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Resultado observado: no converter 2.768 ms / 142.55 KB, simple
+  converter 1.676 ms / 189.43 KB, TypeHandler 1.606 ms / 165.98 KB, property
+  converter 1.334 ms / 165.98 KB. BenchmarkDotNet alertou que os tempos de
+  iteracao ficaram abaixo de 100 ms; usar como baseline curta, nao como
+  conclusao estatistica final.
 
 ## Interacao com Dapper TypeHandler
 
@@ -201,6 +237,8 @@ connection.Query<T>()
 - `.sdd/etapa-10/01-conversion-landscape.md`
 - `.sdd/etapa-10/02-property-conversion-spec.md`
 - `.sdd/etapa-10/03-converter-contract-design.md`
+- `.sdd/etapa-10/04-runtime-conversion.md`
+- `.sdd/etapa-10/05-performance-baseline.md`
 - `.sdd/etapa-10/DECISIONS.md`
 - `.sdd/etapa-10/STATUS.md`
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`
@@ -218,7 +256,9 @@ connection.Query<T>()
 - `test/Dapper.FluentMap.Tests/ValueObjectMaterializationTests.cs`
 - `test/Dapper.FluentMap.Tests/AdvancedQueryHardeningTests.cs`
 - `test/Dapper.FluentMap.Tests/PropertyConversionMetadataTests.cs`
+- `test/Dapper.FluentMap.Tests/RuntimeReadConversionTests.cs`
+- `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 10.2
+Ultimo prompt executado: 10.3

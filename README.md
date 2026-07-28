@@ -159,10 +159,10 @@ Map(product => product.Total)
 
 Computed properties participate in reads and are excluded from generated `INSERT` and `UPDATE` metadata.
 
-### Property Conversion Metadata
+### Property Read Conversion
 
-Property converters can be attached to a mapping as metadata for future
-read/write conversion paths:
+Property read converters can be attached to a mapping when a column value needs
+property-specific conversion during FluentMap-controlled materialization:
 
 ```csharp
 Map(product => product.Status)
@@ -170,10 +170,11 @@ Map(product => product.Status)
     .ConvertToDatabaseUsing<StatusWriteConverter, string>();
 ```
 
-The current increment stores and validates converter metadata per property,
-including profile and inherited mappings. It does not yet execute those
-converters during Dapper queries, `QueryMapped*` materialization or Dommel
-write operations.
+`QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped` and unbuffered streaming
+apply read converters in the runtime materializer before falling back to a
+Dapper `TypeHandler<TProperty>` or FluentMap's default conversion. Normal Dapper
+queries (`Query<T>()`) and Dommel write operations are unchanged; write
+converter metadata is stored for a later parameter-conversion increment.
 
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
@@ -770,10 +771,11 @@ Map(product => product.Total)
 
 Propriedades computed participam de leituras e são excluídas da metadata de `INSERT` e `UPDATE` gerados.
 
-### Metadata de Conversao por Propriedade
+### Conversao de Leitura por Propriedade
 
-Conversores podem ser anexados a um mapping como metadata para caminhos futuros
-de conversao de leitura/escrita:
+Conversores de leitura podem ser anexados a um mapping quando um valor de
+coluna precisa de conversao especifica da propriedade durante materializacao
+controlada pelo FluentMap:
 
 ```csharp
 Map(product => product.Status)
@@ -781,9 +783,12 @@ Map(product => product.Status)
     .ConvertToDatabaseUsing<StatusWriteConverter, string>();
 ```
 
-O incremento atual armazena e valida metadata de conversor por propriedade,
-incluindo profiles e mappings herdados. Ele ainda nao executa esses conversores
-em consultas Dapper, materializacao `QueryMapped*` ou escritas Dommel.
+`QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped` e streaming unbuffered
+aplicam conversores de leitura no materializador de runtime antes de cair para
+um `TypeHandler<TProperty>` do Dapper ou para a conversao padrao do FluentMap.
+Consultas Dapper normais (`Query<T>()`) e escritas Dommel nao mudam; metadata de
+write converter fica armazenada para um incremento futuro de conversao de
+parametros.
 
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 
