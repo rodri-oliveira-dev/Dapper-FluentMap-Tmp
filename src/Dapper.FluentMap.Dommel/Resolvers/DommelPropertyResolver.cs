@@ -40,13 +40,13 @@ namespace Dapper.FluentMap.Dommel.Resolvers
                 foreach (var property in FilterComplexTypes(type.GetProperties()))
                 {
                     // Determine whether the property should be ignored.
-                    var propertyMap = entityMap.PropertyMaps.FirstOrDefault(p => p.PropertyInfo.Name == property.Name);
+                    var propertyMap = DommelPersistenceMetadata.ResolvePropertyMap(type, entityMap, property.Name);
                     if (propertyMap == null || !propertyMap.Ignored)
                     {
                         var dommelPropertyMap = propertyMap as DommelPropertyMap;
                         if (dommelPropertyMap != null)
                         {
-                            yield return new ColumnPropertyInfo(property, dommelPropertyMap.EffectiveGeneratedOption);
+                            yield return new ColumnPropertyInfo(property, dommelPropertyMap.EffectiveUpdateGeneratedOption);
                         }
                         else
                         {
@@ -74,7 +74,7 @@ namespace Dapper.FluentMap.Dommel.Resolvers
                 return DatabaseGeneratedOption.Identity;
             }
 
-            if (!persistence.ParticipatesInInsert && !persistence.ParticipatesInUpdate)
+            if (!persistence.ParticipatesInUpdate)
             {
                 return DatabaseGeneratedOption.Computed;
             }

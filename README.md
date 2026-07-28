@@ -411,6 +411,14 @@ FluentMapper.Initialize(config =>
 });
 ```
 
+Dommel honors FluentMap persistence metadata for generated INSERT and UPDATE
+commands. `ReadOnly()` and `Computed()` are selected but not written,
+`DatabaseDefaultOnInsert()` and `ExcludeFromInsert()` are omitted from INSERT
+while remaining updateable, and `ExcludeFromUpdate()` remains insertable but is
+not written by UPDATE. Assigned keys can be configured with
+`IsKey().SetGeneratedOption(DatabaseGeneratedOption.None)` so they participate in
+INSERT instead of being treated as database-generated identities.
+
 ## Current Limitations
 
 - FluentMap configuration is process-wide. Configure at startup and avoid changing mappings while queries are running.
@@ -850,6 +858,14 @@ FluentMapper.Initialize(config =>
     config.ForDommel();
 });
 ```
+
+A integração Dommel respeita a metadata de persistência em comandos INSERT e
+UPDATE gerados. `ReadOnly()` e `Computed()` são selecionados, mas não escritos;
+`DatabaseDefaultOnInsert()` e `ExcludeFromInsert()` são omitidos do INSERT e
+continuam atualizáveis; `ExcludeFromUpdate()` continua inserível, mas não é
+escrito pelo UPDATE. Chaves atribuídas pela aplicação podem ser configuradas com
+`IsKey().SetGeneratedOption(DatabaseGeneratedOption.None)` para participar do
+INSERT em vez de serem tratadas como identities geradas pelo banco.
 
 ## Limitações Atuais
 

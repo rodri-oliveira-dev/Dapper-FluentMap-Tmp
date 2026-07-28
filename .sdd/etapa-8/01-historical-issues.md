@@ -61,11 +61,16 @@ nao cobre expressivamente "exclude insert" versus "exclude update".
 E a issue que melhor expressa o objetivo central: separar leitura/materializacao
 de persistencia escrita.
 
-### Decisao
+### Status apos Prompt 8.4
 
-Resolver por nova arquitetura.
+Resolved.
 
-### Evidencia
+Evidencia: `ReadOnly()` e consumido pelo `Dapper.FluentMap.Dommel` como
+`SELECT=yes`, `INSERT=no`, `UPDATE=no`. A regressao real esta em
+`DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`,
+que valida insert, update e leitura posterior via Dommel/SQLite.
+
+### Evidencia historica
 
 - `src/Dapper.FluentMap/Mapping/PropertyMap.cs`
 - `src/Dapper.FluentMap/Compatibility/DapperFluentPropertyTypeMap.cs`
@@ -123,11 +128,20 @@ Exige modelar `Key` e `Identity` como dimensoes independentes. Uma key nao
 identity deve ser representavel como `Read=yes`, `Insert=yes`, `Key=yes`,
 `Identity=no`.
 
-### Decisao
+### Status apos Prompt 8.4
 
-Resolver por nova arquitetura e manter regression tests.
+Regression covered.
 
-### Evidencia
+Evidencia: keys nao identity explicitas com
+`IsKey().SetGeneratedOption(DatabaseGeneratedOption.None)` participam do INSERT
+e nao entram no SET do UPDATE. Coberto por
+`NonIdentityKeyShouldParticipateInInsertAndStayOutOfUpdateSet` e
+`CompositeNonIdentityKeyShouldParticipateInInsertAndStayOutOfUpdateSet`.
+
+Observacao de compatibilidade: `IsKey()` sem `SetGeneratedOption(None)` continua
+identity operacional no key resolver Dommel para preservar maps antigos.
+
+### Evidencia historica
 
 - `src/Dapper.FluentMap.Dommel/Mapping/DommelPropertyMap.cs`
 - `src/Dapper.FluentMap.Dommel/Resolvers/DommelKeyPropertyResolver.cs`
@@ -182,12 +196,16 @@ Computed deve ser uma semantica de escrita, nao sinonimo de ignore. A decisao
 deve dizer que computed normalmente e `Read=yes`, `Insert=no`, `Update=no`,
 `Generated=yes`, `Computed=yes`.
 
-### Decisao
+### Status apos Prompt 8.4
 
-Resolver por nova arquitetura e adicionar regression test historico em prompt
-posterior.
+Resolved.
 
-### Evidencia
+Evidencia: `Computed()` e `SetGeneratedOption(DatabaseGeneratedOption.Computed)`
+sao traduzidos para omissao de INSERT e UPDATE, preservando leitura. Coberto por
+`DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`
+com coluna SQLite generated.
+
+### Evidencia historica
 
 - `src/Dapper.FluentMap.Dommel/Resolvers/DommelPropertyResolver.cs`
 - Dommel `Insert.cs` e `Update.cs` filtram `IsGenerated`:
@@ -236,11 +254,16 @@ insert" ainda e reproduzivel como ausencia de semantica explicita no core.
 Motiva uma semantica conceitual do tipo `Read=yes`, `Insert=no`, `Update=yes`
 ou `Update=no`, conforme decisao explicita por API futura.
 
-### Decisao
+### Status apos Prompt 8.4
 
-Resolver por nova arquitetura.
+Resolved.
 
-### Evidencia
+Evidencia: `DatabaseDefaultOnInsert()` omite a coluna do INSERT, permite leitura
+posterior e preserva UPDATE por default. A regressao usa coluna
+`created_at TEXT DEFAULT CURRENT_TIMESTAMP` em
+`DommelPersistenceIntegrationTests.InsertUpdateAndSelectShouldHonorPropertyPersistenceMetadata`.
+
+### Evidencia historica
 
 - `src/Dapper.FluentMap/Compatibility/DapperIgnoredMemberMap.cs`
 - `test/Dapper.FluentMap.GeneratedRegistration.Tests/GeneratedRegistrationIntegrationTests.cs`

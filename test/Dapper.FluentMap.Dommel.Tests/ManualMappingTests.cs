@@ -112,15 +112,15 @@ namespace Dapper.FluentMap.Dommel.Tests
 
         [Fact]
 
-        public void PropertiesAreNotGenerated()
+        public void CompositeKeysShouldRemainNonGeneratedForKeyResolver()
         {
             PreTest();
 
             FluentMapper.Initialize(c => c.AddMap(new MapCompositeKeyPropertyMap()));
 
             var type = typeof(CompositeKeyEntity);
-            var propertyResolver = new Dommel.Resolvers.DommelPropertyResolver();
-            var properties = propertyResolver.ResolveProperties(type);
+            var keyResolver = new Dommel.Resolvers.DommelKeyPropertyResolver();
+            var properties = keyResolver.ResolveKeyProperties(type);
 
             Assert.All(properties, p => Assert.False(p.IsGenerated));
         }

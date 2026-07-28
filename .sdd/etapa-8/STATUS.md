@@ -101,6 +101,27 @@ execucao de CRUD ao core.
   `QueryMappedSimpleRuntimeFallback` 4.435 ms / 361.53 KB. BenchmarkDotNet
   alertou que a iteracao unica e curta demais para conclusao estatistica; como
   smoke, nao indicou regressao evidente do hot path.
+- Criado `.sdd/etapa-8/05-dommel-persistence-behavior.md`.
+- Adaptado `Dapper.FluentMap.Dommel` para consumir metadata de persistencia em
+  INSERT e UPDATE.
+- Adicionado wrapper de `ISqlBuilder` para recompor colunas de INSERT com base
+  em `ParticipatesInInsert`.
+- Alterado resolver de propriedades Dommel para usar `ParticipatesInUpdate` no
+  filtro operacional de UPDATE.
+- Resolvido consumo de mappings herdados por resolvers Dommel.
+- Adicionados testes reais SQLite para normal, ignored, read-only,
+  insert-excluded, update-excluded, computed, identity, database default,
+  mapping herdado, key nao identity, composite key nao identity e operacoes
+  repetidas em entidades diferentes.
+- Executado `dotnet build .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`:
+  sucesso, 17 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 281 testes aprovados.
 
 ## Em andamento
 
@@ -108,13 +129,8 @@ Nenhum apos a validacao final deste prompt.
 
 ## Proximos passos
 
-1. Adaptar FluentMap.Dommel para consumo operacional completo de metadata
-   `Insert`/`Update` quando houver contrato seguro para nao confundir update com
-   generated.
-2. Criar suite de regressao historica para #94, #122, #123, #130, #114, #126 e
-   #133.
-3. Atualizar analyzers/source generator para reconhecer a nova DSL.
-4. Fazer hardening de cache, profiles, generated materializers e Dommel SQL real.
+1. Atualizar analyzers/source generator para reconhecer a nova DSL.
+2. Fazer hardening de cache, profiles, generated materializers e Dommel SQL real.
 
 ## Decisoes relevantes
 
@@ -132,12 +148,14 @@ Nenhum apos a validacao final deste prompt.
 
 ## Issues historicas
 
-- #94 ReadOnly Fields: resolver por nova arquitetura.
-- #122 Insert issue when key column is not identity: parcialmente corrigida,
-  manter regressao e separar key/identity.
-- #123 Computed property used in insert/update: provavel correcao via resolvers
-  atuais, ainda requer regressao de SQL real.
-- #130 Default value do banco vs `Ignore()`: resolver por nova arquitetura.
+- #94 ReadOnly Fields: resolved no Dommel, com regressao SQLite de INSERT,
+  UPDATE e SELECT.
+- #122 Insert issue when key column is not identity: regression covered para key
+  nao identity explicita e composite key.
+- #123 Computed property used in insert/update: resolved no Dommel, com coluna
+  generated real em SQLite.
+- #130 Default value do banco vs `Ignore()`: resolved com
+  `DatabaseDefaultOnInsert()` e `created_at DEFAULT CURRENT_TIMESTAMP`.
 - #114 conflito entre property e membros do tipo: ja resolvido, preservar.
 - #126 nested properties com mesmo terminal: ja resolvido no core/generated,
   preservar.
@@ -159,10 +177,10 @@ Nenhum apos a validacao final deste prompt.
 - `Generated` e amplo demais para representar sozinho default, computed e
   identity.
 - Dommel ainda tem uma ponte de compatibilidade: `IsKey()` sem
-  `SetGeneratedOption(None)` continua identity operacional nos resolvers, embora
-  a metadata de core diferencie key de identity.
-- `ExcludeFromInsert()` isolado e `DatabaseDefaultOnInsert()` com update ativo
-  ainda nao podem ser traduzidos fielmente para `ColumnPropertyInfo.IsGenerated`.
+  `SetGeneratedOption(None)` continua identity operacional no key resolver,
+  embora a metadata de core diferencie key de identity.
+- SQL builders customizados registrados depois de `ForDommel()` substituem o
+  wrapper padrao e precisam honrar `ParticipatesInInsert` por conta propria.
 
 ## Arquivos importantes
 
@@ -185,7 +203,8 @@ Nenhum apos a validacao final deste prompt.
 - `src/Dapper.FluentMap.Generators/MappingRegistrationGenerator.cs`
 - `src/Dapper.FluentMap.Analyzers/FluentMapConfigurationAnalyzer.cs`
 - `.sdd/etapa-8/04-read-semantics.md`
+- `.sdd/etapa-8/05-dommel-persistence-behavior.md`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 8.3
+Ultimo prompt executado: 8.4

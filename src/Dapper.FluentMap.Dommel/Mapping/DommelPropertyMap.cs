@@ -33,23 +33,31 @@ namespace Dapper.FluentMap.Dommel.Mapping
         /// </summary>
         public DatabaseGeneratedOption? GeneratedOption { get; set; }
 
-        internal DatabaseGeneratedOption EffectiveGeneratedOption
+        internal DatabaseGeneratedOption EffectiveUpdateGeneratedOption
+        {
+            get
+            {
+                if (Persistence.IsIdentity)
+                {
+                    return DatabaseGeneratedOption.Identity;
+                }
+
+                if (!Persistence.ParticipatesInUpdate)
+                {
+                    return DatabaseGeneratedOption.Computed;
+                }
+
+                return DatabaseGeneratedOption.None;
+            }
+        }
+
+        internal DatabaseGeneratedOption EffectiveKeyGeneratedOption
         {
             get
             {
                 if (GeneratedOption.HasValue)
                 {
                     return GeneratedOption.Value;
-                }
-
-                if (Persistence.IsIdentity)
-                {
-                    return DatabaseGeneratedOption.Identity;
-                }
-
-                if (!Persistence.ParticipatesInInsert && !Persistence.ParticipatesInUpdate)
-                {
-                    return DatabaseGeneratedOption.Computed;
                 }
 
                 return Key ? DatabaseGeneratedOption.Identity : DatabaseGeneratedOption.None;
