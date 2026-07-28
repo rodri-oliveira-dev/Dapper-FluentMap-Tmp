@@ -105,6 +105,23 @@ equivalencia entre materializacao generated e runtime.
   partial consumption, excecoes, disposal, transaction e connection state.
 - Prompt 9.5: adicionados benchmarks de Dapper async unbuffered e FluentMap
   async unbuffered generated/runtime fallback.
+- Prompt 9.6: criada matriz
+  `.sdd/etapa-9/08-resource-lifetime-matrix.md`.
+- Prompt 9.6: criada suite documental
+  `.sdd/etapa-9/09-advanced-query-regressions.md`.
+- Prompt 9.6: renomeadas regressoes historicas para nomes orientados a
+  comportamento:
+  `MappedConventionShouldApplyToTypedReadFromMultipleResults` e
+  `ExplicitMapShouldApplyToLaterTypedReadFromMultipleResults`.
+- Prompt 9.6: adicionada cobertura provider-independent de tipos
+  representativos com `DataTableReader`.
+- Prompt 9.6: adicionada cobertura provider-specific SQLite para conversoes
+  ADO.NET representativas.
+- Prompt 9.6: adicionada cobertura de concorrencia para runtime fallback,
+  profile cache em async streaming, generated materializers e
+  `QueryMultipleMapped` em readers/conexoes independentes.
+- Prompt 9.6: adicionados benchmarks de `QueryMultiple` para Dapper buffered,
+  FluentMap generated e FluentMap runtime fallback.
 
 ## Em andamento
 
@@ -186,9 +203,27 @@ Nenhuma feature produtiva em andamento.
   `lib/netstandard2.0/Dapper.FluentMap.xml` presentes; nuspec inclui
   dependencias `Dapper` 2.1.79 e `Microsoft.Bcl.AsyncInterfaces` 10.0.8.
 
+## Validacao do Prompt 9.6
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~AdvancedQueryHardeningTests`:
+  sucesso, 5 testes aprovados.
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMultipleMappedTests`:
+  sucesso, 25 testes aprovados.
+- `dotnet build benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*`:
+  sucesso, 18 benchmarks executados; resultados registrados em
+  `.sdd/etapa-9/06-performance-results.md`.
+- `dotnet restore .\Dapper.FluentMap.sln`:
+  sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 357 testes aprovados no total.
+
 ## Proximos passos
 
-1. Documentacao final da Etapa 9, se solicitada.
+1. Executar documentacao final da Etapa 9, se solicitada.
 2. Avaliar `QueryMultipleMappedAsync`/`ReadMappedUnbufferedAsync` em prompt
    proprio, se houver demanda.
 3. Avaliar caminho generated-only/AOT-safe em prompt proprio.
@@ -210,13 +245,19 @@ Nenhuma feature produtiva em andamento.
   discoverable e token efetivo do async enumerator.
 - FluentMap nao deve abstrair SQL alem do necessario para aplicar
   materializacao avancada.
+- Prompt 9.6 confirmou que concorrencia suportada e entre operacoes/readers/
+  conexoes independentes. Uso concorrente do mesmo `MappedGridReader` ou do
+  mesmo `SqlMapper.GridReader` nao e contrato suportado.
 
 ## Issues historicas
 
 - #22: conventions em multiple results; historico inconclusivo, mas sem
-  regressao dedicada atual.
+  regressao coberta por
+  `MappedConventionShouldApplyToTypedReadFromMultipleResults`.
 - #43: `QueryMultiple().Read<T>()` nao aplicava mappings em 1.5.x; reporter
-  confirmou que 1.4.1 funcionava; mantenedor marcou corrigida em 1.7.0.
+  confirmou que 1.4.1 funcionava; mantenedor marcou corrigida em 1.7.0;
+  regressao coberta por
+  `ExplicitMapShouldApplyToLaterTypedReadFromMultipleResults`.
 - #42: multi-mapping por `splitOn` em unico result set, relacionado
   historicamente mas fora do escopo automatico da Etapa 9.
 - #62: plano v2 cita #42 e #43 como relacionadas a melhorias de type mapping.
@@ -260,7 +301,8 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 - Cancellation depende do suporte real do provider.
 - `IAsyncEnumerable<T>` em API publica `netstandard2.0` alterou a dependencia
   publica ao adicionar `Microsoft.Bcl.AsyncInterfaces` 10.0.8.
-- SQLite pode nao cobrir todos os cenarios reais de multiple result sets.
+- SQLite cobre provider-specific ADO behavior disponivel na infraestrutura
+  atual, mas nao substitui certificacao SQL Server/PostgreSQL.
 - Generated-only para AOT ainda nao existe; fallback runtime preserva warnings
   de trimming/dynamic code.
 - Tests de estado global precisam resetar FluentMapper e type maps por tipo.
@@ -274,6 +316,8 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 - `.sdd/etapa-9/05-unbuffered-materialization.md`
 - `.sdd/etapa-9/06-performance-results.md`
 - `.sdd/etapa-9/07-async-streaming-spec.md`
+- `.sdd/etapa-9/08-resource-lifetime-matrix.md`
+- `.sdd/etapa-9/09-advanced-query-regressions.md`
 - `.sdd/etapa-9/DECISIONS.md`
 - `.sdd/etapa-9/STATUS.md`
 - `src/Dapper.FluentMap/MappedGridReader.cs`
@@ -290,8 +334,9 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 - `test/Dapper.FluentMap.Tests/QueryMultipleMappedTests.cs`
 - `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedTests.cs`
 - `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedAsyncTests.cs`
+- `test/Dapper.FluentMap.Tests/AdvancedQueryHardeningTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 9.5
+Ultimo prompt executado: 9.6

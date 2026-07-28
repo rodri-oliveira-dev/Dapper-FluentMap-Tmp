@@ -146,3 +146,81 @@ Ambiente reportado pelo BenchmarkDotNet:
 - A diferenca esperada e pequena porque o custo dominante permanece em rows,
   provider/reader, column shape e objetos materializados; o async enumerator
   adiciona pouco no cenario medido.
+
+## Benchmarks finais do Prompt 9.6
+
+O benchmark steady state passou a incluir cenarios representativos de
+`QueryMultiple`:
+
+- Dapper `QueryMultiple` buffered;
+- FluentMap `QueryMultipleMapped` generated;
+- FluentMap `QueryMultipleMapped` runtime fallback.
+
+Comando executado:
+
+```bash
+dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+Ambiente reportado pelo BenchmarkDotNet:
+
+- Windows 11 `10.0.26200.8875/25H2/2025Update/HudsonValley2`;
+- CPU: 11th Gen Intel Core i5-1145G7;
+- .NET SDK: `10.0.302`;
+- Runtime: `.NET 10.0.10`;
+- Dapper: `2.1.79`;
+- BenchmarkDotNet: `0.15.8`;
+- Job: `ShortRun`, 1000 linhas por operacao.
+
+| Method | Mean | StdDev | Gen0 | Gen1 | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DapperWithFluentMapRootMapping | 1.617 ms | 0.1288 ms | 66.4063 | - | 283.3 KB | 1.00 |
+| QueryMappedValueObject | 1.661 ms | 0.2101 ms | 62.5000 | 19.5313 | 276.5 KB | 0.98 |
+| QueryMappedValueObjectRuntimeFallback | 1.788 ms | 0.3112 ms | 136.7188 | 25.3906 | 587.99 KB | 2.08 |
+| DapperPure | 1.863 ms | 0.2177 ms | 68.3594 | - | 283.17 KB | 1.00 |
+| DapperQueryMultipleBuffered | 1.865 ms | 0.1218 ms | 66.4063 | 7.8125 | 284.18 KB | 1.00 |
+| QueryMappedSimpleRuntimeFallback | 1.885 ms | 0.2440 ms | 85.9375 | 19.5313 | 361.58 KB | 1.28 |
+| DapperPureUnbufferedAsync | 1.900 ms | 0.0383 ms | 62.5000 | - | 267.27 KB | 0.94 |
+| QueryMappedNestedObject | 1.916 ms | 0.0789 ms | 70.3125 | 23.4375 | 292.47 KB | 1.03 |
+| DapperPureUnbuffered | 1.933 ms | 0.1777 ms | 62.5000 | - | 266.96 KB | 0.94 |
+| QueryMappedNestedObjectRuntimeFallback | 2.032 ms | 0.2998 ms | 89.8438 | 27.3438 | 377.16 KB | 1.33 |
+| QueryMappedSimpleUnbufferedRuntimeFallback | 2.057 ms | 0.2421 ms | 82.0313 | - | 345.48 KB | 1.22 |
+| QueryMappedSimpleUnbuffered | 2.156 ms | 0.3421 ms | 58.5938 | - | 245.17 KB | 0.87 |
+| QueryMappedSimple | 2.283 ms | 0.0523 ms | 62.5000 | 11.7188 | 261.15 KB | 0.92 |
+| QueryMultipleMappedSimple | 2.345 ms | 0.2091 ms | 62.5000 | 7.8125 | 263.77 KB | 0.93 |
+| QueryMappedSimpleUnbufferedAsync | 2.372 ms | 0.1782 ms | 58.5938 | - | 245.59 KB | 0.87 |
+| QueryMappedSimpleUnbufferedAsyncRuntimeFallback | 2.375 ms | 0.4317 ms | 82.0313 | - | 345.89 KB | 1.22 |
+| QueryMultipleMappedSimpleRuntimeFallback | 2.382 ms | 0.1981 ms | 87.8906 | - | 363.07 KB | 1.28 |
+| QueryMappedImmutableConstructor | 2.869 ms | 0.3252 ms | 62.5000 | 11.7188 | 261.09 KB | 0.92 |
+
+## Leitura final do Prompt 9.6
+
+- A rodada foi bem-sucedida, mas continua sendo `ShortRun` local; tempo nao
+  deve ser tratado como promessa publica.
+- As alocacoes confirmam o comportamento esperado:
+  - Dapper buffered: `283.17 KB`;
+  - FluentMap buffered generated: `261.15 KB`;
+  - FluentMap buffered runtime fallback: `361.58 KB`;
+  - Dapper unbuffered: `266.96 KB`;
+  - FluentMap unbuffered generated: `245.17 KB`;
+  - FluentMap unbuffered runtime fallback: `345.48 KB`.
+- `QueryMultipleMappedSimple` alocou `263.77 KB`, proximo ao
+  `QueryMappedSimple` generated buffered (`261.15 KB`) e abaixo do Dapper
+  `QueryMultiple` buffered (`284.18 KB`) nesta rodada.
+- `QueryMultipleMappedSimpleRuntimeFallback` alocou `363.07 KB`, alinhado ao
+  custo esperado do runtime fallback buffered (`361.58 KB`).
+- Streaming sincrono e assincrono nao apresentam crescimento proporcional ao
+  tamanho total por uma `List<TEntity>` criada pelo FluentMap; as allocations
+  ficam abaixo dos caminhos buffered equivalentes para o shape simple.
+- Nao foi identificada regressao de allocation em relacao aos resultados dos
+  Prompts 9.4 e 9.5. A variacao de tempo permaneceu alta demais para comparar
+  throughput com seguranca.
+
+## Limitacoes
+
+- SQLite em memoria mede pouco I/O real; async aqui mede principalmente
+  overhead do contrato e do provider local.
+- `ShortRun` usa poucas iteracoes e e adequado como smoke de regressao, nao
+  como publicacao de performance.
+- SQL Server e PostgreSQL nao foram medidos porque nao existe infraestrutura
+  provider-specific instalada neste repositorio.

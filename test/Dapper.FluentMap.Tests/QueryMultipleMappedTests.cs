@@ -607,7 +607,7 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
-        public void HistoricalIssue22ReadMappedShouldApplyConventionsAcrossMultipleResultSets()
+        public void MappedConventionShouldApplyToTypedReadFromMultipleResults()
         {
             PreTest(typeof(ConventionCustomer), typeof(ConventionOrder));
 
@@ -644,7 +644,7 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
-        public void HistoricalIssue43ReadMappedShouldApplyExplicitMapOnLaterResultSet()
+        public void ExplicitMapShouldApplyToLaterTypedReadFromMultipleResults()
         {
             PreTest(typeof(HistoricalRow), typeof(HistoricalTotal), typeof(HistoricalColumn));
 

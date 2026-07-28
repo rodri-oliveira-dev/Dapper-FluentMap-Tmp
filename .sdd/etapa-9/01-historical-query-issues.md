@@ -113,6 +113,17 @@ Implementada regressao minima para o caminho opt-in atual:
 O teste cobre `QueryMultipleMapped(...).ReadMapped*`, nao altera nem substitui
 o comportamento Dapper puro de `QueryMultiple(...).Read<T>()`.
 
+### Estado apos Prompt 9.6
+
+A regressao passou a ter nome orientado a comportamento:
+
+- `MappedConventionShouldApplyToTypedReadFromMultipleResults`.
+
+Ela permanece ligada a issue #22 nesta documentacao SDD, mas o teste em si
+expressa o contrato permanente: convencoes configuradas por entidade devem ser
+aplicadas a leituras tipadas de multiplos result sets no caminho
+`QueryMultipleMapped(...).ReadMapped*`.
+
 ## Issue #43
 
 ### Problema original
@@ -209,3 +220,14 @@ Implementada regressao minima para o caminho opt-in atual:
 O teste modela os grids escalares/dinamicos historicos como pequenas entidades
 mapeadas, porque `MappedGridReader` e deliberadamente uma API de
 materializacao de entidades e nao uma substituicao geral para `GridReader`.
+
+### Estado apos Prompt 9.6
+
+A regressao passou a ter nome orientado a comportamento:
+
+- `ExplicitMapShouldApplyToLaterTypedReadFromMultipleResults`.
+
+Ela permanece ligada a issue #43 nesta documentacao SDD, mas o teste em si
+expressa o contrato permanente: mapeamentos explicitos devem continuar sendo
+aplicados em result sets posteriores, inclusive quando os grids anteriores ja
+foram consumidos.

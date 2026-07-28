@@ -58,6 +58,9 @@ public class MaterializationSteadyStateBenchmarks
         QueryMappedNestedObjectRuntimeFallback();
         QueryMappedValueObject();
         QueryMappedValueObjectRuntimeFallback();
+        DapperQueryMultipleBuffered();
+        QueryMultipleMappedSimple();
+        QueryMultipleMappedSimpleRuntimeFallback();
     }
 
     [GlobalCleanup]
@@ -185,6 +188,39 @@ public class MaterializationSteadyStateBenchmarks
         return _connection.QueryMapped<ValueObjectCustomer>(
                 "SELECT Cpf AS cpf, Id AS customer_id, Balance AS amount, Currency AS currency FROM BenchmarkRows;")
             .Count();
+    }
+
+    [Benchmark]
+    public int DapperQueryMultipleBuffered()
+    {
+        using var multi = _connection.QueryMultiple(
+            @"SELECT Id, Name, Age, Balance, CreatedAt FROM BenchmarkRows WHERE Id <= 500;
+              SELECT Id, Name, Age, Balance, CreatedAt FROM BenchmarkRows WHERE Id > 500;");
+
+        return multi.Read<PureCustomer>().AsList().Count +
+               multi.Read<PureCustomer>().AsList().Count;
+    }
+
+    [Benchmark]
+    public int QueryMultipleMappedSimple()
+    {
+        using var multi = _connection.QueryMultipleMapped(
+            @"SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id <= 500;
+              SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id > 500;");
+
+        return multi.ReadMapped<QueryMappedSimpleCustomer>().Count() +
+               multi.ReadMapped<QueryMappedSimpleCustomer>().Count();
+    }
+
+    [Benchmark]
+    public int QueryMultipleMappedSimpleRuntimeFallback()
+    {
+        using var multi = _connection.QueryMultipleMapped(
+            @"SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id <= 500;
+              SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id > 500;");
+
+        return multi.ReadMapped<QueryMappedSimpleCustomer>().Count() +
+               multi.ReadMapped<QueryMappedSimpleCustomer>().Count();
     }
 
     private static SqliteConnection OpenPopulatedConnection()
