@@ -58,6 +58,31 @@ namespace Dapper.FluentMap.Tests
 
         [Fact]
         [Trait("Category", "Integration")]
+        public void IgnoredExplicitMappingShouldNotMaterializeSelectedColumn()
+        {
+            ResetMapper(typeof(IgnoredMappingEntity));
+
+            try
+            {
+                FluentMapper.Initialize(c => c.AddMap(new IgnoredMappingMap()));
+
+                using (var connection = OpenConnection())
+                {
+                    var entity = connection.QuerySingle<IgnoredMappingEntity>(
+                        "SELECT 9 AS person_id, 'do-not-map' AS secret;");
+
+                    Assert.Equal(9, entity.Id);
+                    Assert.Equal("initial", entity.Secret);
+                }
+            }
+            finally
+            {
+                ResetMapper(typeof(IgnoredMappingEntity));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
         public void ConventionShouldMaterializeConfiguredColumns()
         {
             ResetMapper(typeof(ConventionEntity));
@@ -165,6 +190,30 @@ namespace Dapper.FluentMap.Tests
 
         [Fact]
         [Trait("Category", "Integration")]
+        public void ExpressionResolvedPropertyShouldMaterializeWhenNameCollidesWithAnotherStringMember()
+        {
+            ResetMapper(typeof(AnotherStringMemberNameCollisionEntity));
+
+            try
+            {
+                FluentMapper.Initialize(c => c.AddMap(new AnotherStringMemberNameCollisionMap()));
+
+                using (var connection = OpenConnection())
+                {
+                    var entity = connection.QuerySingle<AnotherStringMemberNameCollisionEntity>(
+                        "SELECT 'joined' AS join_text;");
+
+                    Assert.Equal("joined", entity.Join);
+                }
+            }
+            finally
+            {
+                ResetMapper(typeof(AnotherStringMemberNameCollisionEntity));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
         public void CaseInsensitiveExplicitMappingShouldMaterializeColumnWithDifferentCase()
         {
             ResetMapper(typeof(CaseInsensitiveEntity));
@@ -221,6 +270,22 @@ namespace Dapper.FluentMap.Tests
             }
         }
 
+        private class IgnoredMappingEntity
+        {
+            public int Id { get; set; }
+
+            public string Secret { get; set; } = "initial";
+        }
+
+        private class IgnoredMappingMap : EntityMap<IgnoredMappingEntity>
+        {
+            public IgnoredMappingMap()
+            {
+                Map(e => e.Id).ToColumn("person_id");
+                Map(e => e.Secret).ToColumn("secret").Ignore();
+            }
+        }
+
         private class ConventionEntity
         {
             public int Id { get; set; }
@@ -268,6 +333,19 @@ namespace Dapper.FluentMap.Tests
             public StringMemberNameCollisionMap()
             {
                 Map(e => e.Format).ToColumn("format_text");
+            }
+        }
+
+        private class AnotherStringMemberNameCollisionEntity
+        {
+            public string Join { get; set; }
+        }
+
+        private class AnotherStringMemberNameCollisionMap : EntityMap<AnotherStringMemberNameCollisionEntity>
+        {
+            public AnotherStringMemberNameCollisionMap()
+            {
+                Map(e => e.Join).ToColumn("join_text");
             }
         }
 

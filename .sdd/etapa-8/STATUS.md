@@ -69,6 +69,38 @@ execucao de CRUD ao core.
   contem `lib/netstandard2.0/Dapper.FluentMap.dll`,
   `lib/netstandard2.0/Dapper.FluentMap.xml`, nuspec e metadados NuGet; dependencia
   `Dapper` 2.1.79 preservada.
+- Criado `.sdd/etapa-8/04-read-semantics.md`.
+- Ajustado source generator para tratar `ExcludeFromInsert()`,
+  `ExcludeFromUpdate()`, `ReadOnly()`, `Computed()` e
+  `DatabaseDefaultOnInsert()` como neutros para materializacao gerada.
+- Preservado `Ignore()` como unica chamada da DSL atual que transforma coluna
+  configurada em `GeneratedMaterializerColumn.Ignore(...)`.
+- Adicionada regressao de `Dapper.Query<T>()` para coluna ignorada selecionada,
+  cobrindo a categoria historica da issue #133.
+- Adicionada cobertura de colisao de nome de propriedade com membro de `string`
+  sem depender apenas de `Format`, cobrindo a categoria historica da issue #114.
+- Ampliada equivalencia runtime/generated para propriedade normal, ignored,
+  read-only, computed, database-default-on-insert, insert-excluded e
+  update-excluded.
+- Mantida cobertura runtime/generated existente para nested, immutable,
+  Value Objects, profiles e member paths `Rank.Level`/`Seniority.Level`.
+- Executado `dotnet test .\test\Dapper.FluentMap.Generators.Tests\Dapper.FluentMap.Generators.Tests.csproj --configuration Release --filter "FullyQualifiedName~MappingRegistrationGeneratorTests"`:
+  sucesso, 23 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --filter "FullyQualifiedName~GeneratedRegistrationIntegrationTests"`:
+  sucesso, 2 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~DapperIntegrationTests"`:
+  sucesso, 9 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 277 testes aprovados.
+- Executado smoke de benchmark:
+  `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMappedSimple*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`.
+  Resultado observado: `QueryMappedSimple` generated 3.716 ms / 362.73 KB e
+  `QueryMappedSimpleRuntimeFallback` 4.435 ms / 361.53 KB. BenchmarkDotNet
+  alertou que a iteracao unica e curta demais para conclusao estatistica; como
+  smoke, nao indicou regressao evidente do hot path.
 
 ## Em andamento
 
@@ -111,6 +143,8 @@ Nenhum apos a validacao final deste prompt.
   preservar.
 - #133 `Ignore()` causando `NotImplementedException`: ja resolvido para bug
   original, preservar.
+- Prompt 8.3 adicionou cobertura explicita para #114, #126 e #133 na semantica
+  de leitura/materializacao.
 
 ## Riscos conhecidos
 
@@ -150,7 +184,8 @@ Nenhum apos a validacao final deste prompt.
 - `src/Dapper.FluentMap.Dommel/Resolvers/DommelColumnNameResolver.cs`
 - `src/Dapper.FluentMap.Generators/MappingRegistrationGenerator.cs`
 - `src/Dapper.FluentMap.Analyzers/FluentMapConfigurationAnalyzer.cs`
+- `.sdd/etapa-8/04-read-semantics.md`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 8.2
+Ultimo prompt executado: 8.3

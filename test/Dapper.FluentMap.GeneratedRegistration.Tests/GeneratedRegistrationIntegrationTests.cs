@@ -55,6 +55,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 'Profile City' AS legacy_city;");
                     var ignored = connection.QueryMappedSingle<GeneratedIgnoredCustomer>(
                         "SELECT 17 AS customer_id, 'do-not-map' AS secret;");
+                    var readSemantics = connection.QueryMappedSingle<GeneratedReadSemanticsCustomer>(
+                        "SELECT 18 AS customer_id, 'Normal' AS normal_name, 'Read' AS read_only_name, 123 AS computed_total, '2026-07-28' AS created_at, 'Insert kept for read' AS insert_excluded, 'Update kept for read' AS update_excluded, 'do-not-map' AS secret;");
 
                     Assert.Equal(7, customer.Id);
                     Assert.Equal("Ada", customer.Name);
@@ -84,6 +86,14 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal("Profile City", profiledNested.Address.City);
                     Assert.Equal(17, ignored.Id);
                     Assert.Equal("initial", ignored.Secret);
+                    Assert.Equal(18, readSemantics.Id);
+                    Assert.Equal("Normal", readSemantics.NormalName);
+                    Assert.Equal("Read", readSemantics.ReadOnlyName);
+                    Assert.Equal(123, readSemantics.ComputedTotal);
+                    Assert.Equal("2026-07-28", readSemantics.CreatedAt);
+                    Assert.Equal("Insert kept for read", readSemantics.InsertExcluded);
+                    Assert.Equal("Update kept for read", readSemantics.UpdateExcluded);
+                    Assert.Equal("initial", readSemantics.Secret);
                     Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
 
                     var fallback = connection.QueryMappedSingle<GeneratedCustomer>(
@@ -113,6 +123,7 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 GeneratedValueObjectCustomer generatedValueObject;
                 GeneratedSameTerminalCustomer generatedSameTerminal;
                 GeneratedProfileNestedCustomer generatedProfileNested;
+                GeneratedReadSemanticsCustomer generatedReadSemantics;
 
                 FluentMapper.Initialize(configuration => configuration.AddGeneratedMappings());
 
@@ -128,6 +139,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 3 AS rank_level, 8 AS seniority_level;");
                     generatedProfileNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
                         "SELECT 'Profile City' AS legacy_city;");
+                    generatedReadSemantics = connection.QueryMappedSingle<GeneratedReadSemanticsCustomer>(
+                        "SELECT 24 AS customer_id, 'Normal' AS normal_name, 'Read' AS read_only_name, 987 AS computed_total, '2026-07-28' AS created_at, 'Insert kept for read' AS insert_excluded, 'Update kept for read' AS update_excluded, 'do-not-map' AS secret;");
 
                     Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
                 }
@@ -140,6 +153,7 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     configuration.AddMap<GeneratedNestedCustomerMap>();
                     configuration.AddMap<GeneratedValueObjectCustomerMap>();
                     configuration.AddMap<GeneratedSameTerminalCustomerMap>();
+                    configuration.AddMap<GeneratedReadSemanticsCustomerMap>();
                     configuration.AddProfile<GeneratedLegacyProfileNestedCustomerMap>();
                 });
 
@@ -155,6 +169,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT 3 AS rank_level, 8 AS seniority_level;");
                     var runtimeProfileNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
                         "SELECT 'Profile City' AS legacy_city;");
+                    var runtimeReadSemantics = connection.QueryMappedSingle<GeneratedReadSemanticsCustomer>(
+                        "SELECT 24 AS customer_id, 'Normal' AS normal_name, 'Read' AS read_only_name, 987 AS computed_total, '2026-07-28' AS created_at, 'Insert kept for read' AS insert_excluded, 'Update kept for read' AS update_excluded, 'do-not-map' AS secret;");
 
                     Assert.Equal(generatedImmutable.Id, runtimeImmutable.Id);
                     Assert.Equal(generatedImmutable.Name, runtimeImmutable.Name);
@@ -165,7 +181,15 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal(generatedSameTerminal.Rank.Level, runtimeSameTerminal.Rank.Level);
                     Assert.Equal(generatedSameTerminal.Seniority.Level, runtimeSameTerminal.Seniority.Level);
                     Assert.Equal(generatedProfileNested.Address.City, runtimeProfileNested.Address.City);
-                    Assert.Equal(5, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                    Assert.Equal(generatedReadSemantics.Id, runtimeReadSemantics.Id);
+                    Assert.Equal(generatedReadSemantics.NormalName, runtimeReadSemantics.NormalName);
+                    Assert.Equal(generatedReadSemantics.ReadOnlyName, runtimeReadSemantics.ReadOnlyName);
+                    Assert.Equal(generatedReadSemantics.ComputedTotal, runtimeReadSemantics.ComputedTotal);
+                    Assert.Equal(generatedReadSemantics.CreatedAt, runtimeReadSemantics.CreatedAt);
+                    Assert.Equal(generatedReadSemantics.InsertExcluded, runtimeReadSemantics.InsertExcluded);
+                    Assert.Equal(generatedReadSemantics.UpdateExcluded, runtimeReadSemantics.UpdateExcluded);
+                    Assert.Equal(generatedReadSemantics.Secret, runtimeReadSemantics.Secret);
+                    Assert.Equal(6, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
                 }
             }
             finally
@@ -196,7 +220,8 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedValueObjectCustomer),
                 typeof(GeneratedSameTerminalCustomer),
                 typeof(GeneratedProfileNestedCustomer),
-                typeof(GeneratedIgnoredCustomer));
+                typeof(GeneratedIgnoredCustomer),
+                typeof(GeneratedReadSemanticsCustomer));
         }
     }
 
@@ -440,6 +465,40 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
         public GeneratedIgnoredCustomerMap()
         {
             Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.Secret).ToColumn("secret").Ignore();
+        }
+    }
+
+    public sealed class GeneratedReadSemanticsCustomer
+    {
+        public int Id { get; set; }
+
+        public string NormalName { get; set; }
+
+        public string ReadOnlyName { get; set; }
+
+        public int ComputedTotal { get; set; }
+
+        public string CreatedAt { get; set; }
+
+        public string InsertExcluded { get; set; }
+
+        public string UpdateExcluded { get; set; }
+
+        public string Secret { get; set; } = "initial";
+    }
+
+    public sealed class GeneratedReadSemanticsCustomerMap : EntityMap<GeneratedReadSemanticsCustomer>
+    {
+        public GeneratedReadSemanticsCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.NormalName).ToColumn("normal_name");
+            Map(customer => customer.ReadOnlyName).ToColumn("read_only_name").ReadOnly();
+            Map(customer => customer.ComputedTotal).ToColumn("computed_total").Computed();
+            Map(customer => customer.CreatedAt).ToColumn("created_at").DatabaseDefaultOnInsert();
+            Map(customer => customer.InsertExcluded).ToColumn("insert_excluded").ExcludeFromInsert();
+            Map(customer => customer.UpdateExcluded).ToColumn("update_excluded").ExcludeFromUpdate();
             Map(customer => customer.Secret).ToColumn("secret").Ignore();
         }
     }

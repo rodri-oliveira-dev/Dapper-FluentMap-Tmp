@@ -957,6 +957,10 @@ namespace Dapper.FluentMap.Generators
                 {
                     ignored = true;
                 }
+                else if (IsReadNeutralPersistenceInvocation(chainedMethod))
+                {
+                    // Write-only metadata does not change the generated read materializer.
+                }
                 else
                 {
                     skipReason = "the map chain uses an unsupported mapping method";
@@ -1331,6 +1335,26 @@ namespace Dapper.FluentMap.Generators
         private static bool IsIgnoreInvocation(IMethodSymbol method)
         {
             return method != null && method.Name == "Ignore" && method.Parameters.Length == 0;
+        }
+
+        private static bool IsReadNeutralPersistenceInvocation(IMethodSymbol method)
+        {
+            if (method == null || method.Parameters.Length != 0)
+            {
+                return false;
+            }
+
+            switch (method.Name)
+            {
+                case "ExcludeFromInsert":
+                case "ExcludeFromUpdate":
+                case "ReadOnly":
+                case "Computed":
+                case "DatabaseDefaultOnInsert":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static bool IsEntityMapInterface(INamedTypeSymbol type)

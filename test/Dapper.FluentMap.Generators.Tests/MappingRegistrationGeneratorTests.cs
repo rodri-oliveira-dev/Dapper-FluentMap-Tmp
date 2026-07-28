@@ -199,6 +199,58 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
+        public void WritePersistenceSemanticsShouldNotDisableGeneratedReadMaterializer()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+
+    public string ReadOnlyName { get; set; }
+
+    public decimal ComputedTotal { get; set; }
+
+    public string CreatedAt { get; set; }
+
+    public string InsertExcluded { get; set; }
+
+    public string UpdateExcluded { get; set; }
+
+    public string Secret { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+        Map(customer => customer.ReadOnlyName).ToColumn(""read_only_name"").ReadOnly();
+        Map(customer => customer.ComputedTotal).ToColumn(""computed_total"").Computed();
+        Map(customer => customer.CreatedAt).ToColumn(""created_at"").DatabaseDefaultOnInsert();
+        Map(customer => customer.InsertExcluded).ToColumn(""insert_excluded"").ExcludeFromInsert();
+        Map(customer => customer.UpdateExcluded).ToColumn(""update_excluded"").ExcludeFromUpdate();
+        Map(customer => customer.Secret).ToColumn(""secret"").Ignore();
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"read_only_name\", \"ReadOnlyName\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"computed_total\", \"ComputedTotal\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"created_at\", \"CreatedAt\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"insert_excluded\", \"InsertExcluded\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"update_excluded\", \"UpdateExcluded\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Ignore(\"secret\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.ReadOnlyName = Read<string>(record, 1);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.ComputedTotal = Read<decimal>(record, 2);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.DoesNotContain("entity.Secret =", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void MultipleMappingsShouldBeGeneratedInDeterministicOrder()
         {
             var source = @"

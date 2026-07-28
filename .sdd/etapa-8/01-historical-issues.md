@@ -270,14 +270,18 @@ rejeita membros nao propriedade com `ArgumentException`.
 
 ### Ainda reproduzivel?
 
-Nao para os cenarios cobertos: existem testes para `Format`, `Duration` e
-colisao com membro de `string`.
+Nao para os cenarios cobertos: existem testes para `Format`, `Duration`, colisao
+com membro de `string` e materializacao Dapper real usando outro nome de membro
+de `string`, preservando a categoria sem depender de excecao especial para
+`Format`.
 
 ### Cobertura de testes existente
 
 - `ReflectionHelperTests.GetMemberInfo_ReturnsProperty_WhenPropertyNameMatchesSystemMember`
 - `ReflectionHelperTests.GetMemberInfo_ReturnsValueTypeProperty_WhenPropertyNameMatchesSystemMember`
 - `ReflectionHelperTests.GetMemberInfo_ReturnsValueTypeProperty_WithSystemTypeNames`
+- `DapperIntegrationTests.ExpressionResolvedPropertyShouldMaterializeWhenNameCollidesWithStringMember`
+- `DapperIntegrationTests.ExpressionResolvedPropertyShouldMaterializeWhenNameCollidesWithAnotherStringMember`
 
 ### Relacao com a Etapa 8
 
@@ -328,6 +332,8 @@ filtradas por `type.GetProperties()`.
 - `NestedObjectMaterializationTests.QueryMappedShouldPreserveSameTerminalMemberPaths`
 - `MappingRegistrationGeneratorTests.SameTerminalNestedPathsShouldUseFullMemberPathsInDescriptor`
 - `GeneratedRegistrationIntegrationTests` para same terminal.
+- `GeneratedRegistrationIntegrationTests.GeneratedQueryMappedShouldMatchRuntimeFallbackForEquivalentComplexShapes`
+  valida equivalencia runtime/generated para `Rank.Level` e `Seniority.Level`.
 
 ### Relacao com a Etapa 8
 
@@ -374,16 +380,20 @@ incompleto.
 
 ### Ainda reproduzivel?
 
-Provavelmente nao no core atual; existem regressões para ignored no generated
-path e testes basicos de ignore. Ainda seria util adicionar regression historico
-especifico para `Dapper.Query<T>()` com coluna ignorada e propriedades get-only,
-se a etapa alterar a area.
+Nao para o core atual nos cenarios cobertos. O Prompt 8.3 adicionou regressao
+com `Dapper.Query<T>()` selecionando uma coluna ignorada; a propriedade permanece
+com valor inicial e nao ha `NotImplementedException`. Tambem ha cobertura para
+ignored no generated path e equivalencia runtime/generated.
 
 ### Cobertura de testes existente
 
 - `ManualMappingTests.PropertyShouldBeIgnored`
 - `GeneratedRegistrationIntegrationTests` valida que `Secret` ignorado permanece
   com valor inicial.
+- `DapperIntegrationTests.IgnoredExplicitMappingShouldNotMaterializeSelectedColumn`
+  cobre a regressao historica equivalente ao PR #131.
+- `GeneratedRegistrationIntegrationTests.GeneratedQueryMappedShouldMatchRuntimeFallbackForEquivalentComplexShapes`
+  compara generated e runtime fallback para propriedade ignorada.
 
 ### Relacao com a Etapa 8
 
