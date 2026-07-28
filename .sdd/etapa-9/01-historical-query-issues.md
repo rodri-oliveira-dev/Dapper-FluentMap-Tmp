@@ -98,6 +98,21 @@ reader publico suficiente para reutilizar diretamente o materializador atual.
   deve falhar de forma previsivel.
 - Fechamento do reader/command quando o wrapper e descartado.
 
+### Estado apos Prompt 9.3
+
+Implementada regressao minima para o caminho opt-in atual:
+
+- `HistoricalIssue22ReadMappedShouldApplyConventionsAcrossMultipleResultSets`
+  configura a mesma convencao por entidade e le dois result sets sequenciais
+  com `ReadMappedSingle<T>()`;
+- a convencao e aplicada de forma independente para `ConventionCustomer` e
+  `ConventionOrder`;
+- o teste usa `DataTableReader` para tornar os grids deterministicos e
+  provider-independent.
+
+O teste cobre `QueryMultipleMapped(...).ReadMapped*`, nao altera nem substitui
+o comportamento Dapper puro de `QueryMultiple(...).Read<T>()`.
+
 ## Issue #43
 
 ### Problema original
@@ -179,3 +194,18 @@ publico, essa alternativa nao deve ser o caminho principal.
   `FluentMapConfigurationException`.
 - Materializacao de scalar result set deve permanecer via Dapper ou API
   explicitamente fora do FluentMap advanced materialization.
+
+### Estado apos Prompt 9.3
+
+Implementada regressao minima para o caminho opt-in atual:
+
+- `HistoricalIssue43ReadMappedShouldApplyExplicitMapOnLaterResultSet` le tres
+  result sets sequenciais;
+- o terceiro result set usa colunas equivalentes ao relato historico:
+  `column_prefix`, `column_name`, `display_order`, `can_be_ordered`,
+  `can_be_filtered` e `column_width_in_pixels`;
+- o resultado prova que um grid posterior nao perde o `EntityMap` explicito.
+
+O teste modela os grids escalares/dinamicos historicos como pequenas entidades
+mapeadas, porque `MappedGridReader` e deliberadamente uma API de
+materializacao de entidades e nao uma substituicao geral para `GridReader`.

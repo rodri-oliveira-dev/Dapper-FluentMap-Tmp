@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.Mapping;
 
@@ -42,6 +43,21 @@ namespace Dapper.FluentMap
         }
 
         /// <summary>
+        /// Materializes exactly one row from the current result set and advances to the next one.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <returns>The materialized row from the current result set.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public TEntity ReadMappedSingle<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity>()
+            where TEntity : class
+        {
+            return ReadMapped<TEntity>().Single();
+        }
+
+        /// <summary>
         /// Materializes the current result set using the specified FluentMap mapping profile and advances to the next one.
         /// </summary>
         /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
@@ -57,6 +73,24 @@ namespace Dapper.FluentMap
             where TProfile : IMappingProfile
         {
             return ReadMapped<TEntity>(typeof(TProfile));
+        }
+
+        /// <summary>
+        /// Materializes exactly one row from the current result set using the specified FluentMap mapping profile and advances to the next one.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type to materialize.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type to use.</typeparam>
+        /// <returns>The materialized row from the current result set.</returns>
+        [RequiresUnreferencedCode(QueryMappedApiAnnotations.RequiresUnreferencedCodeMessage)]
+        [RequiresDynamicCode(QueryMappedApiAnnotations.RequiresDynamicCodeMessage)]
+        public TEntity ReadMappedSingle<
+            [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
+            TEntity,
+            TProfile>()
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            return ReadMapped<TEntity, TProfile>().Single();
         }
 
         /// <summary>

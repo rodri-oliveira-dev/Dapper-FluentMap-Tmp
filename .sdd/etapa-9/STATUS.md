@@ -54,6 +54,18 @@ equivalencia entre materializacao generated e runtime.
   set, profiles, empty result, invalid state, dispose antes/depois de consumo,
   excecao durante materializacao, generated materializer, parametros,
   transacao e lifetime de conexao.
+- Prompt 9.3: criada especificacao
+  `.sdd/etapa-9/04-read-mapped-spec.md`.
+- Prompt 9.3: adicionadas APIs `ReadMappedSingle<TEntity>()` e
+  `ReadMappedSingle<TEntity, TProfile>()`, alinhadas a `QueryMappedSingle*`.
+- Prompt 9.3: nao adicionada API `ReadMappedSingleOrDefault*`, pois nao ha
+  equivalente `QueryMappedSingleOrDefault*` na superficie atual do projeto.
+- Prompt 9.3: reforcada cobertura de `ReadMapped*` para profiles isolados,
+  naming policy, convention, immutable objects, nested objects, Value Objects,
+  generated materializers, runtime fallback, equivalencia com `QueryMapped*` e
+  multiplos result sets de tipos diferentes.
+- Prompt 9.3: adicionadas regressoes minimas para as issues historicas #22 e
+  #43 no caminho opt-in `QueryMultipleMapped(...).ReadMapped*`.
 
 ## Em andamento
 
@@ -73,6 +85,24 @@ Nenhuma feature produtiva em andamento.
 - Pacote inspecionado:
   `lib/netstandard2.0/Dapper.FluentMap.dll` e
   `lib/netstandard2.0/Dapper.FluentMap.xml` presentes.
+
+## Validacao do Prompt 9.3
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMultipleMappedTests`:
+  sucesso, 25 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 323 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `licenseUrl`.
+- Pacote inspecionado:
+  `lib/netstandard2.0/Dapper.FluentMap.dll` e
+  `lib/netstandard2.0/Dapper.FluentMap.xml` presentes.
+- Benchmarks de smoke nao executados: o Prompt 9.3 nao alterou a regra de
+  dispatch, apenas reutilizou `MappedRowMaterializer` e adicionou wrappers
+  single sobre o caminho buffered existente.
 
 ## Proximos passos
 
@@ -173,4 +203,4 @@ compatibilidade.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 9.2
+Ultimo prompt executado: 9.3

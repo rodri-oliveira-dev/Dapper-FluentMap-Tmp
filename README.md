@@ -367,6 +367,8 @@ var currentCustomers = multi.ReadMapped<Customer>();
 var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
 ```
 
+Use `ReadMappedSingle<T>()` or `ReadMappedSingle<T, TProfile>()` when the current result set must contain exactly one row.
+
 ## Diagnostics
 
 Use runtime validation to fail fast after configuration:
@@ -902,6 +904,8 @@ using var multi = connection.QueryMultipleMapped(sql);
 var currentCustomers = multi.ReadMapped<Customer>();
 var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
 ```
+
+Use `ReadMappedSingle<T>()` ou `ReadMappedSingle<T, TProfile>()` quando o result set atual deve conter exatamente uma linha.
 
 ## Diagnósticos
 

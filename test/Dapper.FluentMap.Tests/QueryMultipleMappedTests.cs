@@ -2,8 +2,10 @@ using System;
 using System.Data;
 using System.Linq;
 using Dapper;
+using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Materialization;
+using Dapper.FluentMap.Naming;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -98,6 +100,96 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void ReadMappedSingleShouldMaterializeExactlyOneRowAndAdvanceResultSet()
+        {
+            PreTest(typeof(MappedCustomer), typeof(MappedOrder));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new MappedCustomerMap());
+                    configuration.AddMap(new MappedOrderMap());
+                });
+
+                using (var reader = CreateReader(
+                    CreateTable(
+                        new[] { "customer_id", "customer_name" },
+                        new object[] { 1, "Ada" }),
+                    CreateTable(
+                        new[] { "order_id", "total" },
+                        new object[] { 10, 12.5m })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<MappedCustomer>();
+                    var order = multi.ReadMappedSingle<MappedOrder>();
+
+                    Assert.Equal(1, customer.Id);
+                    Assert.Equal("Ada", customer.Name);
+                    Assert.Equal(10, order.Id);
+                    Assert.Equal(12.5m, order.Total);
+                    Assert.True(multi.IsConsumed);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer), typeof(MappedOrder));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedSingleShouldUseProfileForCurrentResultSet()
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddProfile<LegacyCustomerMap>());
+
+                using (var reader = CreateReader(CreateTable(
+                    new[] { "legacy_id", "legal_name" },
+                    new object[] { 7, "Legacy Ltd." })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<MappedCustomer, LegacyProfile>();
+
+                    Assert.Equal(7, customer.Id);
+                    Assert.Equal("Legacy Ltd.", customer.Name);
+                    Assert.True(multi.IsConsumed);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedSingleShouldThrowForEmptyResultSet()
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new MappedCustomerMap()));
+
+                using (var reader = CreateReader(CreateTable(new[] { "customer_id", "customer_name" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var exception = Assert.Throws<InvalidOperationException>(
+                        () => multi.ReadMappedSingle<MappedCustomer>());
+
+                    Assert.Contains("no elements", exception.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.True(multi.IsConsumed);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
         public void ReadMappedShouldUseProfileForCurrentResultSet()
         {
             PreTest(typeof(MappedCustomer));
@@ -120,6 +212,129 @@ namespace Dapper.FluentMap.Tests
             finally
             {
                 PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedShouldKeepDefaultAndProfileResultSetsIsolated()
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new MappedCustomerMap());
+                    configuration.AddProfile<LegacyCustomerMap>();
+                });
+
+                using (var reader = CreateReader(
+                    CreateTable(
+                        new[] { "customer_id", "customer_name" },
+                        new object[] { 1, "Default" }),
+                    CreateTable(
+                        new[] { "legacy_id", "legal_name" },
+                        new object[] { 2, "Legacy" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var defaultCustomer = multi.ReadMappedSingle<MappedCustomer>();
+                    var legacyCustomer = multi.ReadMappedSingle<MappedCustomer, LegacyProfile>();
+
+                    Assert.Equal(1, defaultCustomer.Id);
+                    Assert.Equal("Default", defaultCustomer.Name);
+                    Assert.Equal(2, legacyCustomer.Id);
+                    Assert.Equal("Legacy", legacyCustomer.Name);
+                    Assert.Equal(2, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedShouldApplyNamingPolicyAndConventionInCurrentResultSet()
+        {
+            PreTest(typeof(PolicyConventionCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.UseNamingPolicy(NamingPolicy.SnakeCase, caseSensitive: false).ForEntity<PolicyConventionCustomer>();
+                    configuration.AddConvention<LegalNameConvention>().ForEntity<PolicyConventionCustomer>();
+                });
+
+                using (var reader = CreateReader(CreateTable(
+                    new[] { "CUSTOMER_ID", "legal_name" },
+                    new object[] { 8, "Policy" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<PolicyConventionCustomer>();
+
+                    Assert.Equal(8, customer.CustomerId);
+                    Assert.Equal("Policy", customer.Name);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(PolicyConventionCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedShouldMaterializeImmutableNestedObjectsAndValueObjects()
+        {
+            PreTest(typeof(ComplexCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new ComplexCustomerMap()));
+
+                using (var reader = CreateReader(CreateTable(
+                    new[] { "customer_id", "city", "email" },
+                    new object[] { 13, "Sao Paulo", "ada@example.com" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<ComplexCustomer>();
+
+                    Assert.Equal(13, customer.Id);
+                    Assert.NotNull(customer.Address);
+                    Assert.Equal("Sao Paulo", customer.Address.City);
+                    Assert.Equal(new ComplexEmail("ada@example.com"), customer.Email);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(ComplexCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedShouldPreserveNestedNullSemantics()
+        {
+            PreTest(typeof(ComplexCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new ComplexCustomerMap()));
+
+                using (var reader = CreateReader(CreateTable(
+                    new[] { "customer_id", "city", "email" },
+                    new object[] { 14, DBNull.Value, DBNull.Value })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<ComplexCustomer>();
+
+                    Assert.Equal(14, customer.Id);
+                    Assert.Null(customer.Address);
+                    Assert.Null(customer.Email);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(ComplexCustomer));
             }
         }
 
@@ -294,6 +509,195 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void ReadMappedShouldUseGeneratedProfileMaterializersWithoutCollisions()
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new MappedCustomerMap());
+                    configuration.AddProfile<LegacyCustomerMap>();
+                    configuration.AddGeneratedMaterializer(
+                        new[]
+                        {
+                            GeneratedMaterializerColumn.Map("customer_id", nameof(MappedCustomer.Id)),
+                            GeneratedMaterializerColumn.Map("customer_name", nameof(MappedCustomer.Name))
+                        },
+                        record => new MappedCustomer
+                        {
+                            Id = Convert.ToInt32(record.GetValue(0)),
+                            Name = "default-generated:" + Convert.ToString(record.GetValue(1))
+                        });
+                    configuration.AddGeneratedMaterializer<MappedCustomer, LegacyProfile>(
+                        new[]
+                        {
+                            GeneratedMaterializerColumn.Map("legacy_id", nameof(MappedCustomer.Id)),
+                            GeneratedMaterializerColumn.Map("legal_name", nameof(MappedCustomer.Name))
+                        },
+                        record => new MappedCustomer
+                        {
+                            Id = Convert.ToInt32(record.GetValue(0)),
+                            Name = "profile-generated:" + Convert.ToString(record.GetValue(1))
+                        });
+                });
+
+                using (var reader = CreateReader(
+                    CreateTable(
+                        new[] { "customer_id", "customer_name" },
+                        new object[] { 3, "Default" }),
+                    CreateTable(
+                        new[] { "legacy_id", "legal_name" },
+                        new object[] { 4, "Legacy" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var defaultCustomer = multi.ReadMappedSingle<MappedCustomer>();
+                    var legacyCustomer = multi.ReadMappedSingle<MappedCustomer, LegacyProfile>();
+
+                    Assert.Equal("default-generated:Default", defaultCustomer.Name);
+                    Assert.Equal("profile-generated:Legacy", legacyCustomer.Name);
+                    Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
+        public void ReadMappedGeneratedAndRuntimeShouldReturnEquivalentResultsForSameShape()
+        {
+            var generated = MaterializeGeneratedCustomer(registerGeneratedMaterializer: true);
+            var runtime = MaterializeGeneratedCustomer(registerGeneratedMaterializer: false);
+
+            Assert.Equal(generated.Id, runtime.Id);
+            Assert.Equal(generated.Name, runtime.Name);
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedAndReadMappedShouldReturnEquivalentResults()
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new MappedCustomerMap()));
+
+                using (var connection = OpenConnection())
+                {
+                    const string sql = "SELECT 21 AS customer_id, 'Equivalent' AS customer_name;";
+
+                    var queryMapped = connection.QueryMappedSingle<MappedCustomer>(sql);
+                    using (var multi = connection.QueryMultipleMapped(sql))
+                    {
+                        var readMapped = multi.ReadMappedSingle<MappedCustomer>();
+
+                        Assert.Equal(queryMapped.Id, readMapped.Id);
+                        Assert.Equal(queryMapped.Name, readMapped.Name);
+                    }
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
+        [Fact]
+        public void HistoricalIssue22ReadMappedShouldApplyConventionsAcrossMultipleResultSets()
+        {
+            PreTest(typeof(ConventionCustomer), typeof(ConventionOrder));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddConvention<ColumnPrefixConvention>().ForEntity<ConventionCustomer>();
+                    configuration.AddConvention<ColumnPrefixConvention>().ForEntity<ConventionOrder>();
+                });
+
+                using (var reader = CreateReader(
+                    CreateTable(
+                        new[] { "colId", "colName" },
+                        new object[] { 1, "Ada" }),
+                    CreateTable(
+                        new[] { "colId", "colTotal" },
+                        new object[] { 20, 99.5m })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<ConventionCustomer>();
+                    var order = multi.ReadMappedSingle<ConventionOrder>();
+
+                    Assert.Equal(1, customer.Id);
+                    Assert.Equal("Ada", customer.Name);
+                    Assert.Equal(20, order.Id);
+                    Assert.Equal(99.5m, order.Total);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(ConventionCustomer), typeof(ConventionOrder));
+            }
+        }
+
+        [Fact]
+        public void HistoricalIssue43ReadMappedShouldApplyExplicitMapOnLaterResultSet()
+        {
+            PreTest(typeof(HistoricalRow), typeof(HistoricalTotal), typeof(HistoricalColumn));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new HistoricalRowMap());
+                    configuration.AddMap(new HistoricalTotalMap());
+                    configuration.AddMap(new HistoricalColumnMap());
+                });
+
+                using (var reader = CreateReader(
+                    CreateTable(
+                        new[] { "row_no" },
+                        new object[] { 1 }),
+                    CreateTable(
+                        new[] { "total" },
+                        new object[] { 1 }),
+                    CreateTable(
+                        new[]
+                        {
+                            "column_prefix",
+                            "column_name",
+                            "display_order",
+                            "can_be_ordered",
+                            "can_be_filtered",
+                            "column_width_in_pixels"
+                        },
+                        new object[] { "usr", "name", 2, true, false, 160 })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var row = multi.ReadMappedSingle<HistoricalRow>();
+                    var total = multi.ReadMappedSingle<HistoricalTotal>();
+                    var column = multi.ReadMappedSingle<HistoricalColumn>();
+
+                    Assert.Equal(1, row.RowNo);
+                    Assert.Equal(1, total.Total);
+                    Assert.Equal("usr", column.Prefix);
+                    Assert.Equal("name", column.Name);
+                    Assert.Equal(2, column.DisplayOrder);
+                    Assert.True(column.CanBeOrdered);
+                    Assert.False(column.CanBeFiltered);
+                    Assert.Equal(160, column.WidthInPixels);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(HistoricalRow), typeof(HistoricalTotal), typeof(HistoricalColumn));
+            }
+        }
+
+        [Fact]
         [Trait("Category", "Integration")]
         public void QueryMultipleMappedShouldPassCommandParameters()
         {
@@ -420,6 +824,48 @@ namespace Dapper.FluentMap.Tests
             return connection;
         }
 
+        private static MappedCustomer MaterializeGeneratedCustomer(bool registerGeneratedMaterializer)
+        {
+            PreTest(typeof(MappedCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new MappedCustomerMap());
+
+                    if (registerGeneratedMaterializer)
+                    {
+                        configuration.AddGeneratedMaterializer(
+                            new[]
+                            {
+                                GeneratedMaterializerColumn.Map("customer_id", nameof(MappedCustomer.Id)),
+                                GeneratedMaterializerColumn.Map("customer_name", nameof(MappedCustomer.Name))
+                            },
+                            record => new MappedCustomer
+                            {
+                                Id = Convert.ToInt32(record.GetValue(0)),
+                                Name = Convert.ToString(record.GetValue(1))
+                            });
+                    }
+                });
+
+                using (var reader = CreateReader(CreateTable(
+                    new[] { "customer_id", "customer_name" },
+                    new object[] { 31, "Same Shape" })))
+                using (var multi = new MappedGridReader(reader))
+                {
+                    var customer = multi.ReadMappedSingle<MappedCustomer>();
+                    Assert.Equal(registerGeneratedMaterializer ? 0 : 1, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
+                    return customer;
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MappedCustomer));
+            }
+        }
+
         private static void PreTest(params Type[] types)
         {
             FluentMapper.Reset(types);
@@ -472,6 +918,138 @@ namespace Dapper.FluentMap.Tests
             {
                 Map(order => order.Id).ToColumn("order_id");
                 Map(order => order.Total).ToColumn("total");
+            }
+        }
+
+        private sealed class PolicyConventionCustomer
+        {
+            public int CustomerId { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        private sealed class LegalNameConvention : Convention
+        {
+            public LegalNameConvention()
+            {
+                Properties<string>()
+                    .Where(property => property.Name == nameof(PolicyConventionCustomer.Name))
+                    .Configure(property => property.HasColumnName("legal_name"));
+            }
+        }
+
+        private sealed class ComplexCustomer
+        {
+            public ComplexCustomer(int id, ComplexAddress address, ComplexEmail email)
+            {
+                Id = id;
+                Address = address;
+                Email = email;
+            }
+
+            public int Id { get; }
+
+            public ComplexAddress Address { get; }
+
+            public ComplexEmail Email { get; }
+        }
+
+        private sealed class ComplexAddress
+        {
+            public ComplexAddress(string city)
+            {
+                City = city;
+            }
+
+            public string City { get; }
+        }
+
+        private sealed record ComplexEmail(string Value);
+
+        private sealed class ComplexCustomerMap : EntityMap<ComplexCustomer>
+        {
+            public ComplexCustomerMap()
+            {
+                Map(customer => customer.Id).ToColumn("customer_id");
+                Map(customer => customer.Address.City).ToColumn("city");
+                Map(customer => customer.Email.Value).ToColumn("email");
+            }
+        }
+
+        private sealed class ConventionCustomer
+        {
+            public int Id { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        private sealed class ConventionOrder
+        {
+            public int Id { get; set; }
+
+            public decimal Total { get; set; }
+        }
+
+        private sealed class ColumnPrefixConvention : Convention
+        {
+            public ColumnPrefixConvention()
+            {
+                Properties()
+                    .Configure(property => property.HasPrefix("col"));
+            }
+        }
+
+        private sealed class HistoricalRow
+        {
+            public int RowNo { get; set; }
+        }
+
+        private sealed class HistoricalRowMap : EntityMap<HistoricalRow>
+        {
+            public HistoricalRowMap()
+            {
+                Map(row => row.RowNo).ToColumn("row_no");
+            }
+        }
+
+        private sealed class HistoricalTotal
+        {
+            public int Total { get; set; }
+        }
+
+        private sealed class HistoricalTotalMap : EntityMap<HistoricalTotal>
+        {
+            public HistoricalTotalMap()
+            {
+                Map(total => total.Total).ToColumn("total");
+            }
+        }
+
+        private sealed class HistoricalColumn
+        {
+            public string Prefix { get; set; }
+
+            public string Name { get; set; }
+
+            public int DisplayOrder { get; set; }
+
+            public bool CanBeOrdered { get; set; }
+
+            public bool CanBeFiltered { get; set; }
+
+            public int WidthInPixels { get; set; }
+        }
+
+        private sealed class HistoricalColumnMap : EntityMap<HistoricalColumn>
+        {
+            public HistoricalColumnMap()
+            {
+                Map(column => column.Prefix).ToColumn("column_prefix");
+                Map(column => column.Name).ToColumn("column_name");
+                Map(column => column.DisplayOrder).ToColumn("display_order");
+                Map(column => column.CanBeOrdered).ToColumn("can_be_ordered");
+                Map(column => column.CanBeFiltered).ToColumn("can_be_filtered");
+                Map(column => column.WidthInPixels).ToColumn("column_width_in_pixels");
             }
         }
 
