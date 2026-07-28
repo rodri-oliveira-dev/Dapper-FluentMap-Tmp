@@ -251,3 +251,72 @@ Manter `RequiresUnreferencedCode` e `RequiresDynamicCode` em `QueryMapped*`.
 
 - As APIs publicas continuam conservadoras para trimming/AOT.
 - A reducao futura de warnings exige caminho dedicado ou garantia de generated-only ainda nao especificada.
+
+## ADR-7.5-001 - Metadata Tree Interna Para Materializers Complexos
+
+### Contexto
+
+O Prompt 7.4 gerava materializers flat diretamente a partir da lista de invocacoes `Map(...).ToColumn(...)`. Para nested objects e Value Objects, interpretar somente uma lista de propriedades terminais aumenta o risco de colisao entre paths como `Rank.Level` e `Seniority.Level`.
+
+### Decisao
+
+O generator deve construir uma arvore interna de materializacao por map antes de emitir codigo. Cada node representa um tipo no object graph, suas leaves escalares, seus children, seus ordinais de subtree e seu plano de construtor quando necessario.
+
+### Alternativas
+
+- Continuar emitindo codigo diretamente da lista flat de bindings.
+- Duplicar um algoritmo separado para Value Objects e outro para nested mutable.
+- Mover todo o plano runtime para contrato publico compartilhado nesta etapa.
+
+### Consequencias
+
+- Member paths completos permanecem distintos.
+- Constructor composition pode ser emitida bottom-up.
+- Null subtree usa os ordinais do node em vez de inferencias por nome terminal.
+- Runtime e generator ainda nao compartilham a mesma implementacao de plano; a equivalencia e protegida por testes e descriptors validados contra o mapping efetivo.
+
+## ADR-7.5-002 - Generated Complex Mantem Fallback Para Construcao Nao Deterministica
+
+### Contexto
+
+O runtime aceita uma gama maior de cenarios porque pode inspecionar metadata em runtime e falhar com diagnostico contextual. O generator nao deve executar constructors de maps nem descobrir factories ou TypeHandlers de forma especulativa.
+
+### Decisao
+
+O generated path cobre apenas construtores publicos determinísticos vinculados por nome e tipo a leaves ou children. Factory methods, TypeHandlers, `IncludeBase<TBase>()`, conventions e construtores ambiguos continuam no fallback runtime com diagnostic informativo `DFM011`.
+
+### Alternativas
+
+- Gerar codigo para factories por convencao de nome.
+- Tratar fallback como erro de compilacao.
+- Ampliar o contrato publico para plugins de construcao nesta etapa.
+
+### Consequencias
+
+- A evolucao permanece aditiva e sem breaking change.
+- Value Objects por componentes como `Cpf.Number` sao gerados quando o construtor publico e claro.
+- Value Objects escalares e cenarios dinamicos seguem suportados pelo runtime.
+- Diagnostics continuam informativos, sem impedir build.
+
+## ADR-7.5-003 - Null Subtree E Decidido Por Ordinais Da Subarvore
+
+### Contexto
+
+Nested materialization precisa preservar o comportamento de `QueryMapped*`: quando todas as colunas de uma subarvore sao `NULL`, o objeto intermediario nao deve ser criado.
+
+### Decisao
+
+Cada generated node carrega os ordinais materializados da sua subarvore. O codigo emitido testa `record.IsDBNull(...)` para esses ordinais antes de construir children ou Value Objects.
+
+### Alternativas
+
+- Criar sempre objetos intermediarios e deixar leaves com `null`/default.
+- Testar apenas o primeiro ordinal da subarvore.
+- Delegar null subtree para runtime mesmo dentro de materializer gerado.
+
+### Consequencias
+
+- Subarvore toda `NULL` vira `null` quando o parent aceita atribuicao.
+- Subarvore parcialmente preenchida cria objeto.
+- Value Objects usados como argumentos de construtor recebem `null` quando todos os componentes sao `NULL`.
+- A semantica fica alinhada ao runtime sem alocar arrays por linha no hot path gerado.

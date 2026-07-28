@@ -190,3 +190,40 @@ Job: `RunStrategy=ColdStart`, `LaunchCount=8`, `WarmupCount=0`, `IterationCount=
 - Cold start continuou com variancia alta e outliers.
 - A rodada cold valida que os cenarios existentes continuam executando apos a integracao do generator no projeto de benchmarks.
 - Nao ha numero cold dedicado para generated flat neste prompt por causa da limitacao de reset publico descrita acima.
+
+## Apos Prompt 7.5
+
+Prompt 7.5 expandiu os materializers gerados para nested mutable objects, constructor-composed nested immutable objects e Value Objects por componentes. O benchmark steady state existente ja registra maps por `AddGeneratedMappings()`, entao `QueryMappedNestedObject` e `QueryMappedValueObject` passaram a usar generated materializer quando a query retorna o shape canonico gerado.
+
+### Comando Executado
+
+Rodada steady state:
+
+```bash
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+### Resultados - Steady State
+
+Job: `ShortRun`, `LaunchCount=1`, `WarmupCount=3`, `IterationCount=3`.
+
+| Method | Mean | StdDev | Ratio | Gen0 | Gen1 | Allocated | Alloc Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DapperPure | 1.295 ms | 0.0535 ms | 1.00 | 68.3594 | - | 283.17 KB | 1.00 |
+| QueryMappedValueObject | 1.392 ms | 0.0130 ms | 1.08 | 62.5000 | 19.5313 | 276.47 KB | 0.98 |
+| DapperWithFluentMapRootMapping | 1.580 ms | 0.3355 ms | 1.22 | 68.3594 | - | 283.3 KB | 1.00 |
+| QueryMappedNestedObject | 1.670 ms | 0.0571 ms | 1.29 | 70.3125 | 21.4844 | 292.44 KB | 1.03 |
+| QueryMappedImmutableConstructor | 1.734 ms | 0.0812 ms | 1.34 | 62.5000 | 5.8594 | 261.05 KB | 0.92 |
+| QueryMappedSimple | 1.754 ms | 0.1335 ms | 1.36 | 62.5000 | 5.8594 | 261.12 KB | 0.92 |
+
+### Leitura - Steady State
+
+- `QueryMappedNestedObject` reduziu alocacao de aproximadamente `377 KB` no Prompt 7.4 para `292.44 KB` por 1000 linhas quando o generated materializer foi usado.
+- `QueryMappedValueObject` reduziu alocacao de aproximadamente `587.84 KB` no Prompt 7.4 para `276.47 KB` por 1000 linhas.
+- O tempo continua ruidoso em `ShortRun`, especialmente nos cenarios com intervalos amplos; nao ha promessa publica de ganho de tempo.
+- A rodada valida que nested e Value Object agora entram no caminho gerado para o shape canonico do benchmark.
+
+### Limitacoes
+
+- Nao foi executada rodada cold dedicada para generated complex. O benchmark cold existente registra maps manualmente por `AddMap(...)` e continua representando o fallback/runtime.
+- Os resultados continuam locais e devem ser usados como indicio de alocacao, nao como contrato de performance.

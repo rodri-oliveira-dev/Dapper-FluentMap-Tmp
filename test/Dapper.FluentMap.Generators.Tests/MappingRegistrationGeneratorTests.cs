@@ -134,7 +134,7 @@ public sealed class CustomerMap : EntityMap<Customer>
             Assert.Empty(result.DfmDiagnostics);
             Assert.Contains("var id = Read<int>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
             Assert.Contains("var fullName = Read<string>(record, 1);", result.GeneratedSource, StringComparison.Ordinal);
-            Assert.Contains("return new global::Customer(id, fullName);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity = new global::Customer(id, fullName);", result.GeneratedSource, StringComparison.Ordinal);
             Assert.Contains("FluentMapConfigurationException", result.GeneratedSource, StringComparison.Ordinal);
         }
 
@@ -358,7 +358,7 @@ public sealed class LegacyCustomerMap : EntityMap<Customer>, IProfileMap<LegacyP
         }
 
         [Fact]
-        public void UnsupportedNestedMappingShouldReportFallbackDiagnostic()
+        public void NestedMutableMappingShouldGenerateComplexMaterializer()
         {
             var source = @"
 using Dapper.FluentMap.Mapping;
@@ -382,11 +382,147 @@ public sealed class CustomerMap : EntityMap<Customer>
 }";
 
             var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"city\", \"Address.City\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("if (!record.IsDBNull(0))", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("node1.City = Read<string>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity.Address = null;", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ValueObjectMappingShouldGenerateConstructorComposition()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Customer(int id, Cpf cpf)
+    {
+        Id = id;
+        Cpf = cpf;
+    }
+
+    public int Id { get; }
+
+    public Cpf Cpf { get; }
+}
+
+public sealed class Cpf
+{
+    public Cpf(string number)
+    {
+        Number = number;
+    }
+
+    public string Number { get; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Id).ToColumn(""customer_id"");
+        Map(customer => customer.Cpf.Number).ToColumn(""cpf"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"cpf\", \"Cpf.Number\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("global::Cpf cpf = null;", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("cpf = new global::Cpf(arg1_0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("entity = new global::Customer(id, cpf);", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SameTerminalNestedPathsShouldUseFullMemberPathsInDescriptor()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Rank Rank { get; set; }
+
+    public Seniority Seniority { get; set; }
+}
+
+public sealed class Rank
+{
+    public int Level { get; set; }
+}
+
+public sealed class Seniority
+{
+    public int Level { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Rank.Level).ToColumn(""rank_level"");
+        Map(customer => customer.Seniority.Level).ToColumn(""seniority_level"");
+    }
+}";
+
+            var result = RunGenerator(source);
+
+            Assert.Empty(result.DfmDiagnostics);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"rank_level\", \"Rank.Level\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("GeneratedMaterializerColumn.Map(\"seniority_level\", \"Seniority.Level\")", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("node1.Level = Read<int>(record, 0);", result.GeneratedSource, StringComparison.Ordinal);
+            Assert.Contains("node2.Level = Read<int>(record, 1);", result.GeneratedSource, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IncompatibleNestedConstructorShouldReportFallbackDiagnostic()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public Customer(Cpf cpf)
+    {
+        Cpf = cpf;
+    }
+
+    public Cpf Cpf { get; }
+}
+
+public sealed class Cpf
+{
+    public Cpf(string number, string kind)
+    {
+        Number = number;
+        Kind = kind;
+    }
+
+    public string Number { get; }
+
+    public string Kind { get; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(customer => customer.Cpf.Number).ToColumn(""cpf"");
+    }
+}";
+
+            var result = RunGenerator(source);
             var diagnostic = Assert.Single(result.DfmDiagnostics);
 
             Assert.Equal(MappingRegistrationGenerator.SkippedGeneratedMaterializerDiagnosticId, diagnostic.Id);
             Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
-            Assert.Contains("nested member paths", diagnostic.GetMessage(), StringComparison.Ordinal);
+            Assert.Contains("supported public constructor", diagnostic.GetMessage(), StringComparison.Ordinal);
             Assert.Contains(".AddMap<global::CustomerMap>()", result.GeneratedSource, StringComparison.Ordinal);
             Assert.DoesNotContain(".AddGeneratedMaterializer<global::Customer>(", result.GeneratedSource, StringComparison.Ordinal);
         }

@@ -89,6 +89,32 @@ Definir a arquitetura e a especificacao inicial para materializacao gerada no Fl
 - Executada rodada benchmark steady state `MaterializationSteadyStateBenchmarks`: sucesso.
 - Executada rodada benchmark cold start `MaterializationColdStartBenchmarks`: sucesso.
 - Atualizada a secao `Apos Prompt 7.4` em `.sdd/etapa-7/02-performance-baseline.md`.
+- Criada a especificacao `.sdd/etapa-7/05-complex-generated-materialization.md`.
+- Evoluido `Dapper.FluentMap.Generators` para montar uma arvore interna de materializacao gerada.
+- Adicionado generated materializer para:
+  - nested mutable objects;
+  - nested immutable objects por construtor;
+  - Value Objects por componentes;
+  - constructor composition bottom-up;
+  - null subtree semantics;
+  - profiles com nested mapping.
+- Preservado fallback runtime com `DFM011` para construtores incompatíveis, `IncludeBase`, conventions, TypeHandlers e paths nao determinísticos.
+- Adicionados testes do generator para nested mutable, Value Object por constructor composition, paths com mesmo terminal e constructor incompatível com fallback.
+- Atualizado teste de integracao de generated registration para validar nested, null subtree, Value Object nullable, `Rank.Level`/`Seniority.Level`, profile nested e fallback por shape sem descriptor.
+- Atualizados `README.md` e `src/Dapper.FluentMap.Generators/README.md` para documentar materializers complexos gerados e fallback.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 247 testes aprovados.
+- Executada rodada benchmark steady state `MaterializationSteadyStateBenchmarks`: sucesso.
+- Executado `dotnet pack .\src\Dapper.FluentMap.Generators\Dapper.FluentMap.Generators.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso, gerou `Dapper.FluentMap.Generators.2.0.0.nupkg`.
+- Atualizada a secao `Apos Prompt 7.5` em `.sdd/etapa-7/02-performance-baseline.md`.
+- Benchmark steady state resumido apos 7.5:
+  - DapperPure: 1.295 ms, 283.17 KB;
+  - DapperWithFluentMapRootMapping: 1.580 ms, 283.3 KB;
+  - QueryMappedSimple: 1.754 ms, 261.12 KB;
+  - QueryMappedImmutableConstructor: 1.734 ms, 261.05 KB;
+  - QueryMappedNestedObject: 1.670 ms, 292.44 KB;
+  - QueryMappedValueObject: 1.392 ms, 276.47 KB.
 
 ## Em andamento
 
@@ -96,12 +122,10 @@ Nenhum no escopo deste prompt apos o commit local.
 
 ## Proximos passos
 
-1. Expandir para nested objects, immutable objects compostos e Value Objects.
-2. Repetir benchmarks nested, immutable e Value Object apos 7.5.
-3. Adicionar diagnostics runtime de generated/fallback.
-4. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
-5. Avaliar uma forma segura de medir cold start generated sem expor reset publico desnecessario.
-6. Validar trimming, Native AOT e performance antes de documentar ganhos.
+1. Adicionar diagnostics runtime de generated/fallback.
+2. Repetir todos os benchmarks apos 7.6 para validar lookup generated/fallback integrado.
+3. Avaliar uma forma segura de medir cold start generated sem expor reset publico desnecessario.
+4. Validar trimming, Native AOT e performance antes de documentar ganhos.
 
 ## Decisoes relevantes
 
@@ -116,6 +140,8 @@ Nenhum no escopo deste prompt apos o commit local.
 - Descritores gerados devem ser validados contra o mapping efetivo antes de uso.
 - `QueryMapped*` mantem annotations de trimming/dynamic-code enquanto houver fallback runtime.
 - Prompt 7.4 nao alterou decisoes arquiteturais existentes; apenas implementou a primeira cobertura flat prevista.
+- Prompt 7.5 usa uma metadata tree interna para preservar member paths completos, null subtree e constructor composition.
+- Prompt 7.5 mantem fallback para construcao nao deterministica em vez de gerar codigo especulativo.
 
 ## Riscos conhecidos
 
@@ -146,7 +172,8 @@ Nenhum no escopo deste prompt apos o commit local.
 - `.sdd/etapa-7/02-performance-baseline.md`
 - `.sdd/etapa-7/03-generated-materializer-contracts.md`
 - `.sdd/etapa-7/04-flat-generated-materializers.md`
+- `.sdd/etapa-7/05-complex-generated-materialization.md`
 
 ## Ultimo prompt executado
 
-7.4
+7.5

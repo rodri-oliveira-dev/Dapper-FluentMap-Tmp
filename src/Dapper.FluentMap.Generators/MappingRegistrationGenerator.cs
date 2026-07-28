@@ -62,11 +62,11 @@ namespace Dapper.FluentMap.Generators
         private static readonly DiagnosticDescriptor SkippedGeneratedMaterializerRule = new DiagnosticDescriptor(
             SkippedGeneratedMaterializerDiagnosticId,
             "Generated materializer fallback will be used",
-            "Entity map type '{0}' is registered, but no flat generated materializer was emitted: {1}",
+            "Entity map type '{0}' is registered, but no generated materializer was emitted: {1}",
             Category,
             DiagnosticSeverity.Info,
             isEnabledByDefault: true,
-            description: "Generated materializers are emitted only for statically known flat explicit mappings. Unsupported mappings continue to use the runtime fallback.");
+            description: "Generated materializers are emitted only for statically known explicit mappings with supported object construction. Unsupported mappings continue to use the runtime fallback.");
 
         private static readonly SymbolDisplayFormat FullyQualifiedTypeFormat = new SymbolDisplayFormat(
             globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
@@ -432,56 +432,275 @@ namespace Dapper.FluentMap.Generators
             builder.AppendLine("            }");
             builder.AppendLine();
 
-            if (materializer.Constructor == null)
-            {
-                builder.Append("            var entity = new ");
-                builder.Append(materializer.EntityTypeName);
-                builder.AppendLine("();");
-                foreach (var binding in materializer.Bindings.Where(binding => !binding.Ignored))
-                {
-                    builder.Append("            entity.");
-                    builder.Append(EscapeIdentifier(binding.PropertyName));
-                    builder.Append(" = Read<");
-                    builder.Append(binding.TypeName);
-                    builder.Append(">(record, ");
-                    builder.Append(binding.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    builder.AppendLine(");");
-                }
+            AppendMaterializeNode(builder, materializer.Root, "entity", "            ", null, materializer.EntityTypeName, localAlreadyDeclared: false);
+            builder.AppendLine();
+            builder.AppendLine("            return entity;");
 
-                builder.AppendLine();
-                builder.AppendLine("            return entity;");
+            builder.AppendLine("        }");
+        }
+
+        private static void AppendMaterializeNode(
+            StringBuilder builder,
+            GeneratedMaterializationNode node,
+            string localName,
+            string indent,
+            string parentLocalName,
+            string entityTypeName,
+            bool localAlreadyDeclared)
+        {
+            if (node.Constructor == null)
+            {
+                AppendCreateParameterlessNode(builder, node, localName, indent, parentLocalName, localAlreadyDeclared);
             }
             else
             {
-                foreach (var parameter in materializer.Constructor.Parameters)
+                AppendCreateConstructorNode(builder, node, localName, indent, entityTypeName, localAlreadyDeclared);
+            }
+
+            foreach (var child in node.PostConstructorChildren)
+            {
+                AppendApplyChild(builder, child, localName, indent, entityTypeName);
+            }
+
+            foreach (var leaf in node.PostConstructorLeaves)
+            {
+                AppendAssignLeaf(builder, leaf, localName, indent);
+            }
+        }
+
+        private static void AppendCreateParameterlessNode(
+            StringBuilder builder,
+            GeneratedMaterializationNode node,
+            string localName,
+            string indent,
+            string parentLocalName,
+            bool localAlreadyDeclared)
+        {
+            if (node.IsRoot || parentLocalName == null || !node.HasPublicGetter)
+            {
+                builder.Append(indent);
+                if (!localAlreadyDeclared)
                 {
-                    builder.Append("            var ");
-                    builder.Append(EscapeIdentifier(parameter.LocalName));
+                    builder.Append("var ");
+                }
+
+                builder.Append(localName);
+                builder.Append(" = new ");
+                builder.Append(node.TypeName);
+                builder.AppendLine("();");
+                return;
+            }
+
+            builder.Append(indent);
+            builder.Append("var ");
+            builder.Append(localName);
+            builder.Append(" = ");
+            builder.Append(parentLocalName);
+            builder.Append('.');
+            builder.Append(EscapeIdentifier(node.PropertyName));
+            builder.AppendLine(";");
+            builder.Append(indent);
+            builder.Append("if (");
+            builder.Append(localName);
+            builder.AppendLine(" == null)");
+            builder.Append(indent);
+            builder.AppendLine("{");
+            builder.Append(indent);
+            builder.Append("    ");
+            builder.Append(localName);
+            builder.Append(" = new ");
+            builder.Append(node.TypeName);
+            builder.AppendLine("();");
+            if (node.HasPublicSetter)
+            {
+                builder.Append(indent);
+                builder.Append("    ");
+                builder.Append(parentLocalName);
+                builder.Append('.');
+                builder.Append(EscapeIdentifier(node.PropertyName));
+                builder.Append(" = ");
+                builder.Append(localName);
+                builder.AppendLine(";");
+            }
+
+            builder.Append(indent);
+            builder.AppendLine("}");
+        }
+
+        private static void AppendCreateConstructorNode(
+            StringBuilder builder,
+            GeneratedMaterializationNode node,
+            string localName,
+            string indent,
+            string entityTypeName,
+            bool localAlreadyDeclared)
+        {
+            foreach (var parameter in node.Constructor.Parameters)
+            {
+                if (parameter.Leaf != null)
+                {
+                    builder.Append(indent);
+                    builder.Append("var ");
+                    builder.Append(parameter.LocalName);
                     builder.Append(" = Read<");
                     builder.Append(parameter.TypeName);
                     builder.Append(">(record, ");
-                    builder.Append(parameter.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    builder.Append(parameter.Leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
                     builder.AppendLine(");");
+                    continue;
                 }
 
-                builder.AppendLine();
-                builder.AppendLine("            try");
-                builder.AppendLine("            {");
-                builder.Append("                return new ");
-                builder.Append(materializer.EntityTypeName);
-                builder.Append('(');
-                builder.Append(string.Join(", ", materializer.Constructor.Parameters.Select(parameter => EscapeIdentifier(parameter.LocalName))));
-                builder.AppendLine(");");
-                builder.AppendLine("            }");
-                builder.AppendLine("            catch (global::System.Exception exception)");
-                builder.AppendLine("            {");
-                builder.Append("                throw new global::Dapper.FluentMap.FluentMapConfigurationException(");
-                builder.Append(EscapeStringLiteral("Failed to materialize type '" + materializer.EntityTypeName + "' using a generated constructor materializer. See the inner exception for the domain failure."));
-                builder.AppendLine(", exception);");
-                builder.AppendLine("            }");
+                AppendCreateChildValue(builder, parameter.Child, parameter.LocalName, indent, entityTypeName);
             }
 
-            builder.AppendLine("        }");
+            builder.AppendLine();
+            if (!localAlreadyDeclared)
+            {
+                builder.Append(indent);
+                builder.Append(node.TypeName);
+                builder.Append(' ');
+                builder.Append(localName);
+                builder.AppendLine(";");
+            }
+
+            builder.Append(indent);
+            builder.AppendLine("try");
+            builder.Append(indent);
+            builder.AppendLine("{");
+            builder.Append(indent);
+            builder.Append("    ");
+            builder.Append(localName);
+            builder.Append(" = new ");
+            builder.Append(node.TypeName);
+            builder.Append('(');
+            builder.Append(string.Join(", ", node.Constructor.Parameters.Select(parameter => parameter.LocalName)));
+            builder.AppendLine(");");
+            builder.Append(indent);
+            builder.AppendLine("}");
+            builder.Append(indent);
+            builder.AppendLine("catch (global::System.Exception exception)");
+            builder.Append(indent);
+            builder.AppendLine("{");
+            builder.Append(indent);
+            builder.Append("    throw new global::Dapper.FluentMap.FluentMapConfigurationException(");
+            builder.Append(EscapeStringLiteral(
+                "Failed to materialize type '" + node.TypeName + "' at member path '" + node.MemberPath + "' on entity '" + entityTypeName + "' using generated constructor materializer. Columns: " + FormatGeneratedColumns(node) + ". See the inner exception for the domain failure."));
+            builder.AppendLine(", exception);");
+            builder.Append(indent);
+            builder.AppendLine("}");
+        }
+
+        private static void AppendApplyChild(
+            StringBuilder builder,
+            GeneratedMaterializationNode child,
+            string parentLocalName,
+            string indent,
+            string entityTypeName)
+        {
+            builder.Append(indent);
+            builder.Append("if (");
+            AppendHasAnyValueExpression(builder, child);
+            builder.AppendLine(")");
+            builder.Append(indent);
+            builder.AppendLine("{");
+            var childLocalName = "node" + child.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            AppendMaterializeNode(builder, child, childLocalName, indent + "    ", parentLocalName, entityTypeName, localAlreadyDeclared: false);
+            if (child.HasPublicSetter && (child.Constructor != null || !child.HasPublicGetter))
+            {
+                builder.Append(indent);
+                builder.Append("    ");
+                builder.Append(parentLocalName);
+                builder.Append('.');
+                builder.Append(EscapeIdentifier(child.PropertyName));
+                builder.Append(" = ");
+                builder.Append(childLocalName);
+                builder.AppendLine(";");
+            }
+
+            builder.Append(indent);
+            builder.AppendLine("}");
+            if (child.HasPublicSetter && child.CanAssignNull)
+            {
+                builder.Append(indent);
+                builder.AppendLine("else");
+                builder.Append(indent);
+                builder.AppendLine("{");
+                builder.Append(indent);
+                builder.Append("    ");
+                builder.Append(parentLocalName);
+                builder.Append('.');
+                builder.Append(EscapeIdentifier(child.PropertyName));
+                builder.AppendLine(" = null;");
+                builder.Append(indent);
+                builder.AppendLine("}");
+            }
+        }
+
+        private static void AppendCreateChildValue(
+            StringBuilder builder,
+            GeneratedMaterializationNode child,
+            string localName,
+            string indent,
+            string entityTypeName)
+        {
+            builder.Append(indent);
+            builder.Append(child.TypeName);
+            builder.Append(' ');
+            builder.Append(localName);
+            builder.AppendLine(" = null;");
+            builder.Append(indent);
+            builder.Append("if (");
+            AppendHasAnyValueExpression(builder, child);
+            builder.AppendLine(")");
+            builder.Append(indent);
+            builder.AppendLine("{");
+            AppendMaterializeNode(builder, child, localName, indent + "    ", null, entityTypeName, localAlreadyDeclared: true);
+            builder.Append(indent);
+            builder.AppendLine("}");
+        }
+
+        private static void AppendAssignLeaf(
+            StringBuilder builder,
+            GeneratedPropertyBinding leaf,
+            string targetLocalName,
+            string indent)
+        {
+            builder.Append(indent);
+            builder.Append(targetLocalName);
+            builder.Append('.');
+            builder.Append(EscapeIdentifier(leaf.PropertyName));
+            builder.Append(" = Read<");
+            builder.Append(leaf.TypeName);
+            builder.Append(">(record, ");
+            builder.Append(leaf.Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.AppendLine(");");
+        }
+
+        private static void AppendHasAnyValueExpression(StringBuilder builder, GeneratedMaterializationNode node)
+        {
+            var ordinals = node.SubtreeOrdinals.ToList();
+            if (ordinals.Count == 0)
+            {
+                builder.Append("false");
+                return;
+            }
+
+            for (var index = 0; index < ordinals.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append(" || ");
+                }
+
+                builder.Append("!record.IsDBNull(");
+                builder.Append(ordinals[index].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                builder.Append(')');
+            }
+        }
+
+        private static string FormatGeneratedColumns(GeneratedMaterializationNode node)
+        {
+            return string.Join(", ", node.GetColumnNames().Select(column => "'" + column + "'"));
         }
 
         private static void AppendReadHelper(StringBuilder builder)
@@ -538,7 +757,7 @@ namespace Dapper.FluentMap.Generators
 
             if (ContainsIncludeBaseInvocation(constructor, semanticModel, cancellationToken))
             {
-                skipReason = "IncludeBase<TBase>() is not supported by flat generated materializers in this phase";
+                skipReason = "IncludeBase<TBase>() is not supported by generated materializers in this phase";
                 return null;
             }
 
@@ -564,61 +783,91 @@ namespace Dapper.FluentMap.Generators
                 return null;
             }
 
-            var bindings = new List<GeneratedPropertyBinding>();
+            var columns = new List<GeneratedColumnBinding>();
+            var root = new GeneratedMaterializationNode(
+                id: 0,
+                type: entityType,
+                parentProperty: null,
+                memberPath: entityType.Name,
+                isRoot: true);
+
+            var nextNodeId = 1;
             for (var index = 0; index < mapInvocations.Count; index++)
             {
                 var invocation = mapInvocations[index];
-                if (invocation.MemberPath.Properties.Count != 1)
-                {
-                    skipReason = "nested member paths are handled by the runtime fallback";
-                    return null;
-                }
-
-                var property = invocation.MemberPath.Properties[0];
-                if (!IsSupportedScalarType(property.Type))
-                {
-                    skipReason = $"property '{property.Name}' has type '{FormatSymbol(property.Type)}', which is not supported by flat generated materializers";
-                    return null;
-                }
-
-                bindings.Add(new GeneratedPropertyBinding(
-                    index,
+                columns.Add(new GeneratedColumnBinding(
                     invocation.ColumnName,
                     invocation.MemberPath.Display,
-                    invocation.Ignored,
-                    property.Name,
-                    property.Type.ToDisplayString(FullyQualifiedTypeFormat),
-                    HasPublicSetter(property),
-                    property.Type));
+                    invocation.Ignored));
+
+                if (invocation.Ignored)
+                {
+                    continue;
+                }
+
+                if (!TryAddMaterializedPath(root, invocation, index, ref nextNodeId, out skipReason))
+                {
+                    return null;
+                }
             }
 
-            var materializedBindings = bindings
-                .Where(binding => !binding.Ignored)
-                .ToList();
-            var constructorBinding = default(GeneratedConstructorBinding);
-
-            if (HasPublicParameterlessConstructor(entityType) &&
-                materializedBindings.All(binding => binding.HasPublicSetter))
-            {
-                constructorBinding = null;
-            }
-            else if (!TryCreateConstructorBinding(entityType, materializedBindings, out constructorBinding, out skipReason))
+            if (!root.Seal(entityType, out skipReason))
             {
                 return null;
             }
-
-            var columns = bindings
-                .Select(binding => new GeneratedColumnBinding(binding.ColumnName, binding.MemberPath, binding.Ignored))
-                .ToList();
 
             return new GeneratedMaterializerInfo(
                 mapType.ToDisplayString(FullyQualifiedTypeFormat),
                 entityType.ToDisplayString(FullyQualifiedTypeFormat),
                 profileTypeName,
                 columns,
-                bindings,
-                constructorBinding,
+                root,
                 methodName: null);
+        }
+
+        private static bool TryAddMaterializedPath(
+            GeneratedMaterializationNode root,
+            GeneratedMapInvocation invocation,
+            int ordinal,
+            ref int nextNodeId,
+            out string skipReason)
+        {
+            skipReason = null;
+
+            var properties = invocation.MemberPath.Properties;
+            for (var index = 0; index < properties.Count - 1; index++)
+            {
+                var property = properties[index];
+                if (!IsSupportedComplexType(property.Type))
+                {
+                    skipReason = $"nested property '{property.Name}' has type '{FormatSymbol(property.Type)}', which is not supported by generated materializers";
+                    return false;
+                }
+            }
+
+            var leaf = properties[properties.Count - 1];
+            if (!IsSupportedScalarType(leaf.Type))
+            {
+                skipReason = $"property '{invocation.MemberPath.Display}' has type '{FormatSymbol(leaf.Type)}', which is not supported by generated materializers";
+                return false;
+            }
+
+            var node = root;
+            for (var index = 0; index < properties.Count - 1; index++)
+            {
+                node = node.FindOrAddChild(properties[index], ref nextNodeId);
+            }
+
+            node.AddLeaf(new GeneratedPropertyBinding(
+                ordinal,
+                invocation.ColumnName,
+                invocation.MemberPath.Display,
+                leaf.Name,
+                leaf.Type.ToDisplayString(FullyQualifiedTypeFormat),
+                HasPublicSetter(leaf),
+                leaf.Type));
+
+            return true;
         }
 
         private static ConstructorDeclarationSyntax GetPublicParameterlessConstructorDeclaration(
@@ -840,7 +1089,7 @@ namespace Dapper.FluentMap.Generators
 
         private static bool TryCreateConstructorBinding(
             INamedTypeSymbol entityType,
-            IList<GeneratedPropertyBinding> materializedBindings,
+            GeneratedMaterializationNode node,
             out GeneratedConstructorBinding constructorBinding,
             out string skipReason)
         {
@@ -848,43 +1097,39 @@ namespace Dapper.FluentMap.Generators
             skipReason = null;
 
             var candidates = new List<GeneratedConstructorBinding>();
-            foreach (var constructor in entityType.InstanceConstructors
+            var nodeType = (INamedTypeSymbol)node.Type;
+            foreach (var constructor in nodeType.InstanceConstructors
                 .Where(constructor => constructor.DeclaredAccessibility == Accessibility.Public && !constructor.IsStatic))
             {
-                if (constructor.Parameters.Length != materializedBindings.Count)
-                {
-                    continue;
-                }
-
                 var parameters = new List<GeneratedConstructorParameter>();
-                var usedBindings = new HashSet<GeneratedPropertyBinding>();
                 var failed = false;
+                var score = 0;
 
                 foreach (var parameter in constructor.Parameters)
                 {
-                    var matches = materializedBindings
-                        .Where(binding => !usedBindings.Contains(binding) &&
-                                          string.Equals(binding.PropertyName, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
-                                          IsSameUnwrappedType(binding.PropertyTypeSymbol, parameter.Type))
-                        .ToList();
-
-                    if (matches.Count != 1)
+                    var parameterBinding = TryBindConstructorParameter(node, parameter);
+                    if (parameterBinding == null)
                     {
                         failed = true;
                         break;
                     }
 
-                    var match = matches[0];
-                    usedBindings.Add(match);
+                    var localName = node.IsRoot
+                        ? CreateUniqueLocalName(parameter.Name, parameters.Count)
+                        : "arg" + node.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + "_" + parameters.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     parameters.Add(new GeneratedConstructorParameter(
-                        CreateUniqueLocalName(parameter.Name, parameters.Count),
+                        localName,
                         parameter.Type.ToDisplayString(FullyQualifiedTypeFormat),
-                        match.Ordinal));
+                        parameterBinding.Leaf,
+                        parameterBinding.Child));
+                    score += parameterBinding.Score;
                 }
 
-                if (!failed && usedBindings.Count == materializedBindings.Count)
+                if (!failed &&
+                    node.Leaves.Where(leaf => !leaf.CanAssign).All(leaf => parameters.Any(parameter => parameter.Leaf == leaf)) &&
+                    node.Children.Where(child => !child.CanAssignToParent).All(child => parameters.Any(parameter => parameter.Child == child)))
                 {
-                    candidates.Add(new GeneratedConstructorBinding(parameters));
+                    candidates.Add(new GeneratedConstructorBinding(constructor, parameters, score));
                 }
             }
 
@@ -894,17 +1139,90 @@ namespace Dapper.FluentMap.Generators
                 return true;
             }
 
+            if (candidates.Count > 1)
+            {
+                var bestScore = candidates.Max(candidate => candidate.Score);
+                var best = candidates.Where(candidate => candidate.Score == bestScore).ToList();
+                if (best.Count == 1)
+                {
+                    constructorBinding = best[0];
+                    return true;
+                }
+            }
+
             skipReason = candidates.Count == 0
-                ? "the entity does not have a public parameterless constructor with public setters or a simple public constructor matching all mapped properties"
-                : "multiple public constructors match all mapped properties";
+                ? $"type '{FormatSymbol(node.Type)}' at member path '{node.MemberPath}' does not have a supported public constructor for generated materialization"
+                : $"type '{FormatSymbol(node.Type)}' at member path '{node.MemberPath}' has multiple public constructors that match generated materialization";
             return false;
         }
 
-        private static bool IsSameUnwrappedType(ITypeSymbol bindingType, ITypeSymbol parameterType)
+        private static GeneratedParameterMatch TryBindConstructorParameter(
+            GeneratedMaterializationNode node,
+            IParameterSymbol parameter)
         {
-            var left = UnwrapNullable(bindingType);
-            var right = UnwrapNullable(parameterType);
-            return SymbolEqualityComparer.Default.Equals(left, right);
+            var matches = node.Leaves
+                .Where(leaf => string.Equals(leaf.PropertyName, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
+                               IsParameterCompatible(parameter.Type, leaf.PropertyTypeSymbol))
+                .Select(leaf => GeneratedParameterMatch.ForLeaf(
+                    leaf,
+                    GetCompatibilityScore(parameter.Type, leaf.PropertyTypeSymbol)))
+                .Concat(node.Children
+                    .Where(child => string.Equals(child.PropertyName, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
+                                    IsParameterCompatible(parameter.Type, child.PropertyTypeSymbol))
+                    .Select(child => GeneratedParameterMatch.ForChild(
+                        child,
+                        GetCompatibilityScore(parameter.Type, child.PropertyTypeSymbol))))
+                .OrderByDescending(match => match.Score)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                return null;
+            }
+
+            var bestScore = matches[0].Score;
+            var best = matches.Where(match => match.Score == bestScore).ToList();
+            return best.Count == 1 ? best[0] : null;
+        }
+
+        private static bool IsParameterCompatible(ITypeSymbol parameterType, ITypeSymbol sourceType)
+        {
+            var parameter = UnwrapNullable(parameterType);
+            var source = UnwrapNullable(sourceType);
+            return IsAssignableFrom(parameter, source) || IsAssignableFrom(source, parameter);
+        }
+
+        private static int GetCompatibilityScore(ITypeSymbol parameterType, ITypeSymbol sourceType)
+        {
+            var parameter = UnwrapNullable(parameterType);
+            var source = UnwrapNullable(sourceType);
+            return SymbolEqualityComparer.Default.Equals(parameter, source) ? 2 : 1;
+        }
+
+        private static bool IsAssignableFrom(ITypeSymbol targetType, ITypeSymbol sourceType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(targetType, sourceType))
+            {
+                return true;
+            }
+
+            for (var current = sourceType; current != null; current = current.BaseType)
+            {
+                if (SymbolEqualityComparer.Default.Equals(targetType, current))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var interfaceType in sourceType.AllInterfaces)
+            {
+                if (SymbolEqualityComparer.Default.Equals(targetType, interfaceType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static ITypeSymbol UnwrapNullable(ITypeSymbol type)
@@ -950,6 +1268,31 @@ namespace Dapper.FluentMap.Generators
             }
 
             return IsType(unwrapped as INamedTypeSymbol, "System", "Guid");
+        }
+
+        private static bool IsSupportedComplexType(ITypeSymbol type)
+        {
+            var unwrapped = UnwrapNullable(type);
+            var namedType = unwrapped as INamedTypeSymbol;
+            return namedType != null &&
+                   namedType.TypeKind == TypeKind.Class &&
+                   IsAccessibleFromGeneratedCode(namedType);
+        }
+
+        private static bool CanAssignNull(ITypeSymbol type)
+        {
+            var namedType = type as INamedTypeSymbol;
+            return type.IsReferenceType ||
+                   namedType != null &&
+                   namedType.ConstructedFrom != null &&
+                   namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T;
+        }
+
+        private static bool HasPublicGetter(IPropertySymbol property)
+        {
+            return property.GetMethod != null &&
+                   property.GetMethod.DeclaredAccessibility == Accessibility.Public &&
+                   !property.GetMethod.IsStatic;
         }
 
         private static bool HasPublicSetter(IPropertySymbol property)
@@ -1272,16 +1615,14 @@ namespace Dapper.FluentMap.Generators
                 string entityTypeName,
                 string profileTypeName,
                 IReadOnlyList<GeneratedColumnBinding> columns,
-                IReadOnlyList<GeneratedPropertyBinding> bindings,
-                GeneratedConstructorBinding constructor,
+                GeneratedMaterializationNode root,
                 string methodName)
             {
                 MapTypeName = mapTypeName;
                 EntityTypeName = entityTypeName;
                 ProfileTypeName = profileTypeName;
                 Columns = columns;
-                Bindings = bindings;
-                Constructor = constructor;
+                Root = root;
                 MethodName = methodName;
             }
 
@@ -1293,9 +1634,7 @@ namespace Dapper.FluentMap.Generators
 
             internal IReadOnlyList<GeneratedColumnBinding> Columns { get; }
 
-            internal IReadOnlyList<GeneratedPropertyBinding> Bindings { get; }
-
-            internal GeneratedConstructorBinding Constructor { get; }
+            internal GeneratedMaterializationNode Root { get; }
 
             internal string MethodName { get; }
 
@@ -1306,8 +1645,7 @@ namespace Dapper.FluentMap.Generators
                     EntityTypeName,
                     ProfileTypeName,
                     Columns,
-                    Bindings,
-                    Constructor,
+                    Root,
                     methodName);
             }
         }
@@ -1334,7 +1672,6 @@ namespace Dapper.FluentMap.Generators
                 int ordinal,
                 string columnName,
                 string memberPath,
-                bool ignored,
                 string propertyName,
                 string typeName,
                 bool hasPublicSetter,
@@ -1343,7 +1680,6 @@ namespace Dapper.FluentMap.Generators
                 Ordinal = ordinal;
                 ColumnName = columnName;
                 MemberPath = memberPath;
-                Ignored = ignored;
                 PropertyName = propertyName;
                 TypeName = typeName;
                 HasPublicSetter = hasPublicSetter;
@@ -1356,41 +1692,253 @@ namespace Dapper.FluentMap.Generators
 
             internal string MemberPath { get; }
 
-            internal bool Ignored { get; }
-
             internal string PropertyName { get; }
 
             internal string TypeName { get; }
 
             internal bool HasPublicSetter { get; }
 
+            internal bool CanAssign => HasPublicSetter;
+
             internal ITypeSymbol PropertyTypeSymbol { get; }
+        }
+
+        private sealed class GeneratedMaterializationNode
+        {
+            private readonly List<GeneratedPropertyBinding> _leaves = new List<GeneratedPropertyBinding>();
+            private readonly List<GeneratedMaterializationNode> _children = new List<GeneratedMaterializationNode>();
+
+            internal GeneratedMaterializationNode(
+                int id,
+                ITypeSymbol type,
+                IPropertySymbol parentProperty,
+                string memberPath,
+                bool isRoot)
+            {
+                Id = id;
+                Type = type;
+                TypeName = type.ToDisplayString(FullyQualifiedTypeFormat);
+                ParentProperty = parentProperty;
+                PropertyName = parentProperty == null ? null : parentProperty.Name;
+                PropertyTypeSymbol = parentProperty == null ? type : parentProperty.Type;
+                MemberPath = memberPath;
+                IsRoot = isRoot;
+                HasPublicGetter = parentProperty != null && MappingRegistrationGenerator.HasPublicGetter(parentProperty);
+                HasPublicSetter = parentProperty != null && MappingRegistrationGenerator.HasPublicSetter(parentProperty);
+                CanAssignNull = parentProperty == null || MappingRegistrationGenerator.CanAssignNull(parentProperty.Type);
+            }
+
+            internal int Id { get; }
+
+            internal ITypeSymbol Type { get; }
+
+            internal string TypeName { get; }
+
+            internal IPropertySymbol ParentProperty { get; }
+
+            internal string PropertyName { get; }
+
+            internal ITypeSymbol PropertyTypeSymbol { get; }
+
+            internal string MemberPath { get; }
+
+            internal bool IsRoot { get; }
+
+            internal bool HasPublicGetter { get; }
+
+            internal bool HasPublicSetter { get; }
+
+            internal bool CanAssignNull { get; }
+
+            internal bool CanAssignToParent => IsRoot || HasPublicSetter;
+
+            internal IReadOnlyList<GeneratedPropertyBinding> Leaves => _leaves;
+
+            internal IReadOnlyList<GeneratedMaterializationNode> Children => _children;
+
+            internal GeneratedConstructorBinding Constructor { get; private set; }
+
+            internal IReadOnlyList<GeneratedPropertyBinding> PostConstructorLeaves { get; private set; }
+
+            internal IReadOnlyList<GeneratedMaterializationNode> PostConstructorChildren { get; private set; }
+
+            internal IReadOnlyList<int> SubtreeOrdinals { get; private set; }
+
+            internal GeneratedMaterializationNode FindOrAddChild(IPropertySymbol property, ref int nextNodeId)
+            {
+                var existing = _children.FirstOrDefault(candidate => SymbolEqualityComparer.Default.Equals(candidate.ParentProperty, property));
+                if (existing != null)
+                {
+                    return existing;
+                }
+
+                var memberPath = IsRoot
+                    ? property.Name
+                    : MemberPath + "." + property.Name;
+                var createdChild = new GeneratedMaterializationNode(nextNodeId++, property.Type, property, memberPath, isRoot: false);
+                _children.Add(createdChild);
+                return createdChild;
+            }
+
+            internal void AddLeaf(GeneratedPropertyBinding leaf)
+            {
+                _leaves.Add(leaf);
+            }
+
+            internal bool Seal(INamedTypeSymbol entityType, out string skipReason)
+            {
+                foreach (var child in _children)
+                {
+                    if (!child.Seal(entityType, out skipReason))
+                    {
+                        return false;
+                    }
+                }
+
+                SubtreeOrdinals = _leaves
+                    .Select(leaf => leaf.Ordinal)
+                    .Concat(_children.SelectMany(child => child.SubtreeOrdinals))
+                    .Distinct()
+                    .ToArray();
+
+                var hasParameterlessConstructor = Type is INamedTypeSymbol namedType &&
+                                                  MappingRegistrationGenerator.HasPublicParameterlessConstructor(namedType);
+                var requiresConstructor = !hasParameterlessConstructor ||
+                                          _leaves.Any(leaf => !leaf.CanAssign) ||
+                                          _children.Any(child => !child.CanAssignToParent);
+
+                if (!requiresConstructor)
+                {
+                    Constructor = null;
+                    PostConstructorLeaves = _leaves.ToArray();
+                    PostConstructorChildren = _children.ToArray();
+                    skipReason = null;
+                    return true;
+                }
+
+                if (!(Type is INamedTypeSymbol))
+                {
+                    skipReason = $"type '{FormatSymbol(Type)}' at member path '{MemberPath}' is not supported by generated constructor materialization";
+                    return false;
+                }
+
+                if (!TryCreateConstructorBinding(entityType, this, out var constructor, out skipReason))
+                {
+                    return false;
+                }
+
+                Constructor = constructor;
+                PostConstructorLeaves = _leaves
+                    .Where(leaf => !constructor.Uses(leaf))
+                    .ToArray();
+                PostConstructorChildren = _children
+                    .Where(child => !constructor.Uses(child))
+                    .ToArray();
+
+                var unsupportedLeaf = PostConstructorLeaves.FirstOrDefault(leaf => !leaf.CanAssign);
+                if (unsupportedLeaf != null)
+                {
+                    skipReason = $"type '{FormatSymbol(Type)}' at member path '{MemberPath}' cannot assign mapped property '{unsupportedLeaf.MemberPath}' in generated materialization";
+                    return false;
+                }
+
+                var unsupportedChild = PostConstructorChildren.FirstOrDefault(child => !child.CanAssignToParent);
+                if (unsupportedChild != null)
+                {
+                    skipReason = $"type '{FormatSymbol(Type)}' at member path '{MemberPath}' cannot assign nested object '{unsupportedChild.MemberPath}' in generated materialization";
+                    return false;
+                }
+
+                skipReason = null;
+                return true;
+            }
+
+            internal IEnumerable<string> GetColumnNames()
+            {
+                return _leaves.Select(leaf => leaf.ColumnName)
+                    .Concat(_children.SelectMany(child => child.GetColumnNames()));
+            }
         }
 
         private sealed class GeneratedConstructorBinding
         {
-            internal GeneratedConstructorBinding(IReadOnlyList<GeneratedConstructorParameter> parameters)
+            internal GeneratedConstructorBinding(
+                IMethodSymbol constructor,
+                IReadOnlyList<GeneratedConstructorParameter> parameters,
+                int score)
             {
+                Constructor = constructor;
                 Parameters = parameters;
+                Score = score;
             }
 
+            internal IMethodSymbol Constructor { get; }
+
             internal IReadOnlyList<GeneratedConstructorParameter> Parameters { get; }
+
+            internal int Score { get; }
+
+            internal bool Uses(GeneratedPropertyBinding leaf)
+            {
+                return Parameters.Any(parameter => parameter.Leaf == leaf);
+            }
+
+            internal bool Uses(GeneratedMaterializationNode child)
+            {
+                return Parameters.Any(parameter => parameter.Child == child);
+            }
         }
 
         private sealed class GeneratedConstructorParameter
         {
-            internal GeneratedConstructorParameter(string localName, string typeName, int ordinal)
+            internal GeneratedConstructorParameter(
+                string localName,
+                string typeName,
+                GeneratedPropertyBinding leaf,
+                GeneratedMaterializationNode child)
             {
                 LocalName = localName;
                 TypeName = typeName;
-                Ordinal = ordinal;
+                Leaf = leaf;
+                Child = child;
             }
 
             internal string LocalName { get; }
 
             internal string TypeName { get; }
 
-            internal int Ordinal { get; }
+            internal GeneratedPropertyBinding Leaf { get; }
+
+            internal GeneratedMaterializationNode Child { get; }
+        }
+
+        private sealed class GeneratedParameterMatch
+        {
+            private GeneratedParameterMatch(
+                GeneratedPropertyBinding leaf,
+                GeneratedMaterializationNode child,
+                int score)
+            {
+                Leaf = leaf;
+                Child = child;
+                Score = score;
+            }
+
+            internal GeneratedPropertyBinding Leaf { get; }
+
+            internal GeneratedMaterializationNode Child { get; }
+
+            internal int Score { get; }
+
+            internal static GeneratedParameterMatch ForLeaf(GeneratedPropertyBinding leaf, int score)
+            {
+                return new GeneratedParameterMatch(leaf, null, score);
+            }
+
+            internal static GeneratedParameterMatch ForChild(GeneratedMaterializationNode child, int score)
+            {
+                return new GeneratedParameterMatch(null, child, score);
+            }
         }
     }
 }

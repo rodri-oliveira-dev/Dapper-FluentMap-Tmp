@@ -41,6 +41,18 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                         "SELECT '2026-07-26T10:30:00' AS created_at;");
                     var profiled = connection.QueryMappedSingle<GeneratedProfileCustomer, GeneratedLegacyProfile>(
                         "SELECT 11 AS legacy_id, 'Profiled' AS legacy_name;");
+                    var nested = connection.QueryMappedSingle<GeneratedNestedCustomer>(
+                        "SELECT 13 AS customer_id, 'Sao Paulo' AS city;");
+                    var nullableNested = connection.QueryMappedSingle<GeneratedNestedCustomer>(
+                        "SELECT 14 AS customer_id, NULL AS city;");
+                    var valueObject = connection.QueryMappedSingle<GeneratedValueObjectCustomer>(
+                        "SELECT 15 AS customer_id, '12345678909' AS cpf;");
+                    var nullableValueObject = connection.QueryMappedSingle<GeneratedValueObjectCustomer>(
+                        "SELECT 16 AS customer_id, NULL AS cpf;");
+                    var sameTerminal = connection.QueryMappedSingle<GeneratedSameTerminalCustomer>(
+                        "SELECT 5 AS rank_level, 9 AS seniority_level;");
+                    var profiledNested = connection.QueryMappedSingle<GeneratedProfileNestedCustomer, GeneratedLegacyProfile>(
+                        "SELECT 'Profile City' AS legacy_city;");
 
                     Assert.Equal(7, customer.Id);
                     Assert.Equal("Ada", customer.Name);
@@ -56,6 +68,18 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Equal(new DateTime(2026, 7, 26, 10, 30, 0), named.CreatedAt);
                     Assert.Equal(11, profiled.Id);
                     Assert.Equal("Profiled", profiled.Name);
+                    Assert.Equal(13, nested.Id);
+                    Assert.NotNull(nested.Address);
+                    Assert.Equal("Sao Paulo", nested.Address.City);
+                    Assert.Equal(14, nullableNested.Id);
+                    Assert.Null(nullableNested.Address);
+                    Assert.Equal(15, valueObject.Id);
+                    Assert.Equal("12345678909", valueObject.Cpf.Number);
+                    Assert.Equal(16, nullableValueObject.Id);
+                    Assert.Null(nullableValueObject.Cpf);
+                    Assert.Equal(5, sameTerminal.Rank.Level);
+                    Assert.Equal(9, sameTerminal.Seniority.Level);
+                    Assert.Equal("Profile City", profiledNested.Address.City);
                     Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
 
                     var fallback = connection.QueryMappedSingle<GeneratedCustomer>(
@@ -89,7 +113,11 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                 typeof(GeneratedImmutableCustomer),
                 typeof(GeneratedNullableCustomer),
                 typeof(GeneratedNamingCustomer),
-                typeof(GeneratedProfileCustomer));
+                typeof(GeneratedProfileCustomer),
+                typeof(GeneratedNestedCustomer),
+                typeof(GeneratedValueObjectCustomer),
+                typeof(GeneratedSameTerminalCustomer),
+                typeof(GeneratedProfileNestedCustomer));
         }
     }
 
@@ -208,6 +236,116 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
         {
             Map(customer => customer.Id).ToColumn("legacy_id");
             Map(customer => customer.Name).ToColumn("legacy_name");
+        }
+    }
+
+    public sealed class GeneratedNestedCustomer
+    {
+        public int Id { get; set; }
+
+        public GeneratedAddress Address { get; set; }
+    }
+
+    public sealed class GeneratedAddress
+    {
+        public string City { get; set; }
+    }
+
+    public sealed class GeneratedNestedCustomerMap : EntityMap<GeneratedNestedCustomer>
+    {
+        public GeneratedNestedCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.Address.City).ToColumn("city");
+        }
+    }
+
+    public sealed class GeneratedValueObjectCustomer
+    {
+        public GeneratedValueObjectCustomer(int id, GeneratedCpf cpf)
+        {
+            Id = id;
+            Cpf = cpf;
+        }
+
+        public int Id { get; }
+
+        public GeneratedCpf Cpf { get; }
+    }
+
+    public sealed class GeneratedCpf
+    {
+        public GeneratedCpf(string number)
+        {
+            Number = number;
+        }
+
+        public string Number { get; }
+    }
+
+    public sealed class GeneratedValueObjectCustomerMap : EntityMap<GeneratedValueObjectCustomer>
+    {
+        public GeneratedValueObjectCustomerMap()
+        {
+            Map(customer => customer.Id).ToColumn("customer_id");
+            Map(customer => customer.Cpf.Number).ToColumn("cpf");
+        }
+    }
+
+    public sealed class GeneratedSameTerminalCustomer
+    {
+        public GeneratedSameTerminalCustomer(GeneratedRank rank, GeneratedSeniority seniority)
+        {
+            Rank = rank;
+            Seniority = seniority;
+        }
+
+        public GeneratedRank Rank { get; }
+
+        public GeneratedSeniority Seniority { get; }
+    }
+
+    public sealed class GeneratedRank
+    {
+        public GeneratedRank(int level)
+        {
+            Level = level;
+        }
+
+        public int Level { get; }
+    }
+
+    public sealed class GeneratedSeniority
+    {
+        public GeneratedSeniority(int level)
+        {
+            Level = level;
+        }
+
+        public int Level { get; }
+    }
+
+    public sealed class GeneratedSameTerminalCustomerMap : EntityMap<GeneratedSameTerminalCustomer>
+    {
+        public GeneratedSameTerminalCustomerMap()
+        {
+            Map(customer => customer.Rank.Level).ToColumn("rank_level");
+            Map(customer => customer.Seniority.Level).ToColumn("seniority_level");
+        }
+    }
+
+    public sealed class GeneratedProfileNestedCustomer
+    {
+        public GeneratedAddress Address { get; set; }
+    }
+
+    public sealed class GeneratedLegacyProfileNestedCustomerMap :
+        EntityMap<GeneratedProfileNestedCustomer>,
+        IProfileMap<GeneratedLegacyProfile>
+    {
+        public GeneratedLegacyProfileNestedCustomerMap()
+        {
+            Map(customer => customer.Address.City).ToColumn("legacy_city");
         }
     }
 }
