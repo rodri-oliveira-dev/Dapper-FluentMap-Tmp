@@ -283,3 +283,28 @@ anotada ou causar fallback.
 
 Documentacao deve separar "supported at runtime" de "generated/AOT-friendly".
 Smoke AOT deve entrar somente quando houver implementacao generated.
+
+## ADR-11 - Prompt 10.2 converter metadata increment
+
+### Contexto
+
+O Prompt 10.2 pediu infraestrutura minima para representar conversoes por
+propriedade sem espalhar execucao por toda a biblioteca.
+
+### Decisao
+
+Foram implementados contratos publicos tipados, overloads fluent por tipo,
+instancia e delegate, metadata aditiva em `PropertyMap` e diagnostics via
+`Explain`. A execucao de conversores em runtime materializer, generated
+materializer e escrita Dommel ficou fora deste incremento.
+
+Generated materializers manuais nao sao selecionados quando o effective mapping
+da coluna possui read converter, porque o descriptor atual nao declara nem
+aplica conversao de leitura. Write-only converter nao bloqueia materializer de
+leitura.
+
+### Consequencias
+
+O projeto passa a conseguir validar e inspecionar converters por propriedade,
+profile e heranca, mantendo comportamento de valor inalterado ate a etapa que
+implementar execucao. A API e aditiva e preserva `IPropertyMap`.

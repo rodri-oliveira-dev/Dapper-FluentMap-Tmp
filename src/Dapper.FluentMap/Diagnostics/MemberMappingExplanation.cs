@@ -23,7 +23,8 @@ namespace Dapper.FluentMap.Diagnostics
             Type conventionType,
             IEnumerable<ConstructorParameterExplanation> constructorParameters,
             MappingMaterialization materialization,
-            PropertyPersistenceMetadata persistence)
+            PropertyPersistenceMetadata persistence,
+            PropertyConversionMetadata conversion)
         {
             if (string.IsNullOrEmpty(memberPath))
             {
@@ -47,6 +48,7 @@ namespace Dapper.FluentMap.Diagnostics
                 (constructorParameters ?? Enumerable.Empty<ConstructorParameterExplanation>()).ToList());
             Materialization = materialization;
             Persistence = persistence ?? PropertyPersistenceMetadata.Default;
+            Conversion = conversion ?? PropertyConversionMetadata.Default;
         }
 
         /// <summary>
@@ -103,5 +105,10 @@ namespace Dapper.FluentMap.Diagnostics
         /// Gets the persistence metadata associated with this member mapping.
         /// </summary>
         public PropertyPersistenceMetadata Persistence { get; }
+
+        /// <summary>
+        /// Gets the conversion metadata associated with this member mapping.
+        /// </summary>
+        public PropertyConversionMetadata Conversion { get; }
     }
 }

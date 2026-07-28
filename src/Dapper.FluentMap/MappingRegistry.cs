@@ -511,6 +511,11 @@ namespace Dapper.FluentMap
                         return false;
                     }
 
+                    if (PropertyMapConversion.GetConversion(fluentMap).HasReadConverter)
+                    {
+                        return false;
+                    }
+
                     var memberPath = PropertyMapIdentity.GetMemberPath(fluentMap).ToString();
                     if (!string.Equals(memberPath, column.MemberPath, StringComparison.Ordinal))
                     {
@@ -757,7 +762,8 @@ namespace Dapper.FluentMap
                     conventionType: null,
                     constructorParameters: constructorParameters,
                     materialization: MappingMaterialization.Dapper,
-                    persistence: PropertyPersistenceMetadata.Default));
+                    persistence: PropertyPersistenceMetadata.Default,
+                    conversion: PropertyConversionMetadata.Default));
                 configuredPaths.Add(memberPath);
             }
         }
@@ -786,7 +792,8 @@ namespace Dapper.FluentMap
                 descriptor.ConventionType,
                 constructorParameters,
                 materialization,
-                PropertyMapPersistence.GetPersistence(descriptor.Map)));
+                PropertyMapPersistence.GetPersistence(descriptor.Map),
+                PropertyMapConversion.GetConversion(descriptor.Map)));
             configuredPaths.Add(memberPath);
         }
 

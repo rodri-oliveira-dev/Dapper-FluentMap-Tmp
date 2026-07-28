@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Dapper.FluentMap.Mapping
@@ -34,7 +35,10 @@ namespace Dapper.FluentMap.Mapping
     /// Serves as the base class for all property mapping implementations.
     /// </summary>
     /// <typeparam name="TPropertyMap">The type of the property mapping.</typeparam>
-    public abstract class PropertyMapBase<TPropertyMap> : IPropertyMapWithMemberPath, IPropertyMapWithPersistenceMetadata
+    public abstract class PropertyMapBase<TPropertyMap> :
+        IPropertyMapWithMemberPath,
+        IPropertyMapWithPersistenceMetadata,
+        IPropertyMapWithConversionMetadata
         where TPropertyMap : class, IPropertyMap
     {
         /// <summary>
@@ -53,6 +57,7 @@ namespace Dapper.FluentMap.Mapping
             MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = info.Name;
             Persistence = PropertyPersistenceMetadata.Default;
+            Conversion = PropertyConversionMetadata.Default;
         }
 
         /// <summary>
@@ -73,6 +78,7 @@ namespace Dapper.FluentMap.Mapping
             MemberPath = Dapper.FluentMap.Mapping.MemberPath.ForProperty(info);
             ColumnName = columnName;
             Persistence = PropertyPersistenceMetadata.Default;
+            Conversion = PropertyConversionMetadata.Default;
         }
 
         /// <summary>
@@ -95,6 +101,7 @@ namespace Dapper.FluentMap.Mapping
             ColumnName = columnName;
             CaseSensitive = caseSensitive;
             Persistence = PropertyPersistenceMetadata.Default;
+            Conversion = PropertyConversionMetadata.Default;
         }
 
         /// <summary>
@@ -121,6 +128,11 @@ namespace Dapper.FluentMap.Mapping
         /// Gets the persistence metadata configured for this property.
         /// </summary>
         public PropertyPersistenceMetadata Persistence { get; private set; }
+
+        /// <summary>
+        /// Gets the conversion metadata configured for this property.
+        /// </summary>
+        public PropertyConversionMetadata Conversion { get; private set; }
 
         internal MemberPath MemberPath { get; private set; }
 
@@ -207,6 +219,177 @@ namespace Dapper.FluentMap.Mapping
         public TPropertyMap DatabaseDefaultOnInsert()
         {
             Persistence = Persistence.DatabaseDefaultOnInsert();
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a read converter type for the current property.
+        /// </summary>
+        /// <typeparam name="TConverter">The converter type to instantiate for this property map.</typeparam>
+        /// <typeparam name="TDatabase">The database/provider CLR type accepted by the converter.</typeparam>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertFromDatabaseUsing<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+            TConverter,
+            TDatabase>()
+            where TConverter : new()
+        {
+            var converter = new TConverter();
+            var readConverter = PropertyMapConversion.CreateReadConverter(
+                typeof(TConverter),
+                typeof(TDatabase),
+                PropertyInfo.PropertyType,
+                converter);
+
+            Conversion = Conversion.WithReadConverter(readConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a read converter instance for the current property.
+        /// </summary>
+        /// <typeparam name="TDatabase">The database/provider CLR type accepted by the converter.</typeparam>
+        /// <typeparam name="TProperty">The property CLR type returned by the converter.</typeparam>
+        /// <param name="converter">The converter instance to reuse for this property map.</param>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertFromDatabaseUsing<TDatabase, TProperty>(
+            IReadPropertyConverter<TDatabase, TProperty> converter)
+        {
+            var readConverter = PropertyMapConversion.CreateReadConverter(
+                converter,
+                PropertyInfo.PropertyType);
+
+            Conversion = Conversion.WithReadConverter(readConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a read converter delegate for the current property.
+        /// </summary>
+        /// <typeparam name="TDatabase">The database/provider CLR type accepted by the converter.</typeparam>
+        /// <typeparam name="TProperty">The property CLR type returned by the converter.</typeparam>
+        /// <param name="converter">The converter delegate to reuse for this property map.</param>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertFromDatabaseUsing<TDatabase, TProperty>(
+            ReadPropertyConverter<TDatabase, TProperty> converter)
+        {
+            var readConverter = PropertyMapConversion.CreateReadConverter(
+                converter,
+                PropertyInfo.PropertyType);
+
+            Conversion = Conversion.WithReadConverter(readConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a write converter type for the current property.
+        /// </summary>
+        /// <typeparam name="TConverter">The converter type to instantiate for this property map.</typeparam>
+        /// <typeparam name="TDatabase">The database/provider CLR type returned by the converter.</typeparam>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertToDatabaseUsing<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+            TConverter,
+            TDatabase>()
+            where TConverter : new()
+        {
+            var converter = new TConverter();
+            var writeConverter = PropertyMapConversion.CreateWriteConverter(
+                typeof(TConverter),
+                typeof(TDatabase),
+                PropertyInfo.PropertyType,
+                converter);
+
+            Conversion = Conversion.WithWriteConverter(writeConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a write converter instance for the current property.
+        /// </summary>
+        /// <typeparam name="TProperty">The property CLR type accepted by the converter.</typeparam>
+        /// <typeparam name="TDatabase">The database/provider CLR type returned by the converter.</typeparam>
+        /// <param name="converter">The converter instance to reuse for this property map.</param>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertToDatabaseUsing<TProperty, TDatabase>(
+            IWritePropertyConverter<TProperty, TDatabase> converter)
+        {
+            var writeConverter = PropertyMapConversion.CreateWriteConverter(
+                converter,
+                PropertyInfo.PropertyType);
+
+            Conversion = Conversion.WithWriteConverter(writeConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures a write converter delegate for the current property.
+        /// </summary>
+        /// <typeparam name="TProperty">The property CLR type accepted by the converter.</typeparam>
+        /// <typeparam name="TDatabase">The database/provider CLR type returned by the converter.</typeparam>
+        /// <param name="converter">The converter delegate to reuse for this property map.</param>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertToDatabaseUsing<TProperty, TDatabase>(
+            WritePropertyConverter<TProperty, TDatabase> converter)
+        {
+            var writeConverter = PropertyMapConversion.CreateWriteConverter(
+                converter,
+                PropertyInfo.PropertyType);
+
+            Conversion = Conversion.WithWriteConverter(writeConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures one bidirectional converter type for the current property.
+        /// </summary>
+        /// <typeparam name="TConverter">The converter type to instantiate for this property map.</typeparam>
+        /// <typeparam name="TDatabase">The database/provider CLR type used by the converter.</typeparam>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertUsing<
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+            TConverter,
+            TDatabase>()
+            where TConverter : new()
+        {
+            var converter = new TConverter();
+            var readConverter = PropertyMapConversion.CreateReadConverter(
+                typeof(TConverter),
+                typeof(TDatabase),
+                PropertyInfo.PropertyType,
+                converter);
+            var writeConverter = PropertyMapConversion.CreateWriteConverter(
+                typeof(TConverter),
+                typeof(TDatabase),
+                PropertyInfo.PropertyType,
+                converter);
+
+            Conversion = Conversion
+                .WithReadConverter(readConverter)
+                .WithWriteConverter(writeConverter);
+            return this as TPropertyMap;
+        }
+
+        /// <summary>
+        /// Configures one bidirectional converter instance for the current property.
+        /// </summary>
+        /// <typeparam name="TDatabase">The database/provider CLR type used by the converter.</typeparam>
+        /// <typeparam name="TProperty">The property CLR type used by the converter.</typeparam>
+        /// <param name="converter">The converter instance to reuse for this property map.</param>
+        /// <returns>The current instance of <typeparamref name="TPropertyMap"/>.</returns>
+        public TPropertyMap ConvertUsing<TDatabase, TProperty>(
+            IPropertyConverter<TDatabase, TProperty> converter)
+        {
+            var readConverter = PropertyMapConversion.CreateReadConverter<TDatabase, TProperty>(
+                converter,
+                PropertyInfo.PropertyType);
+            var writeConverter = PropertyMapConversion.CreateWriteConverter<TProperty, TDatabase>(
+                converter,
+                PropertyInfo.PropertyType);
+
+            Conversion = Conversion
+                .WithReadConverter(readConverter)
+                .WithWriteConverter(writeConverter);
             return this as TPropertyMap;
         }
 

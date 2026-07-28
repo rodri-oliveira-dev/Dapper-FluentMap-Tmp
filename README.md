@@ -159,6 +159,22 @@ Map(product => product.Total)
 
 Computed properties participate in reads and are excluded from generated `INSERT` and `UPDATE` metadata.
 
+### Property Conversion Metadata
+
+Property converters can be attached to a mapping as metadata for future
+read/write conversion paths:
+
+```csharp
+Map(product => product.Status)
+    .ConvertFromDatabaseUsing<StatusReadConverter, string>()
+    .ConvertToDatabaseUsing<StatusWriteConverter, string>();
+```
+
+The current increment stores and validates converter metadata per property,
+including profile and inherited mappings. It does not yet execute those
+converters during Dapper queries, `QueryMapped*` materialization or Dommel
+write operations.
+
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
 ```csharp
@@ -753,6 +769,21 @@ Map(product => product.Total)
 ```
 
 Propriedades computed participam de leituras e são excluídas da metadata de `INSERT` e `UPDATE` gerados.
+
+### Metadata de Conversao por Propriedade
+
+Conversores podem ser anexados a um mapping como metadata para caminhos futuros
+de conversao de leitura/escrita:
+
+```csharp
+Map(product => product.Status)
+    .ConvertFromDatabaseUsing<StatusReadConverter, string>()
+    .ConvertToDatabaseUsing<StatusWriteConverter, string>();
+```
+
+O incremento atual armazena e valida metadata de conversor por propriedade,
+incluindo profiles e mappings herdados. Ele ainda nao executa esses conversores
+em consultas Dapper, materializacao `QueryMapped*` ou escritas Dommel.
 
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 
