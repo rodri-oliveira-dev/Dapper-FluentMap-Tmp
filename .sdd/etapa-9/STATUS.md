@@ -2,11 +2,10 @@
 
 ## Objetivo
 
-Definir a arquitetura de Advanced Query Materialization para multiplos result
-sets, `QueryMultiple`, `ReadMapped<T>`, profiles, buffering, streaming,
-`IAsyncEnumerable<T>`, cancellation, lifetime de recursos e equivalencia entre
-materializacao generated e runtime, sem implementar features produtivas neste
-prompt.
+Definir e evoluir a arquitetura de Advanced Query Materialization para
+multiplos result sets, `QueryMultiple`, `ReadMapped<T>`, profiles, buffering,
+streaming, `IAsyncEnumerable<T>`, cancellation, lifetime de recursos e
+equivalencia entre materializacao generated e runtime.
 
 ## Concluido
 
@@ -43,22 +42,45 @@ prompt.
   sucesso, 0 warnings, 0 errors.
 - Executado `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`:
   sucesso, 298 testes aprovados.
+- Prompt 9.2: criada especificacao refinada
+  `.sdd/etapa-9/03-query-multiple-design.md`.
+- Prompt 9.2: implementado `QueryMultipleMapped(...)` com retorno
+  `MappedGridReader`.
+- Prompt 9.2: implementados `MappedGridReader.ReadMapped<TEntity>()` e
+  `MappedGridReader.ReadMapped<TEntity, TProfile>()`.
+- Prompt 9.2: extraido `MappedRowMaterializer` para compartilhar dispatch
+  generated-then-runtime entre `QueryMapped*` e `QueryMultipleMapped`.
+- Prompt 9.2: cobertos testes de criacao, primeiro result set, segundo result
+  set, profiles, empty result, invalid state, dispose antes/depois de consumo,
+  excecao durante materializacao, generated materializer, parametros,
+  transacao e lifetime de conexao.
 
 ## Em andamento
 
-Nenhuma feature produtiva em andamento. Este prompt fecha discovery e
-arquitetura.
+Nenhuma feature produtiva em andamento.
+
+## Validacao do Prompt 9.2
+
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMultipleMappedTests`:
+  sucesso, 13 testes aprovados.
+- `dotnet build Dapper.FluentMap.sln --configuration Release`: sucesso,
+  0 warnings, 0 errors.
+- `dotnet test Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 311 testes aprovados.
+- `dotnet restore Dapper.FluentMap.sln`: sucesso.
+- `dotnet pack src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `licenseUrl`.
+- Pacote inspecionado:
+  `lib/netstandard2.0/Dapper.FluentMap.dll` e
+  `lib/netstandard2.0/Dapper.FluentMap.xml` presentes.
 
 ## Proximos passos
 
-1. QueryMultiple infrastructure.
-2. `ReadMapped`.
-3. Profiles.
-4. Unbuffered synchronous path.
-5. Async streaming.
-6. Lifetime/cancellation hardening.
-7. Regression/performance.
-8. Documentacao final.
+1. Unbuffered synchronous path.
+2. Async streaming.
+3. Lifetime/cancellation hardening para caminhos async/streaming.
+4. Regression/performance.
+5. Documentacao final.
 
 ## Decisoes relevantes
 
@@ -66,6 +88,7 @@ arquitetura.
 - Criar wrapper proprio `QueryMultipleMapped` como direcao principal.
 - `ReadMapped<T>` deve usar o mesmo dispatch generated-then-runtime de
   `QueryMapped*`.
+- Prompt 9.2 implementou o caminho buffered sincronico antes de streaming.
 - Buffered deve ser entregue antes de streaming.
 - Streaming deve ter nomes explicitos com `Unbuffered`.
 - `IAsyncEnumerable<T>` deve ser avaliado como mudanca de API/dependencia para
@@ -131,8 +154,11 @@ compatibilidade.
 
 - `.sdd/etapa-9/01-historical-query-issues.md`
 - `.sdd/etapa-9/02-advanced-query-materialization-spec.md`
+- `.sdd/etapa-9/03-query-multiple-design.md`
 - `.sdd/etapa-9/DECISIONS.md`
 - `.sdd/etapa-9/STATUS.md`
+- `src/Dapper.FluentMap/MappedGridReader.cs`
+- `src/Dapper.FluentMap/Materialization/MappedRowMaterializer.cs`
 - `src/Dapper.FluentMap/QueryMappedExtensions.cs`
 - `src/Dapper.FluentMap/MappingRegistry.cs`
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`
@@ -142,8 +168,9 @@ compatibilidade.
 - `src/Dapper.FluentMap.Generators/MappingRegistrationGenerator.cs`
 - `test/Dapper.FluentMap.Tests/MappingProfileTests.cs`
 - `test/Dapper.FluentMap.Tests/GeneratedMaterializerContractTests.cs`
+- `test/Dapper.FluentMap.Tests/QueryMultipleMappedTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 9.1
+Ultimo prompt executado: 9.2

@@ -358,6 +358,15 @@ var legacy = connection.QueryMappedSingle<Customer, LegacyProfile>(
 
 Profiles are selected per `QueryMapped<TEntity, TProfile>()` operation. They do not replace the global Dapper type map for the entity.
 
+Profiles can also be selected per result set when using mapped multiple results:
+
+```csharp
+using var multi = connection.QueryMultipleMapped(sql);
+
+var currentCustomers = multi.ReadMapped<Customer>();
+var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
+```
+
 ## Diagnostics
 
 Use runtime validation to fail fast after configuration:
@@ -422,9 +431,13 @@ Use FluentMap query helpers when you need FluentMap-controlled advanced material
 connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
+
+using var multi = connection.QueryMultipleMapped(sql);
+var customers = multi.ReadMapped<Customer>();
+var orders = multi.ReadMapped<Order>();
 ```
 
-`QueryMapped*` returns buffered results and is the path that supports nested object materialization, constructor-built value objects and profile-specific mapping.
+`QueryMapped*` and `ReadMapped*` return buffered results and are the paths that support nested object materialization, constructor-built value objects and profile-specific mapping.
 
 ## Dommel
 
@@ -499,8 +512,8 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 - FluentMap configuration is process-wide. Configure at startup and avoid changing mappings while queries are running.
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
-- Mapping profiles are selected only through `QueryMapped<TEntity, TProfile>()` APIs.
-- `QueryMapped*` is buffered; it does not expose unbuffered streaming.
+- Mapping profiles are selected through `QueryMapped<TEntity, TProfile>()` and `ReadMapped<TEntity, TProfile>()` APIs.
+- `QueryMapped*` and `ReadMapped*` are buffered; they do not expose unbuffered streaming.
 - Value object construction uses matching public constructors, not factory methods.
 
 ## Contributing
@@ -881,6 +894,15 @@ var legacy = connection.QueryMappedSingle<Customer, LegacyProfile>(
 
 Profiles são selecionados por operação com `QueryMapped<TEntity, TProfile>()`. Eles não substituem o type map global do Dapper para a entidade.
 
+Profiles também podem ser selecionados por result set em multiplos resultados mapeados:
+
+```csharp
+using var multi = connection.QueryMultipleMapped(sql);
+
+var currentCustomers = multi.ReadMapped<Customer>();
+var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
+```
+
 ## Diagnósticos
 
 Use validação em runtime para falhar cedo depois da configuração:
@@ -945,9 +967,13 @@ Use os helpers de consulta do FluentMap quando precisar de materialização avan
 connection.QueryMapped<Customer>(sql);
 connection.QueryMappedSingle<Customer>(sql);
 connection.QueryMappedSingle<Customer, LegacyProfile>(sql);
+
+using var multi = connection.QueryMultipleMapped(sql);
+var customers = multi.ReadMapped<Customer>();
+var orders = multi.ReadMapped<Order>();
 ```
 
-`QueryMapped*` retorna resultados bufferizados e é o caminho que suporta materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile.
+`QueryMapped*` e `ReadMapped*` retornam resultados bufferizados e são os caminhos que suportam materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile.
 
 ## Dommel
 
@@ -1023,8 +1049,8 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 - A configuração do FluentMap é global no processo. Configure no startup e evite alterar mappings enquanto consultas estão em execução.
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
 - `QueryMapped*` pode usar materializadores gerados para shapes flat, aninhados e Value Object suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
-- Mapping profiles são selecionados apenas pelas APIs `QueryMapped<TEntity, TProfile>()`.
-- `QueryMapped*` é bufferizado; ele não expõe streaming unbuffered.
+- Mapping profiles são selecionados pelas APIs `QueryMapped<TEntity, TProfile>()` e `ReadMapped<TEntity, TProfile>()`.
+- `QueryMapped*` e `ReadMapped*` são bufferizados; eles não expõem streaming unbuffered.
 - A construção de Value Objects usa construtores públicos compatíveis, não factory methods.
 
 ## Contribuição

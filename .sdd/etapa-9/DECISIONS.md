@@ -263,3 +263,40 @@ avancada. Ela nao deve modelar SQL, joins, includes, repositories ou tracking.
 O design permanece pequeno e compatibilidade com Dapper fica clara. Usuarios
 continuam escrevendo SQL e escolhendo quando usar Dapper puro ou FluentMap
 mapped.
+
+## ADR-11 - API implementada no Prompt 9.2
+
+### Contexto
+
+O Prompt 9.2 precisava entregar infraestrutura produtiva de multiple result
+sets sem antecipar streaming, async disposal ou dependencia publica nova para
+`netstandard2.0`.
+
+### Decisao
+
+Implementar `QueryMultipleMapped(...)` retornando `MappedGridReader`, com
+`ReadMapped<TEntity>()` e `ReadMapped<TEntity, TProfile>()` buffered.
+
+Usar `SqlMapper.ExecuteReader(connection, CommandDefinition)` para execucao do
+comando e encaminhamento de parametros, transacao, timeout e command type.
+
+Extrair o dispatch de materializacao para `MappedRowMaterializer`, compartilhado
+por `QueryMapped*` e `MappedGridReader`.
+
+Nao adicionar `QueryMultipleMappedAsync`, `IAsyncDisposable` ou
+`IAsyncEnumerable<T>` neste incremento.
+
+### Alternativas consideradas
+
+- Implementar command execution manual por ADO.NET: descartado para evitar
+  duplicar binding de parametros e comportamento publico do Dapper.
+- Adicionar async/streaming ja no Prompt 9.2: descartado porque muda lifetime e
+  pode exigir dependencia publica adicional no target `netstandard2.0`.
+- Usar `SqlMapper.GridReader`: descartado pelas ADRs anteriores, pois o reader
+  necessario nao e superficie publica.
+
+### Consequencias
+
+A API publica nova e aditiva e alinhada ao nome `QueryMultiple` do Dapper. O
+primeiro incremento e buffered e sequencial. Streaming e async continuam
+decisoes separadas para prompts posteriores.
