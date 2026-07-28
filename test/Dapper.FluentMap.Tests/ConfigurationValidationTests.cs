@@ -129,6 +129,48 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void ValidPersistenceCombinationsShouldPassRuntimeValidation()
+        {
+            PreTest(typeof(PersistenceValidationEntity));
+
+            try
+            {
+                FluentMapper.Initialize(c => c.AddMap(new ValidPersistenceValidationMap()));
+
+                FluentMapper.Validate();
+
+                var explanation = FluentMapper.Explain<PersistenceValidationEntity>();
+                Assert.Contains(explanation.Members, member =>
+                    member.MemberPath == nameof(PersistenceValidationEntity.ReadOnlyValue) &&
+                    member.Persistence.ParticipatesInMaterialization &&
+                    !member.Persistence.ParticipatesInInsert &&
+                    !member.Persistence.ParticipatesInUpdate);
+                Assert.Contains(explanation.Members, member =>
+                    member.MemberPath == nameof(PersistenceValidationEntity.DefaultValue) &&
+                    member.Persistence.HasDatabaseDefaultOnInsert &&
+                    !member.Persistence.ParticipatesInInsert &&
+                    member.Persistence.ParticipatesInUpdate);
+            }
+            finally
+            {
+                PreTest(typeof(PersistenceValidationEntity));
+            }
+        }
+
+        [Fact]
+        public void InvalidPersistenceMetadataShouldThrowUsefulConfigurationException()
+        {
+            PreTest(typeof(PersistenceValidationEntity));
+
+            var exception = Assert.Throws<FluentMapConfigurationException>(() =>
+                FluentMapper.Initialize(c => c.AddMap(new InvalidPersistenceValidationMap())));
+
+            Assert.Contains(nameof(PersistenceValidationEntity.ReadOnlyValue), exception.Message);
+            Assert.Contains("invalid persistence metadata", exception.Message);
+            Assert.Contains("Ignored flag and persistence metadata disagree", exception.Message);
+        }
+
+        [Fact]
         public void ConventionWithoutConfigureShouldThrowConfigurationException()
         {
             PreTest(typeof(ValidEntity));
@@ -239,6 +281,66 @@ namespace Dapper.FluentMap.Tests
             {
                 Properties();
             }
+        }
+
+        private class PersistenceValidationEntity
+        {
+            public int Id { get; set; }
+
+            public string ReadOnlyValue { get; set; }
+
+            public string InsertExcluded { get; set; }
+
+            public string UpdateExcluded { get; set; }
+
+            public string DefaultValue { get; set; }
+
+            public string ComputedValue { get; set; }
+        }
+
+        private class ValidPersistenceValidationMap : EntityMap<PersistenceValidationEntity>
+        {
+            public ValidPersistenceValidationMap()
+            {
+                Map(e => e.Id);
+                Map(e => e.ReadOnlyValue).ReadOnly();
+                Map(e => e.InsertExcluded).ExcludeFromInsert();
+                Map(e => e.UpdateExcluded).ExcludeFromUpdate();
+                Map(e => e.DefaultValue).DatabaseDefaultOnInsert();
+                Map(e => e.ComputedValue).Computed();
+            }
+        }
+
+        private class InvalidPersistenceValidationMap : IEntityMap<PersistenceValidationEntity>
+        {
+            public InvalidPersistenceValidationMap()
+            {
+                PropertyMaps = new List<IPropertyMap>
+                {
+                    new InvalidPersistencePropertyMap(
+                        typeof(PersistenceValidationEntity).GetProperty(nameof(PersistenceValidationEntity.ReadOnlyValue)))
+                };
+            }
+
+            public IList<IPropertyMap> PropertyMaps { get; }
+        }
+
+        private class InvalidPersistencePropertyMap : IPropertyMap, IPropertyMapWithPersistenceMetadata
+        {
+            public InvalidPersistencePropertyMap(PropertyInfo propertyInfo)
+            {
+                PropertyInfo = propertyInfo;
+            }
+
+            public string ColumnName => PropertyInfo.Name;
+
+            public PropertyInfo PropertyInfo { get; }
+
+            public bool CaseSensitive => true;
+
+            public bool Ignored => true;
+
+            public PropertyPersistenceMetadata Persistence => PropertyPersistenceMetadata.Default;
         }
 
         private class NestedLevelEntity

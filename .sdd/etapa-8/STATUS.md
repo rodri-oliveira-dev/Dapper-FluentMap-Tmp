@@ -122,6 +122,36 @@ execucao de CRUD ao core.
   sucesso, 0 warnings, 0 errors.
 - Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
   sucesso, 281 testes aprovados.
+- Criado `.sdd/etapa-8/06-persistence-diagnostics.md` com matriz de
+  diagnostics e validacao.
+- Implementada validacao runtime dos invariants de persistence metadata em
+  `MappingConfigurationValidator`.
+- Adicionado analyzer `DFM012` para combinacoes contraditorias em fluent chains
+  estaticamente visiveis.
+- Confirmado que metadata de escrita continua neutra para generated
+  materializers; `ExcludeFromInsert()` e equivalentes nao geram fallback warning
+  por si so.
+- Mantida a API `Explain<TEntity>()` sem nova superficie publica: a metadata
+  estruturada existente em `MemberMappingExplanation.Persistence` ja expoe read,
+  insert, update e generated/computed/default/identity.
+- Adicionados testes para combinacoes validas, invalidas, diagnostics do
+  analyzer, diagnostics runtime e preservacao dos casos inherited/profile ja
+  cobertos pela suite de persistence metadata.
+- Executado `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~ConfigurationValidationTests"`:
+  sucesso, 13 testes aprovados.
+- Executado `dotnet test .\test\Dapper.FluentMap.Analyzers.Tests\Dapper.FluentMap.Analyzers.Tests.csproj --configuration Release --filter "FullyQualifiedName~FluentMapConfigurationAnalyzerTests"`:
+  sucesso, 14 testes aprovados.
+- Executado `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- Executado `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- Executado `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 288 testes aprovados.
+- Executado `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso; warning legado `NU5125` sobre `PackageLicenseUrl`/`licenseUrl`.
+- Executado `dotnet pack .\src\Dapper.FluentMap.Analyzers\Dapper.FluentMap.Analyzers.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso.
+- Inspecionados `Dapper.FluentMap.2.0.0.nupkg` e
+  `Dapper.FluentMap.Analyzers.2.0.0.nupkg`; conteudos esperados preservados.
 
 ## Em andamento
 
@@ -129,8 +159,10 @@ Nenhum apos a validacao final deste prompt.
 
 ## Proximos passos
 
-1. Atualizar analyzers/source generator para reconhecer a nova DSL.
-2. Fazer hardening de cache, profiles, generated materializers e Dommel SQL real.
+1. Avaliar helper textual opcional para `Explain` se usuarios pedirem uma
+   representacao pronta para logs.
+2. Fazer hardening de cache e cenarios Dommel provider-specific quando houver
+   demanda real.
 
 ## Decisoes relevantes
 
@@ -145,6 +177,9 @@ Nenhum apos a validacao final deste prompt.
 - Generated materializers observam apenas semantica de leitura.
 - `IPropertyMap` nao foi alterada; metadata nova fica em interface opcional.
 - `Explain<T>()` ja expoe metadata de persistencia.
+- `DFM012` reporta persistence behavior contraditorio apenas quando provado
+  estaticamente em uma fluent chain direta.
+- Runtime validation valida a metadata efetiva e protege maps customizados.
 
 ## Issues historicas
 
@@ -181,6 +216,8 @@ Nenhum apos a validacao final deste prompt.
   embora a metadata de core diferencie key de identity.
 - SQL builders customizados registrados depois de `ForDommel()` substituem o
   wrapper padrao e precisam honrar `ParticipatesInInsert` por conta propria.
+- O analyzer nao infere combinacoes construidas por variaveis, helpers ou fluxo
+  condicional; esses casos dependem da validacao runtime.
 
 ## Arquivos importantes
 
@@ -204,7 +241,8 @@ Nenhum apos a validacao final deste prompt.
 - `src/Dapper.FluentMap.Analyzers/FluentMapConfigurationAnalyzer.cs`
 - `.sdd/etapa-8/04-read-semantics.md`
 - `.sdd/etapa-8/05-dommel-persistence-behavior.md`
+- `.sdd/etapa-8/06-persistence-diagnostics.md`
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 8.4
+Ultimo prompt executado: 8.5

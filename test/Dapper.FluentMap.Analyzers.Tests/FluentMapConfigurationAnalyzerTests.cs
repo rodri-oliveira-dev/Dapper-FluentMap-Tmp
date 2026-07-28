@@ -229,6 +229,153 @@ public sealed class Startup
         }
 
         [Fact]
+        public async Task PersistenceConfigurationAfterIgnoreShouldReportDfm012()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Name { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Name).ToColumn(""customer_name"").Ignore().ReadOnly();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Property path 'Name' has invalid persistence behavior");
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "after Ignore()");
+            AssertDiagnosticLineContains(source, diagnostic, "ReadOnly()");
+        }
+
+        [Fact]
+        public async Task ComputedAndDatabaseDefaultShouldReportDfm012()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Total { get; set; }
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Total).Computed().DatabaseDefaultOnInsert();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "DatabaseDefaultOnInsert() cannot be combined with computed persistence semantics");
+            AssertDiagnosticLineContains(source, diagnostic, "DatabaseDefaultOnInsert()");
+        }
+
+        [Fact]
+        public async Task ComputedAndKeyShouldReportDfm012()
+        {
+            var source = @"
+using Dapper.FluentMap.Dommel.Mapping;
+
+public sealed class Customer
+{
+    public string Code { get; set; }
+}
+
+public sealed class CustomerMap : DommelEntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Code).Computed().IsKey();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "key persistence semantics cannot be combined with computed values");
+            AssertDiagnosticLineContains(source, diagnostic, "IsKey()");
+        }
+
+        [Fact]
+        public async Task GeneratedOptionComputedAndDatabaseDefaultShouldReportDfm012()
+        {
+            var source = @"
+using System.ComponentModel.DataAnnotations.Schema;
+using Dapper.FluentMap.Dommel.Mapping;
+
+public sealed class Customer
+{
+    public string Total { get; set; }
+}
+
+public sealed class CustomerMap : DommelEntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Total)
+            .SetGeneratedOption(DatabaseGeneratedOption.Computed)
+            .DatabaseDefaultOnInsert();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "DatabaseDefaultOnInsert() cannot be combined with computed persistence semantics");
+            AssertDiagnosticLineContains(source, diagnostic, "DatabaseDefaultOnInsert()");
+        }
+
+        [Fact]
+        public async Task ValidPersistenceCombinationsShouldNotReportDfm012()
+        {
+            var source = @"
+using System.ComponentModel.DataAnnotations.Schema;
+using Dapper.FluentMap.Dommel.Mapping;
+
+public sealed class Customer
+{
+    public int Id { get; set; }
+
+    public string Code { get; set; }
+
+    public string ReadOnlyName { get; set; }
+
+    public string InsertExcluded { get; set; }
+
+    public string UpdateExcluded { get; set; }
+
+    public string DefaultValue { get; set; }
+
+    public string ComputedValue { get; set; }
+}
+
+public sealed class CustomerMap : DommelEntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Id).IsIdentity();
+        Map(c => c.Code).IsKey().SetGeneratedOption(DatabaseGeneratedOption.None);
+        Map(c => c.ReadOnlyName).ReadOnly();
+        Map(c => c.InsertExcluded).ExcludeFromInsert();
+        Map(c => c.UpdateExcluded).ExcludeFromUpdate();
+        Map(c => c.DefaultValue).DatabaseDefaultOnInsert().ExcludeFromUpdate();
+        Map(c => c.ComputedValue).Computed();
+    }
+}";
+
+            var diagnostics = await GetAnalyzerDiagnosticsAsync(source);
+
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+        }
+
+        [Fact]
         public async Task ValidMappingConfigurationShouldNotReportDiagnostics()
         {
             var source = @"
@@ -392,6 +539,8 @@ public sealed class CustomerMap : EntityMap<Customer>
             var explicitAssemblies = new[]
             {
                 typeof(FluentMapper).Assembly.Location,
+                typeof(Dapper.FluentMap.Dommel.Mapping.DommelEntityMap<>).Assembly.Location,
+                typeof(global::Dommel.DommelMapper).Assembly.Location,
                 typeof(Dapper.SqlMapper).Assembly.Location
             }
             .Select(path => MetadataReference.CreateFromFile(path));

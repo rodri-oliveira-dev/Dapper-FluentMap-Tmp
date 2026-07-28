@@ -9,3 +9,4 @@ DFM004 | Dapper.FluentMap.Configuration | Error | Included mapping type must be 
 DFM005 | Dapper.FluentMap.Configuration | Error | Generic map registration type is invalid.
 DFM009 | Dapper.FluentMap.Configuration | Error | Generic profile registration type is invalid.
 DFM010 | Dapper.FluentMap.Configuration | Error | Mapping profile is registered more than once.
+DFM012 | Dapper.FluentMap.Configuration | Error | Persistence mapping behavior is invalid.

@@ -262,3 +262,31 @@ Adicionar `MemberMappingExplanation.Persistence`.
 
 `FluentMapper.Explain<T>()` passa a expor a metadata efetiva sem acoplar
 diagnostics a SQL ou a Dommel.
+
+## ADR-13 - Diagnostics conservadores para persistence behavior
+
+### Contexto
+
+A metadata de persistencia agora permite distinguir materializacao, insert,
+update, key, identity, computed e default-on-insert. Algumas combinacoes sao
+contraditorias, mas nem toda configuracao pode ser provada estaticamente sem
+executar construtores de maps.
+
+### Decisao
+
+Usar duas camadas:
+
+- analyzer `DFM012` para combinacoes contraditorias visiveis diretamente na
+  fluent chain do construtor do map;
+- runtime validation para a metadata efetiva registrada, incluindo maps
+  customizados que implementem `IPropertyMapWithPersistenceMetadata`.
+
+O analyzer nao executa construtores, nao faz scan de assemblies e nao emite
+diagnostics para metadata de escrita que nao afeta materializacao gerada.
+
+### Consequencias
+
+Erros comuns aparecem durante compilacao quando a cadeia e literal. Estados
+customizados, herdados ou compostos continuam protegidos por
+`FluentMapper.Validate()` e pelos caminhos de registro. Generated materializers
+permanecem focados em leitura.

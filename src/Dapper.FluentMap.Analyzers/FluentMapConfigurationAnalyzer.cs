@@ -20,10 +20,12 @@ namespace Dapper.FluentMap.Analyzers
         public const string InvalidGenericMapRegistrationDiagnosticId = "DFM005";
         public const string InvalidGenericProfileRegistrationDiagnosticId = "DFM009";
         public const string DuplicateProfileRegistrationDiagnosticId = "DFM010";
+        public const string InvalidPersistenceBehaviorDiagnosticId = "DFM012";
 
         private const string Category = "Dapper.FluentMap.Configuration";
         private const string MappingNamespace = "Dapper.FluentMap.Mapping";
         private const string ConfigurationNamespace = "Dapper.FluentMap.Configuration";
+        private const string DommelMappingNamespace = "Dapper.FluentMap.Dommel.Mapping";
 
         private static readonly DiagnosticDescriptor InvalidMapExpressionRule = new DiagnosticDescriptor(
             InvalidMapExpressionDiagnosticId,
@@ -91,6 +93,15 @@ namespace Dapper.FluentMap.Analyzers
             description: "The same entity/profile pair must not be registered more than once.",
             customTags: WellKnownDiagnosticTags.CompilationEnd);
 
+        private static readonly DiagnosticDescriptor InvalidPersistenceBehaviorRule = new DiagnosticDescriptor(
+            InvalidPersistenceBehaviorDiagnosticId,
+            "Persistence mapping behavior is invalid",
+            "Property path '{0}' has invalid persistence behavior: {1}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Persistence mapping calls such as Ignore, Computed, DatabaseDefaultOnInsert, key and identity must not be combined in contradictory ways.");
+
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(
                 InvalidMapExpressionRule,
@@ -99,7 +110,8 @@ namespace Dapper.FluentMap.Analyzers
                 InvalidIncludeBaseRule,
                 InvalidGenericMapRegistrationRule,
                 InvalidGenericProfileRegistrationRule,
-                DuplicateProfileRegistrationRule);
+                DuplicateProfileRegistrationRule,
+                InvalidPersistenceBehaviorRule);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -191,6 +203,7 @@ namespace Dapper.FluentMap.Analyzers
                     invocation,
                     context.SemanticModel,
                     memberPath,
+                    context,
                     context.CancellationToken,
                     out var mapInvocation))
             {
@@ -418,6 +431,7 @@ namespace Dapper.FluentMap.Analyzers
             InvocationExpressionSyntax mapInvocation,
             SemanticModel semanticModel,
             MemberPathInfo memberPath,
+            SyntaxNodeAnalysisContext context,
             System.Threading.CancellationToken cancellationToken,
             out MapInvocation result)
         {
@@ -442,6 +456,7 @@ namespace Dapper.FluentMap.Analyzers
             var caseSensitive = true;
             var ignored = false;
             var columnLocation = mapInvocation.GetLocation();
+            var persistenceState = new PersistenceChainState();
 
             SyntaxNode current = mapInvocation;
             while (current.Parent is MemberAccessExpressionSyntax memberAccess &&
@@ -465,6 +480,18 @@ namespace Dapper.FluentMap.Analyzers
                 else if (IsIgnoreInvocation(chainedMethod))
                 {
                     ignored = true;
+                    persistenceState.ApplyIgnore();
+                }
+                else if (TryGetPersistenceAction(chainedMethod, chainedInvocation, semanticModel, cancellationToken, out var persistenceAction))
+                {
+                    if (!persistenceState.TryApply(persistenceAction, out var reason))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            InvalidPersistenceBehaviorRule,
+                            GetInvocationNameLocation(chainedInvocation),
+                            memberPath.Display,
+                            reason));
+                    }
                 }
 
                 current = chainedInvocation;
@@ -665,6 +692,96 @@ namespace Dapper.FluentMap.Analyzers
             return method.Name == "Ignore" && method.Parameters.Length == 0;
         }
 
+        private static bool TryGetPersistenceAction(
+            IMethodSymbol method,
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            System.Threading.CancellationToken cancellationToken,
+            out PersistenceAction action)
+        {
+            action = PersistenceAction.None;
+
+            if (method == null || !IsPersistenceMethod(method))
+            {
+                return false;
+            }
+
+            if (method.Parameters.Length == 0)
+            {
+                switch (method.Name)
+                {
+                    case "ExcludeFromInsert":
+                        action = PersistenceAction.ExcludeFromInsert;
+                        return true;
+                    case "ExcludeFromUpdate":
+                        action = PersistenceAction.ExcludeFromUpdate;
+                        return true;
+                    case "ReadOnly":
+                        action = PersistenceAction.ReadOnly;
+                        return true;
+                    case "Computed":
+                        action = PersistenceAction.Computed;
+                        return true;
+                    case "DatabaseDefaultOnInsert":
+                        action = PersistenceAction.DatabaseDefaultOnInsert;
+                        return true;
+                    case "IsKey":
+                        action = PersistenceAction.Key;
+                        return true;
+                    case "IsIdentity":
+                        action = PersistenceAction.Identity;
+                        return true;
+                }
+            }
+
+            if (method.Name == "SetGeneratedOption" &&
+                method.Parameters.Length == 1 &&
+                invocation.ArgumentList.Arguments.Count == 1)
+            {
+                var option = semanticModel.GetConstantValue(
+                    invocation.ArgumentList.Arguments[0].Expression,
+                    cancellationToken);
+                if (!option.HasValue || !(option.Value is int optionValue))
+                {
+                    return false;
+                }
+
+                switch (optionValue)
+                {
+                    case 0:
+                        action = PersistenceAction.GeneratedNone;
+                        return true;
+                    case 1:
+                        action = PersistenceAction.GeneratedIdentity;
+                        return true;
+                    case 2:
+                        action = PersistenceAction.GeneratedComputed;
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPersistenceMethod(IMethodSymbol method)
+        {
+            var containingType = method.ContainingType;
+            if (IsType(containingType, DommelMappingNamespace, "DommelPropertyMap"))
+            {
+                return true;
+            }
+
+            for (var current = containingType; current != null; current = current.BaseType)
+            {
+                if (IsType(current.OriginalDefinition, MappingNamespace, "PropertyMapBase`1"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static Location GetInvocationNameLocation(InvocationExpressionSyntax invocation)
         {
             var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
@@ -831,6 +948,120 @@ namespace Dapper.FluentMap.Analyzers
             internal INamedTypeSymbol ProfileType { get; }
 
             internal Location Location { get; }
+        }
+
+        private enum PersistenceAction
+        {
+            None,
+            ExcludeFromInsert,
+            ExcludeFromUpdate,
+            ReadOnly,
+            Computed,
+            DatabaseDefaultOnInsert,
+            Key,
+            Identity,
+            GeneratedNone,
+            GeneratedComputed,
+            GeneratedIdentity
+        }
+
+        private sealed class PersistenceChainState
+        {
+            private bool _ignored;
+            private bool _computed;
+            private bool _databaseDefaultOnInsert;
+            private bool _key;
+            private bool _identity;
+
+            internal void ApplyIgnore()
+            {
+                _ignored = true;
+            }
+
+            internal bool TryApply(PersistenceAction action, out string reason)
+            {
+                reason = null;
+
+                if (_ignored)
+                {
+                    reason = "Ignore() disables materialization and persistence metadata; write persistence calls cannot be applied after Ignore().";
+                    return false;
+                }
+
+                switch (action)
+                {
+                    case PersistenceAction.Computed:
+                    case PersistenceAction.GeneratedComputed:
+                        if (_databaseDefaultOnInsert)
+                        {
+                            reason = "computed values cannot also be configured with DatabaseDefaultOnInsert().";
+                            return false;
+                        }
+
+                        if (_key)
+                        {
+                            reason = "computed values cannot also be configured as keys.";
+                            return false;
+                        }
+
+                        if (_identity)
+                        {
+                            reason = "computed values cannot also be configured as identity values.";
+                            return false;
+                        }
+
+                        _computed = true;
+                        return true;
+                    case PersistenceAction.DatabaseDefaultOnInsert:
+                        if (_computed)
+                        {
+                            reason = "DatabaseDefaultOnInsert() cannot be combined with computed persistence semantics.";
+                            return false;
+                        }
+
+                        if (_identity)
+                        {
+                            reason = "DatabaseDefaultOnInsert() cannot be combined with identity persistence semantics.";
+                            return false;
+                        }
+
+                        _databaseDefaultOnInsert = true;
+                        return true;
+                    case PersistenceAction.Key:
+                        if (_computed)
+                        {
+                            reason = "key persistence semantics cannot be combined with computed values.";
+                            return false;
+                        }
+
+                        _key = true;
+                        return true;
+                    case PersistenceAction.Identity:
+                    case PersistenceAction.GeneratedIdentity:
+                        if (_computed)
+                        {
+                            reason = "identity persistence semantics cannot be combined with computed values.";
+                            return false;
+                        }
+
+                        if (_databaseDefaultOnInsert)
+                        {
+                            reason = "identity persistence semantics cannot be combined with DatabaseDefaultOnInsert().";
+                            return false;
+                        }
+
+                        _key = true;
+                        _identity = true;
+                        return true;
+                    case PersistenceAction.GeneratedNone:
+                        _identity = false;
+                        _computed = false;
+                        _databaseDefaultOnInsert = false;
+                        return true;
+                    default:
+                        return true;
+                }
+            }
         }
     }
 }
