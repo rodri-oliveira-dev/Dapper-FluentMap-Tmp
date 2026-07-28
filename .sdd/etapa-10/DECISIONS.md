@@ -378,3 +378,50 @@ alvo real da propriedade/parametro, preservando equivalencia para casos como
 O novo diagnostic `DFM012` reporta contrato read invalido quando isso pode ser
 provado em compile-time. Fallback continua sendo uma limitacao de otimizacao,
 nao breaking change para cenarios suportados pelo runtime.
+
+## ADR-14 - Prompt 10.5 Dommel write conversion boundary
+
+### Contexto
+
+O Prompt 10.5 pediu conversao de escrita `Property -> Database value` quando a
+arquitetura da Etapa 10 determinasse que isso e responsabilidade do FluentMap,
+com Dommel como consumidor inicial. A restricao principal era usar extension
+points suportados pela versao atual do Dommel, sem reflection privada e sem
+copiar internals.
+
+Dommel 3.5.3 expoe resolvers de tabela, coluna, chave, propriedades e
+`ISqlBuilder`. Esses pontos permitem alterar metadata e SQL, mas `Insert` e
+`Update` executam passando a entidade original ao Dapper como objeto de
+parametros.
+
+### Decisao
+
+Write conversion permanece especificada como metadata no core, mas nao e
+executada pela integracao Dommel na Etapa 10.5.
+
+Nao sera criado wrapper implicito de parametros nem nova API de CRUD nesta etapa.
+Tambem nao sera feita composicao implicita `PropertyConverter -> TypeHandler`.
+
+### Alternativas consideradas
+
+- Usar `ISqlBuilder` para trocar nomes de parametros: rejeitado porque o Dapper
+  ainda le os valores da entidade original e nao ha propriedades convertidas.
+- Copiar a montagem de `Insert`/`Update` do Dommel: rejeitado por duplicar
+  responsabilidade de CRUD/SQL generation e aumentar risco de divergencia.
+- Reflection privada sobre caches/internals do Dommel: rejeitada por fragilidade
+  e incompatibilidade com o requisito.
+- Mutar a entidade antes da chamada e restaurar depois: rejeitado por side
+  effects, thread safety e excecoes intermediarias.
+- Confiar em `TypeHandler<TProperty>`: preservado como fallback global, mas nao
+  resolve conversao property-scoped.
+
+### Consequencias
+
+`connection.Insert(...)` e `connection.Update(...)` continuam respeitando
+persistence metadata da Etapa 8, mas nao chamam write converters. Sem converter
+executado, `TypeHandler<TProperty>` e provider continuam com o mesmo papel que
+tinham antes.
+
+O suporte futuro depende de um hook publico de parametros por propriedade no
+Dommel ou de uma API explicita no pacote de integracao que deixe claro que usa
+parametros convertidos e nao os metodos Dommel existentes diretamente.

@@ -71,6 +71,7 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
   TypeHandler e property converter.
 - Criado `.sdd/etapa-10/05-performance-baseline.md`.
 - Criado `.sdd/etapa-10/06-generated-conversion.md`.
+- Criado `.sdd/etapa-10/07-write-conversion.md`.
 - Generated materializers passam a emitir property read converters por tipo
   quando o converter e estaticamente suportado.
 - `GeneratedMaterializerColumn` passou a declarar metadata opcional de read
@@ -86,15 +87,22 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
 - Converters por instancia/delegate e converters inacessiveis ao codigo gerado
   continuam usando runtime fallback.
 - Smoke AOT generated atualizado para cobrir property read converter.
+- Investigado Dommel 3.5.3 para write conversion e confirmado que os extension
+  points publicos atuais nao expoem hook de valor de parametro por propriedade.
+- Documentada a decisao de nao executar write converters em Dommel nesta etapa,
+  preservando persistence semantics da Etapa 8 e comportamento atual de
+  `Insert`/`Update`.
 
 ## Em andamento
 
-Write/Dommel conversion permanece adiada para incremento seguinte.
+Write/Dommel conversion permanece bloqueada ate existir um hook publico de
+parametros por propriedade no Dommel ou uma API explicita no pacote de
+integracao.
 
 ## Proximos passos
 
-1. Investigar e implementar write conversion/Dommel somente apos definir hook
-   de parametros por propriedade.
+1. Definir hook publico de parametros por propriedade antes de implementar write
+   conversion/Dommel.
 2. Evoluir diagnostics/analyzers alem do generator para reconhecer `Convert...`.
 3. Aumentar benchmark formal quando houver decisao de otimizacao.
 
@@ -121,6 +129,9 @@ Write/Dommel conversion permanece adiada para incremento seguinte.
 - Prompt 10.4 executa read converters no generated materializer somente para
   converters por tipo estaticamente suportados e mantem fallback runtime para
   instancia/delegate/inacessivel.
+- Prompt 10.5 mantem write converters como metadata-only para Dommel porque
+  `Insert`/`Update` passam a entidade original ao Dapper e a versao atual nao
+  expoe hook publico para substituir valores de parametros por propriedade.
 
 ## APIs implementadas no Prompt 10.2
 
@@ -181,6 +192,9 @@ public interface IPropertyConverter<TDatabase, TProperty> :
   interfaces em configuration time; overloads por instancia/delegate oferecem
   caminho mais favoravel a AOT.
 - TypeHandler no generated path permanece fora do escopo.
+- Write converters em Dommel permanecem metadata-only: `Insert`/`Update` do
+  Dommel passam a entidade original ao Dapper e nao expoem hook publico para
+  substituir `DbParameter.Value` por propriedade.
 
 ## Validacao do Prompt 10.1
 
@@ -257,6 +271,18 @@ public interface IPropertyConverter<TDatabase, TProperty> :
   foram emitidos warnings esperados `IL2026` e `IL3050` nas chamadas
   `QueryMapped*`.
 
+## Validacao do Prompt 10.5
+
+- `dotnet restore ./Dapper.FluentMap.sln`: sucesso.
+- `dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 391 testes aprovados no total.
+- `dotnet test ./test/Dapper.FluentMap.Dommel.Tests/Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`:
+  sucesso, 21 testes Dommel aprovados.
+- `dotnet pack`: nao executado; este prompt alterou somente documentacao SDD e
+  nao mudou empacotamento ou codigo produtivo.
+
 ## Interacao com Dapper TypeHandler
 
 Precedencia proposta para `QueryMapped*`:
@@ -275,6 +301,19 @@ property write converter
     -> Dapper/provider parameter default
 ```
 
+Apos Prompt 10.5, essa precedencia continua especificacao futura, nao
+comportamento Dommel implementado. No Dommel atual, sem write converter
+executado, o fluxo permanece:
+
+```text
+Dommel Insert/Update
+    -> Dapper parameterization da entidade original
+    -> Dapper TypeHandler<TProperty>/provider
+```
+
+Quando write conversion for implementada, nao deve haver composicao implicita
+`PropertyConverter -> TypeHandler<TProperty>` na mesma propriedade.
+
 APIs normais do Dapper continuam fora do controle property-scoped do FluentMap:
 
 ```text
@@ -291,6 +330,7 @@ connection.Query<T>()
 - `.sdd/etapa-10/04-runtime-conversion.md`
 - `.sdd/etapa-10/05-performance-baseline.md`
 - `.sdd/etapa-10/06-generated-conversion.md`
+- `.sdd/etapa-10/07-write-conversion.md`
 - `.sdd/etapa-10/DECISIONS.md`
 - `.sdd/etapa-10/STATUS.md`
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`
@@ -316,4 +356,4 @@ connection.Query<T>()
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 10.4
+Ultimo prompt executado: 10.5
