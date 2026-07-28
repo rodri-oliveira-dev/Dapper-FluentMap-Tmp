@@ -124,6 +124,24 @@ expressa o contrato permanente: convencoes configuradas por entidade devem ser
 aplicadas a leituras tipadas de multiplos result sets no caminho
 `QueryMultipleMapped(...).ReadMapped*`.
 
+### Estado final da Etapa 9
+
+Classificacao:
+
+- `Regression covered`;
+- `Resolved by implementation` para o caminho opt-in
+  `QueryMultipleMapped(...).ReadMapped*`;
+- `Resolved by architecture` quanto a decisao de nao depender dos internals de
+  `SqlMapper.GridReader`.
+
+Evidencia:
+
+- API publica `QueryMultipleMapped(...)` e `ReadMapped<T>()`;
+- teste `MappedConventionShouldApplyToTypedReadFromMultipleResults`;
+- documentacao publica e matriz de lifetime registram consumo sequencial e
+  separacao entre Dapper `QueryMultiple` puro e materializacao avancada do
+  FluentMap.
+
 ## Issue #43
 
 ### Problema original
@@ -231,3 +249,24 @@ Ela permanece ligada a issue #43 nesta documentacao SDD, mas o teste em si
 expressa o contrato permanente: mapeamentos explicitos devem continuar sendo
 aplicados em result sets posteriores, inclusive quando os grids anteriores ja
 foram consumidos.
+
+### Estado final da Etapa 9
+
+Classificacao:
+
+- `Regression covered`;
+- `Resolved by implementation` para o caminho opt-in
+  `QueryMultipleMapped(...).ReadMapped*`;
+- `Already resolved previously` para o relato historico do caminho Dapper puro,
+  conforme o encerramento upstream em 1.7.0;
+- `Resolved by architecture` quanto a separacao entre Dapper `GridReader` e
+  `MappedGridReader`.
+
+Evidencia:
+
+- teste `ExplicitMapShouldApplyToLaterTypedReadFromMultipleResults`;
+- terceiro result set com colunas equivalentes ao relato historico:
+  `column_prefix`, `column_name`, `display_order`, `can_be_ordered`,
+  `can_be_filtered` e `column_width_in_pixels`;
+- cobertura adicional de profiles, generated/runtime fallback e lifetime em
+  `QueryMultipleMappedTests`.

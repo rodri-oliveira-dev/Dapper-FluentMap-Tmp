@@ -441,7 +441,31 @@ var customers = multi.ReadMapped<Customer>();
 var orders = multi.ReadMapped<Order>();
 ```
 
-`QueryMapped*` and `ReadMapped*` return buffered results and are the paths that support nested object materialization, constructor-built value objects and profile-specific mapping.
+`QueryMapped*` and `ReadMapped*` return buffered results and are the paths that support nested object materialization, constructor-built value objects and profile-specific mapping. When a generated materializer is registered for the entity, profile and ordered column shape, these APIs use it; otherwise they use the runtime materializer fallback.
+
+Use `QueryMultipleMapped(...)` when one command returns multiple result sets that all need FluentMap-controlled materialization:
+
+```csharp
+var sql = @"
+    SELECT 1 AS customer_id, 'Ada' AS customer_name;
+    SELECT 10 AS order_id, 42.50 AS total;";
+
+using var multi = connection.QueryMultipleMapped(sql);
+
+var customers = multi.ReadMapped<Customer>().ToList();
+var orders = multi.ReadMapped<Order>().ToList();
+```
+
+Result sets are consumed sequentially. `ReadMapped<T>()` and `ReadMapped<T, TProfile>()` buffer the current result set, advance to the next one and keep the underlying reader open until all result sets are consumed or the `MappedGridReader` is disposed.
+
+Profiles can be selected per result set:
+
+```csharp
+using var multi = connection.QueryMultipleMapped(sql);
+
+var currentCustomers = multi.ReadMapped<Customer>();
+var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
+```
 
 Use `QueryMappedUnbuffered<T>()` or `QueryMappedUnbuffered<T, TProfile>()` when you need to process a large result set incrementally:
 
@@ -457,15 +481,19 @@ Unbuffered queries are lazy: the command is executed when enumeration starts, no
 Use `QueryMappedUnbufferedAsync<T>()` or `QueryMappedUnbufferedAsync<T, TProfile>()` on `DbConnection` when the provider supports asynchronous readers:
 
 ```csharp
+using var cancellation = new CancellationTokenSource();
+
 await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
     sql,
-    cancellationToken))
+    cancellation.Token))
 {
-    await ProcessAsync(customer, cancellationToken);
+    await ProcessAsync(customer, cancellation.Token);
 }
 ```
 
 Async unbuffered queries are also lazy and incremental. FluentMap awaits command execution and `DbDataReader.ReadAsync(...)`, propagates cancellation to supported async operations, and disposes the reader when enumeration completes, stops early, is canceled or throws. Row materialization remains synchronous after the row has been read; generated materializers and runtime fallback use the same dispatch as buffered and synchronous unbuffered queries.
+
+`QueryMultipleMapped` is about multiple result sets, not Dapper multi-mapping with `splitOn`. FluentMap does not perform graph aggregation, identity maps or automatic join grouping; write the SQL shape you need and choose the mapped helper only when FluentMap should materialize each row.
 
 ## Dommel
 
@@ -542,6 +570,9 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Mapping profiles are selected through `QueryMapped<TEntity, TProfile>()` and `ReadMapped<TEntity, TProfile>()` APIs.
 - `QueryMapped*` and `ReadMapped*` are buffered. Use `QueryMappedUnbuffered*` for explicit synchronous or asynchronous unbuffered streaming.
+- `QueryMultipleMapped` consumes result sets sequentially and does not support concurrent reads from the same `MappedGridReader`.
+- Streaming keeps the underlying reader open. Do not use the same connection concurrently while a reader is active unless the provider explicitly supports that usage.
+- Multiple result sets are not Dapper multi-mapping by `splitOn`; FluentMap does not perform graph aggregation or automatic join grouping.
 - Value object construction uses matching public constructors, not factory methods.
 
 ## Contributing
@@ -1005,7 +1036,31 @@ var customers = multi.ReadMapped<Customer>();
 var orders = multi.ReadMapped<Order>();
 ```
 
-`QueryMapped*` e `ReadMapped*` retornam resultados bufferizados e são os caminhos que suportam materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile.
+`QueryMapped*` e `ReadMapped*` retornam resultados bufferizados e são os caminhos que suportam materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile. Quando existe materializador gerado para entidade, profile e shape ordenado de colunas, essas APIs o utilizam; caso contrário, usam o fallback de materialização em runtime.
+
+Use `QueryMultipleMapped(...)` quando um comando retorna múltiplos result sets que precisam de materialização controlada pelo FluentMap:
+
+```csharp
+var sql = @"
+    SELECT 1 AS customer_id, 'Ada' AS customer_name;
+    SELECT 10 AS order_id, 42.50 AS total;";
+
+using var multi = connection.QueryMultipleMapped(sql);
+
+var customers = multi.ReadMapped<Customer>().ToList();
+var orders = multi.ReadMapped<Order>().ToList();
+```
+
+Os result sets são consumidos sequencialmente. `ReadMapped<T>()` e `ReadMapped<T, TProfile>()` bufferizam o result set atual, avançam para o próximo e mantêm o reader subjacente aberto até todos os result sets serem consumidos ou até o `MappedGridReader` ser descartado.
+
+Profiles podem ser selecionados por result set:
+
+```csharp
+using var multi = connection.QueryMultipleMapped(sql);
+
+var currentCustomers = multi.ReadMapped<Customer>();
+var legacyCustomers = multi.ReadMapped<Customer, LegacyProfile>();
+```
 
 Use `QueryMappedUnbuffered<T>()` ou `QueryMappedUnbuffered<T, TProfile>()` quando precisar processar um result set grande de forma incremental:
 
@@ -1021,15 +1076,19 @@ Consultas unbuffered são lazy: o comando é executado quando a enumeração com
 Use `QueryMappedUnbufferedAsync<T>()` ou `QueryMappedUnbufferedAsync<T, TProfile>()` em `DbConnection` quando o provider suportar readers assíncronos:
 
 ```csharp
+using var cancellation = new CancellationTokenSource();
+
 await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
     sql,
-    cancellationToken))
+    cancellation.Token))
 {
-    await ProcessAsync(customer, cancellationToken);
+    await ProcessAsync(customer, cancellation.Token);
 }
 ```
 
 Consultas async unbuffered também são lazy e incrementais. O FluentMap aguarda a execução do comando e `DbDataReader.ReadAsync(...)`, propaga cancellation para operações async suportadas e descarta o reader quando a enumeração termina, para cedo, é cancelada ou falha. A materialização da linha continua síncrona depois que a linha foi lida; materializers gerados e fallback runtime usam o mesmo dispatch dos caminhos buffered e unbuffered síncrono.
+
+`QueryMultipleMapped` trata de múltiplos result sets, não de Dapper multi-mapping com `splitOn`. O FluentMap não faz agregação de grafo, identity map nem agrupamento automático de joins; escreva o shape SQL necessário e use o helper mapeado apenas quando o FluentMap deve materializar cada linha.
 
 ## Dommel
 
@@ -1107,6 +1166,9 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 - `QueryMapped*` pode usar materializadores gerados para shapes flat, aninhados e Value Object suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
 - Mapping profiles são selecionados pelas APIs `QueryMapped<TEntity, TProfile>()` e `ReadMapped<TEntity, TProfile>()`.
 - `QueryMapped*` e `ReadMapped*` são bufferizados. Use `QueryMappedUnbuffered*` para streaming unbuffered síncrono ou assíncrono explícito.
+- `QueryMultipleMapped` consome result sets sequencialmente e não suporta leituras concorrentes do mesmo `MappedGridReader`.
+- Streaming mantém o reader subjacente aberto. Não use a mesma conexão concorrentemente enquanto um reader estiver ativo, salvo quando o provider suportar explicitamente esse uso.
+- Múltiplos result sets não são Dapper multi-mapping por `splitOn`; o FluentMap não faz agregação de grafo nem agrupamento automático de joins.
 - A construção de Value Objects usa construtores públicos compatíveis, não factory methods.
 
 ## Contribuição

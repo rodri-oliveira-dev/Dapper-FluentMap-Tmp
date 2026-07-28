@@ -1,5 +1,7 @@
 # Etapa 9 Status
 
+Status: Concluída
+
 ## Objetivo
 
 Definir e evoluir a arquitetura de Advanced Query Materialization para
@@ -122,6 +124,18 @@ equivalencia entre materializacao generated e runtime.
   `QueryMultipleMapped` em readers/conexoes independentes.
 - Prompt 9.6: adicionados benchmarks de `QueryMultiple` para Dapper buffered,
   FluentMap generated e FluentMap runtime fallback.
+- Prompt 9.7: auditada a implementacao real contra
+  `.sdd/etapa-9/02-advanced-query-materialization-spec.md`.
+- Prompt 9.7: revisadas APIs publicas introduzidas na Etapa 9; nenhuma
+  correcao pequena de API foi necessaria no fechamento.
+- Prompt 9.7: README atualizado com exemplos reais de `QueryMultipleMapped`,
+  `ReadMapped`, profiles, streaming unbuffered, async streaming, cancellation,
+  generated/runtime dispatch e limitacoes.
+- Prompt 9.7: `.sdd/etapa-9/01-historical-query-issues.md` atualizado com
+  classificacao final das issues #22 e #43.
+- Prompt 9.7: `.sdd/etapa-9/06-performance-results.md` revisado com auditoria
+  final dos benchmarks representativos.
+- Prompt 9.7: criado `.sdd/etapa-9/FINAL-REPORT.md`.
 
 ## Em andamento
 
@@ -221,12 +235,41 @@ Nenhuma feature produtiva em andamento.
 - `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
   sucesso, 357 testes aprovados no total.
 
+## Validacao do Prompt 9.7
+
+- `dotnet --version`:
+  `10.0.302`.
+- Plataforma de testes detectada: VSTest com `Microsoft.NET.Test.Sdk` e xUnit
+  v3; nao ha `global.json`, `Directory.Build.props` ou
+  `Directory.Packages.props` com sinal de Microsoft.Testing.Platform.
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMappedUnbufferedTests`:
+  sucesso, 14 testes aprovados.
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMappedUnbufferedAsyncTests`:
+  sucesso, 15 testes aprovados.
+- Tentativas paralelas iniciais de
+  `QueryMultipleMappedTests` e `AdvancedQueryHardeningTests` falharam com
+  `CS2012` por lock concorrente do mesmo assembly em `obj\Release`; nao foi
+  falha de teste.
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~QueryMultipleMappedTests`:
+  sucesso apos reexecucao sequencial, 25 testes aprovados.
+- `dotnet test test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter FullyQualifiedName~AdvancedQueryHardeningTests`:
+  sucesso apos reexecucao sequencial, 5 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`:
+  sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 357 testes aprovados no total.
+- `dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*`:
+  sucesso, 18 benchmarks executados.
+
 ## Proximos passos
 
-1. Executar documentacao final da Etapa 9, se solicitada.
-2. Avaliar `QueryMultipleMappedAsync`/`ReadMappedUnbufferedAsync` em prompt
+1. Avaliar `QueryMultipleMappedAsync`/`ReadMappedUnbufferedAsync` em prompt
    proprio, se houver demanda.
-3. Avaliar caminho generated-only/AOT-safe em prompt proprio.
+2. Avaliar caminho generated-only/AOT-safe em prompt proprio.
+3. Criar provider certification opt-in somente quando houver infraestrutura de
+   CI ou demanda real para SQL Server/PostgreSQL.
 
 ## Decisoes relevantes
 
@@ -336,7 +379,8 @@ await foreach (var customer in connection.QueryMappedUnbufferedAsync<Customer>(
 - `test/Dapper.FluentMap.Tests/QueryMappedUnbufferedAsyncTests.cs`
 - `test/Dapper.FluentMap.Tests/AdvancedQueryHardeningTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
+- `.sdd/etapa-9/FINAL-REPORT.md`
 
-## Ultimo prompt executado
+## Último prompt executado
 
-Ultimo prompt executado: 9.6
+Último prompt executado: 9.7

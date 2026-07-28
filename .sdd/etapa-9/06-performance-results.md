@@ -224,3 +224,24 @@ Ambiente reportado pelo BenchmarkDotNet:
   como publicacao de performance.
 - SQL Server e PostgreSQL nao foram medidos porque nao existe infraestrutura
   provider-specific instalada neste repositorio.
+
+## Auditoria final do Prompt 9.7
+
+Comando reexecutado:
+
+```bash
+dotnet run --project benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release --no-build -- --filter *MaterializationSteadyStateBenchmarks*
+```
+
+Resultado: sucesso, 18 cenarios executados.
+
+A rodada confirmou a mesma leitura de allocations registrada no Prompt 9.6:
+
+- Dapper buffered, unbuffered e async unbuffered permanecem como baseline.
+- FluentMap generated e runtime fallback estao separados em buffered,
+  unbuffered, async unbuffered e QueryMultiple.
+- As allocations do streaming continuam abaixo dos equivalentes buffered para o
+  shape simple, coerentes com a ausencia de `List<TEntity>` interna do
+  FluentMap.
+- Tempo local continua ruidoso em `ShortRun`; a documentacao publica nao deve
+  fazer claims promocionais de throughput.
