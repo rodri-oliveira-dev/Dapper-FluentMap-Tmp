@@ -58,6 +58,31 @@ consumidores e `FluentMapConfigurationBuilder -> Build() ->
 configuration.CreateRuntime()`. O reset interno permanece para testes e
 compatibilidade.
 
+Atualizacao do prompt 11.6: estado final da #101 e **Partially resolved**.
+
+Por que nao "Resolved structurally" integral:
+
+- a causa arquitetural foi resolvida para APIs controladas pelo FluentMap:
+  `runtime.QueryMapped<T>()`, profiles, converters, generated materializers,
+  diagnostics e DI podem usar configuracoes independentes no mesmo processo;
+- testes novos provam uso concorrente de multiplos runtimes para o mesmo tipo
+  sem `FluentMapper.Reset()`;
+- a bridge estatica legado continua process-wide por compatibilidade;
+- `Dapper.Query<T>()` continua limitado pelo `SqlMapper.SetTypeMap` global por
+  tipo e nao pode selecionar configuracao por chamada;
+- Dommel continua limitado por resolvers/builders globais de `DommelMapper` e
+  por metadata especifica mantida nas colecoes legadas.
+
+Estado final:
+
+```text
+Issue #101: Partially resolved
+```
+
+Resolvido estruturalmente para novos entry points isolados. Nao resolvido para
+o uso legado direto de `Dapper.Query<T>()` ou Dommel com multiplas configuracoes
+simultaneas.
+
 ## Issue #79
 
 Fonte: https://github.com/henkmollema/Dapper-FluentMap/issues/79

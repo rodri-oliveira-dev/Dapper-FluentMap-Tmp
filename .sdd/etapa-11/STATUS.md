@@ -58,10 +58,17 @@ e preparando configuracoes imutaveis com runtime isolado.
 - Criados testes de registration, service resolution, singleton identity, invalid config, explicit registration, profiles, multiple service providers, independent configurations e concurrency.
 - Adicionado teste de generated registration via DI no projeto do source generator.
 - `README.md` atualizado com instalacao e uso de `Dapper.FluentMap.DependencyInjection`.
+- Criado `08-isolation-matrix.md`.
+- Criado `09-migration-guide.md`.
+- Adicionados testes de hardening para runtimes isolados usando a mesma entidade com mappings diferentes, mesmo runtime em multiplas threads, generated materializers concorrentes, profiles/converters/diagnostics concorrentes, invalid configuration isolada, DI concorrente e inicializacao estatica controlada por `Barrier`.
+- Adicionado teste que prova a limitacao estrutural de `Dapper.Query<T>()`: o caminho puro do Dapper usa somente o type map global publicado, enquanto `runtime.QueryMapped<T>()` usa a configuracao isolada.
+- Adicionado teste que prova que Dommel resolve metadata pela configuracao legada process-wide e nao por runtimes isolados do core.
+- Atualizada a classificacao final da issue #101 como `Partially resolved`.
+- Repetido benchmark smoke de `MaterializationSteadyStateBenchmarks*QueryMappedSimple*` e registrado resultado no relatorio de performance.
 
 ## Em andamento
 
-- Nenhum item em andamento para o prompt 11.4.
+- Nenhum item em andamento para o prompt 11.6.
 
 ## Proximos passos
 
@@ -158,6 +165,8 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `.sdd/etapa-11/04-isolated-runtime.md`
 - `.sdd/etapa-11/05-performance-impact.md`
 - `.sdd/etapa-11/06-compatibility-bridge.md`
+- `.sdd/etapa-11/08-isolation-matrix.md`
+- `.sdd/etapa-11/09-migration-guide.md`
 - `.sdd/etapa-11/DECISIONS.md`
 - `.sdd/etapa-11/STATUS.md`
 - `README.md`
@@ -173,6 +182,7 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `src/Dapper.FluentMap/QueryMappedExtensions.cs`
 - `test/Dapper.FluentMap.Tests/ImmutableConfigurationModelTests.cs`
 - `test/Dapper.FluentMap.Tests/IsolatedRuntimeTests.cs`
+- `test/Dapper.FluentMap.Tests/ConfigurationIsolationHardeningTests.cs`
 - `test/Dapper.FluentMap.Tests/CompatibilityBridgeTests.cs`
 - `.sdd/etapa-11/07-dependency-injection-spec.md`
 - `src/Dapper.FluentMap.DependencyInjection/Dapper.FluentMap.DependencyInjection.csproj`
@@ -246,6 +256,23 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `dotnet pack .\src\Dapper.FluentMap.DependencyInjection\Dapper.FluentMap.DependencyInjection.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; criou `artifacts\packages\Dapper.FluentMap.DependencyInjection.2.0.0.nupkg`.
 - Inspecionado `artifacts\packages\Dapper.FluentMap.DependencyInjection.2.0.0.nupkg`: contem `README.md`, `lib/netstandard2.0/Dapper.FluentMap.DependencyInjection.dll`, XML documentation e nuspec; dependencias `Dapper.FluentMap` 2.0.0 e `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.10; nao contem projetos de teste.
 
+## Validacao do Prompt 11.6
+
+- Detectado runner de testes como VSTest: SDK `10.0.302`, sem `global.json`, sem `Directory.Build.props`/`Directory.Packages.props` e projetos de teste com `Microsoft.NET.Test.Sdk` + xUnit runner.
+- Tentativa inicial de builds localizados em paralelo bloqueou no arquivo intermediario do core por `VBCSCompiler` (`CS2012`); repeticao sequencial passou. A falha foi de concorrencia entre comandos de build, nao de produto/teste.
+- `dotnet build .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.DependencyInjection.Tests\Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~ConfigurationIsolationHardeningTests|FullyQualifiedName~CompatibilityBridgeTests"`: sucesso, 12 testes aprovados antes do reforco adicional de converter.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~ConfigurationIsolationHardeningTests"`: sucesso, 8 testes aprovados apos adicionar a prova do mesmo converter em configuracoes diferentes.
+- `dotnet test .\test\Dapper.FluentMap.DependencyInjection.Tests\Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~FluentMapServiceCollectionExtensionsTests"`: sucesso, 9 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~DommelResolversShouldUseOnlyLegacyProcessWideConfiguration"`: sucesso, 1 teste aprovado.
+- `dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release -- --filter "*MaterializationSteadyStateBenchmarks*QueryMappedSimple*" --job Dry`: sucesso; smoke executou 20 benchmarks `Dry`/`ShortRun`, registrado em `05-performance-impact.md`.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 453 testes aprovados no total.
+- `dotnet pack`: nao executado; o prompt 11.6 alterou testes e documentacao SDD, sem mudanca de empacotamento, metadata de pacote ou assemblies de producao.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 11.5
+Ultimo prompt executado: 11.6

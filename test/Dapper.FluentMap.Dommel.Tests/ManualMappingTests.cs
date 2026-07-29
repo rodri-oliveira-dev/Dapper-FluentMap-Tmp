@@ -1,4 +1,5 @@
 using Dapper.FluentMap.Dommel.Mapping;
+using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Mapping;
 using System;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -216,6 +217,32 @@ namespace Dapper.FluentMap.Dommel.Tests
             Assert.True(name.IsGenerated);
         }
 
+        [Fact]
+        public void DommelResolversShouldUseOnlyLegacyProcessWideConfiguration()
+        {
+            PreTest();
+
+            var isolatedRuntime = new FluentMapConfigurationBuilder()
+                .AddMap(new IsolatedDommelTableMap())
+                .Build()
+                .CreateRuntime();
+            var resolver = new Dommel.Resolvers.DommelTableNameResolver();
+
+            var beforeGlobalRegistration = resolver.ResolveTableName(typeof(DommelIsolationEntity));
+
+            FluentMapper.Initialize(c =>
+            {
+                c.AddMap(new LegacyDommelTableMap());
+                c.ForDommel();
+            });
+
+            var afterGlobalRegistration = resolver.ResolveTableName(typeof(DommelIsolationEntity));
+
+            Assert.NotNull(isolatedRuntime);
+            Assert.NotEqual("isolated_dommel_entities", beforeGlobalRegistration);
+            Assert.Equal("legacy_dommel_entities", afterGlobalRegistration);
+        }
+
         private static void PreTest()
         {
             FluentMapper.EntityMaps.Clear();
@@ -278,6 +305,29 @@ namespace Dapper.FluentMap.Dommel.Tests
             public CoreReadOnlyMap()
             {
                 Map(p => p.Name).ReadOnly();
+            }
+        }
+
+        private sealed class DommelIsolationEntity
+        {
+            public int Id { get; set; }
+        }
+
+        private sealed class IsolatedDommelTableMap : DommelEntityMap<DommelIsolationEntity>
+        {
+            public IsolatedDommelTableMap()
+            {
+                ToTable("isolated_dommel_entities");
+                Map(entity => entity.Id).ToColumn("id").IsKey();
+            }
+        }
+
+        private sealed class LegacyDommelTableMap : DommelEntityMap<DommelIsolationEntity>
+        {
+            public LegacyDommelTableMap()
+            {
+                ToTable("legacy_dommel_entities");
+                Map(entity => entity.Id).ToColumn("id").IsKey();
             }
         }
     }

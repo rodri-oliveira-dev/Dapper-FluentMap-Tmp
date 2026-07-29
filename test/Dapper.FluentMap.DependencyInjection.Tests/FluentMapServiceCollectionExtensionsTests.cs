@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper.FluentMap;
 using Dapper.FluentMap.Configuration;
@@ -174,6 +175,51 @@ namespace Dapper.FluentMap.DependencyInjection.Tests
                     .ToList();
 
                 Assert.All(results, Assert.True);
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public async Task IndependentServiceProvidersShouldResolveIndependentRuntimesConcurrently()
+        {
+            using (var currentProvider = new ServiceCollection()
+                .AddFluentMap(builder => builder.AddMap(new CurrentCustomerMap()))
+                .BuildServiceProvider())
+            using (var legacyProvider = new ServiceCollection()
+                .AddFluentMap(builder => builder.AddMap(new AlternateCustomerMap()))
+                .BuildServiceProvider())
+            {
+                var start = new Barrier(2);
+                var currentTask = Task.Run(() =>
+                {
+                    start.SignalAndWait();
+                    using (var connection = OpenConnection())
+                    {
+                        return currentProvider.GetRequiredService<FluentMapRuntime>()
+                            .QueryMappedSingle<DiCustomer>(
+                                connection,
+                                "SELECT 11 AS customer_id, 'Current' AS customer_name;");
+                    }
+                });
+                var legacyTask = Task.Run(() =>
+                {
+                    start.SignalAndWait();
+                    using (var connection = OpenConnection())
+                    {
+                        return legacyProvider.GetRequiredService<FluentMapRuntime>()
+                            .QueryMappedSingle<DiCustomer>(
+                                connection,
+                                "SELECT 12 AS customer_id, 'Alternate' AS alternate_name;");
+                    }
+                });
+
+                var customers = await Task.WhenAll(currentTask, legacyTask);
+
+                Assert.Equal("Current", customers[0].Name);
+                Assert.Equal("Alternate", customers[1].Name);
+                Assert.NotSame(
+                    currentProvider.GetRequiredService<FluentMapRuntime>(),
+                    legacyProvider.GetRequiredService<FluentMapRuntime>());
             }
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Mapping;
@@ -66,15 +67,26 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
-        public void ConcurrentInitializeShouldBeSerializedForDefaultConfiguration()
+        public async Task ConcurrentInitializeShouldBeSerializedForDefaultConfiguration()
         {
             ResetMapper(typeof(ConcurrentFirstBridgeEntity), typeof(ConcurrentSecondBridgeEntity));
 
             try
             {
-                Parallel.Invoke(
-                    () => FluentMapper.Initialize(configuration => configuration.AddMap(new ConcurrentFirstBridgeMap())),
-                    () => FluentMapper.Initialize(configuration => configuration.AddMap(new ConcurrentSecondBridgeMap())));
+                var start = new Barrier(2);
+                var cancellationToken = TestContext.Current.CancellationToken;
+                var first = Task.Run(() =>
+                {
+                    start.SignalAndWait();
+                    FluentMapper.Initialize(configuration => configuration.AddMap(new ConcurrentFirstBridgeMap()));
+                }, cancellationToken);
+                var second = Task.Run(() =>
+                {
+                    start.SignalAndWait();
+                    FluentMapper.Initialize(configuration => configuration.AddMap(new ConcurrentSecondBridgeMap()));
+                }, cancellationToken);
+
+                await Task.WhenAll(first, second);
 
                 FluentMapper.Validate();
                 Assert.True(FluentMapper.Configuration.EntityMaps.ContainsKey(typeof(ConcurrentFirstBridgeEntity)));
