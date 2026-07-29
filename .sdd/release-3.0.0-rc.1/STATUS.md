@@ -2,10 +2,10 @@
 
 ## Estado
 
-RC.3 qualificado remotamente com limitacoes. Os artifacts `3.0.0-rc.1` foram
-gerados no GitHub Actions a partir de commit disponivel no remoto, baixados,
-validados com o mesmo script do RC.2, conferidos contra manifest, SourceLink e
-GitHub artifact attestations.
+RC.4 consumer smoke concluido. Os packages `3.0.0-rc.1` registrados no RC.3
+foram consumidos fora da solution do FluentMap a partir de feed NuGet local
+temporario formado exclusivamente pelos artifacts remotos validados, com
+NuGet.org apenas para dependencias externas.
 
 ## Commit candidato atual
 
@@ -65,6 +65,17 @@ existente na default branch.
   cert identity, repository, source ref, source digest e subjects/hashes.
 - Relatorio `.sdd/release-3.0.0-rc.1/03-remote-qualification.md` criado.
 - Manifest versionado `.sdd/release-3.0.0-rc.1/artifacts.json` criado.
+- Especificacao e evidencia
+  `.sdd/release-3.0.0-rc.1/04-consumer-smoke.md` criada.
+- Infraestrutura `eng/consumer-smoke/` criada para consumers externos por
+  pacote, sem `ProjectReference`.
+- Consumer smoke validou core, analyzer, generator, Dependency Injection,
+  Dommel e trimming usando os packages RC restaurados em versao exata.
+- Dependency inspection confirmou ausencia de referencias ao codigo-fonte
+  local, ausencia de dependencias Roslyn runtime indevidas, resolucao esperada
+  de `Dapper 2.1.79` e `Dommel 3.5.3`, e nenhum package `2.0.0`.
+- Workflow `Release` passou a executar consumer smoke como gate apos validacao
+  de artifacts.
 
 ## Em andamento
 
@@ -72,8 +83,8 @@ existente na default branch.
 
 ## Proximos passos
 
-1. Revisar o commit de evidencia do RC.3.
-2. Definir no RC.4 o caminho de promocao/publicacao sem publicar
+1. Revisar o commit de evidencia do RC.4.
+2. Prosseguir para RC.5 com decisao de promocao/publicacao sem publicar
    automaticamente.
 
 ## RC blockers
@@ -82,7 +93,15 @@ existente na default branch.
 - `workflow_dispatch` de `release.yml` continua indisponivel ate o workflow
   existir na default branch ou outro caminho de promocao ser definido. A
   qualificacao RC.3 foi executada por evento `push` na branch de release.
-- Consumer smoke externo com os cinco pacotes RC ainda nao foi executado.
+- Consumer smoke externo com os cinco pacotes RC: Passed.
+
+## Package consumer classification
+
+- `Dapper.FluentMap`: Passed.
+- `Dapper.FluentMap.Dommel`: Passed.
+- `Dapper.FluentMap.DependencyInjection`: Passed.
+- `Dapper.FluentMap.Analyzers`: Passed.
+- `Dapper.FluentMap.Generators`: Passed.
 
 ## Stable-only blockers
 
@@ -114,4 +133,4 @@ existente na default branch.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: RC.3
+Ultimo prompt executado: RC.4

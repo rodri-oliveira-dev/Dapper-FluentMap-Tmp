@@ -34,7 +34,7 @@ jobs:
   validate-package:
     name: Validate release package
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -105,6 +105,13 @@ jobs:
             -RepositoryUrl 'https://github.com/${{ github.repository }}' `
             -Commit '${{ github.sha }}' `
             -Branch '${{ github.ref }}'
+
+      - name: Consumer smoke release packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./eng/consumer-smoke/run-consumer-smoke.ps1 `
+            -PackageDirectory './artifacts/packages'
 
       - name: Write dependency inventory
         shell: pwsh
