@@ -425,3 +425,63 @@ Nao adicionar strong naming e nao assinar pacotes neste prompt.
 Strong naming e package signing permanecem decisoes de release engineering
 separadas. Se forem adotados futuramente, devem ter chave/certificado,
 validacao, ownership e estrategia de migracao.
+
+## ADR-18 - CI hardening and release workflow
+
+### Contexto
+
+O workflow existente ja restaurava, compilava, testava e empacotava, mas nao
+possuia release workflow dedicado, provenance, artifact retention explicito,
+timeouts, checkout endurecido ou pin por SHA completo.
+
+### Decisao
+
+Endurecer o CI com permissoes minimas, actions pinadas por SHA, checkout sem
+persistencia de credencial, timeouts, concurrency e artefatos previsiveis.
+Adicionar workflow manual de release que valida e empacota uma versao informada,
+gera metadata e provenance, mas falha explicitamente caso alguem tente publicar.
+
+### Alternativas consideradas
+
+- Publicar diretamente no NuGet por segredo `NUGET_API_KEY`: rejeitado por
+  segredo longo e ausencia de gates.
+- Fazer release automatico em tag neste prompt: rejeitado ate baseline de API,
+  trusted publishing e ambiente de aprovacao existirem.
+- Manter actions apenas por tag: rejeitado para hardening inicial, embora
+  Dependabot passe a monitorar atualizacoes.
+
+### Consequencias
+
+O repositorio passa a ter caminho de release reproduzivel e auditavel, mas
+publicacao segue bloqueada por design. A manutencao dos SHAs pinados deve vir
+por PRs de Dependabot/revisao humana.
+
+## ADR-19 - Dependency audit, SDK pin and SBOM boundary
+
+### Contexto
+
+Nao havia Dependabot/Renovate, lock files, `global.json` ou SBOM. O NuGet Audit
+e as GitHub Artifact Attestations sao capacidades nativas/sustentaveis do
+ecossistema atual.
+
+### Decisao
+
+Adicionar Dependabot para Actions/NuGet, habilitar NuGet Audit transitive com
+severidade `low`, tratar `NU1901`-`NU1904` como erro em CI e fixar o SDK em
+`global.json`. Gerar inventario JSON de dependencias e provenance no release
+workflow. Nao adicionar SBOM formal neste prompt.
+
+### Alternativas consideradas
+
+- Adotar lock files agora: adiado para tarefa propria por impactar restore e
+  renovacao de dependencias em toda a solution.
+- Adotar Microsoft SBOM Tool agora: rejeitado por adicionar ferramenta externa
+  antes da politica de SBOM estar definida.
+- Chamar inventario `dotnet list package` de SBOM: rejeitado porque nao e SPDX
+  nem CycloneDX.
+
+### Consequencias
+
+Dependencias vulneraveis passam a bloquear CI quando reportadas pelo NuGet
+Audit. Builds usam SDK previsivel. SBOM permanece requisito futuro, sem claim
+indevido neste release hardening.

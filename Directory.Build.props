@@ -1,9 +1,18 @@
 <Project>
   <PropertyGroup>
+    <FluentMapPackageVersionPrefix>2.0.0</FluentMapPackageVersionPrefix>
     <DapperMinimumSupportedVersion>2.1.79</DapperMinimumSupportedVersion>
     <DapperLatestStableVersion>2.1.79</DapperLatestStableVersion>
     <DapperPackageVersion Condition="'$(DapperPackageVersion)' == ''">[$(DapperMinimumSupportedVersion),3.0.0)</DapperPackageVersion>
     <DommelPackageVersion Condition="'$(DommelPackageVersion)' == ''">[3.5.3,4.0.0)</DommelPackageVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsAsErrors Condition="'$(CI)' == 'true' and '$(WarningsAsErrors)' == ''">NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+    <WarningsAsErrors Condition="'$(CI)' == 'true' and '$(WarningsAsErrors)' != ''">$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
   </PropertyGroup>
 
   <PropertyGroup>

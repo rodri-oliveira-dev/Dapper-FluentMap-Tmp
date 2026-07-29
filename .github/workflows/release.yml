@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package-version:
+        description: "NuGet package version to validate and pack, for example 3.0.0-rc.1."
+        required: true
+        default: "3.0.0-rc.1"
+      publish:
+        description: "Reserved for a future approval-based NuGet publish flow. Publishing is disabled in this workflow."
+        required: true
+        type: boolean
+        default: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  CI: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.package-version }}
+  cancel-in-progress: false
+
+jobs:
+  validate-package:
+    name: Validate release package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Validate release input
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ inputs.package-version }}'
+
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
+            throw "Package version '$version' is not a supported SemVer value."
+          }
+
+          if ($version -eq '2.0.0') {
+            throw "Version 2.0.0 already exists for historical package IDs and must not be used by this fork."
+          }
+
+      - name: Guard disabled publish path
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          throw "NuGet publishing is intentionally disabled. Configure NuGet trusted publishing/OIDC and an approval environment before enabling publish."
+
+      - name: Show .NET info
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore ./Dapper.FluentMap.sln
+
+      - name: Audit NuGet dependencies
+        run: dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
+
+      - name: Build Release
+        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:VersionPrefix=${{ inputs.package-version }}
+
+      - name: Test Release
+        run: dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+
+      - name: Pack Release
+        run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:VersionPrefix=${{ inputs.package-version }}
+
+      - name: Validate package artifact set
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageDir = './artifacts/packages'
+          $version = '${{ inputs.package-version }}'
+          $expectedNupkgs = @(
+            "Dapper.FluentMap.$version.nupkg",
+            "Dapper.FluentMap.Dommel.$version.nupkg",
+            "Dapper.FluentMap.DependencyInjection.$version.nupkg",
+            "Dapper.FluentMap.Analyzers.$version.nupkg",
+            "Dapper.FluentMap.Generators.$version.nupkg"
+          )
+          $expectedSnupkgs = @(
+            "Dapper.FluentMap.$version.snupkg",
+            "Dapper.FluentMap.Dommel.$version.snupkg",
+            "Dapper.FluentMap.DependencyInjection.$version.snupkg"
+          )
+          $actualNupkgs = @(Get-ChildItem -Path $packageDir -Filter '*.nupkg' -File | Select-Object -ExpandProperty Name)
+          $actualSnupkgs = @(Get-ChildItem -Path $packageDir -Filter '*.snupkg' -File | Select-Object -ExpandProperty Name)
+          $missing = @($expectedNupkgs + $expectedSnupkgs | Where-Object { $_ -notin @($actualNupkgs + $actualSnupkgs) })
+          $unexpected = @($actualNupkgs + $actualSnupkgs | Where-Object { $_ -notin @($expectedNupkgs + $expectedSnupkgs) })
+
+          if ($missing.Count -gt 0) {
+            throw "Missing package artifacts: $($missing -join ', ')"
+          }
+
+          if ($unexpected.Count -gt 0) {
+            throw "Unexpected package artifacts: $($unexpected -join ', ')"
+          }
+
+      - name: Write release metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path './artifacts/release-metadata' | Out-Null
+          dotnet list ./Dapper.FluentMap.sln package --include-transitive --format json |
+            Set-Content -Encoding utf8NoBOM -Path './artifacts/release-metadata/dependencies.json'
+
+          $packageFiles = @(
+            Get-ChildItem -Path './artifacts/packages' -Filter '*.nupkg' -File
+            Get-ChildItem -Path './artifacts/packages' -Filter '*.snupkg' -File
+          ) |
+            Sort-Object Name |
+            ForEach-Object {
+              [ordered]@{
+                name = $_.Name
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                size = $_.Length
+              }
+            }
+
+          [ordered]@{
+            schemaVersion = '1.0'
+            repository = '${{ github.repository }}'
+            ref = '${{ github.ref }}'
+            sha = '${{ github.sha }}'
+            runId = '${{ github.run_id }}'
+            runAttempt = '${{ github.run_attempt }}'
+            packageVersion = '${{ inputs.package-version }}'
+            dotnetSdk = (dotnet --version)
+            packageFiles = @($packageFiles)
+          } |
+            ConvertTo-Json -Depth 5 |
+            Set-Content -Encoding utf8NoBOM -Path './artifacts/release-metadata/release-metadata.json'
+
+      - name: Upload release package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-packages-${{ inputs.package-version }}
+          path: |
+            ./artifacts/packages/*.nupkg
+            ./artifacts/packages/*.snupkg
+            ./artifacts/release-metadata/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+  provenance:
+    name: Attest release package provenance
+    runs-on: ubuntu-latest
+    needs: validate-package
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download release package artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-packages-${{ inputs.package-version }}
+          path: ./artifacts/release
+
+      - name: Collect package subjects
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path './artifacts/attestation-subjects' | Out-Null
+          Get-ChildItem -Path './artifacts/release' -Recurse -File -Include '*.nupkg', '*.snupkg' |
+            Copy-Item -Destination './artifacts/attestation-subjects'
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: |
+            ./artifacts/attestation-subjects/*.nupkg
+            ./artifacts/attestation-subjects/*.snupkg

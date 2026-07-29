@@ -8,10 +8,11 @@ features.
 
 ## Estado geral
 
-Etapa 12 iniciada com auditoria documental e baseline de build/test/pack. A
-solution esta buildable e testable no ambiente local, mas ainda nao esta
-release-ready por lacunas de API compatibility, versionamento, NuGet metadata,
-SourceLink/reproducibilidade e CI de release.
+Etapa 12 iniciou com auditoria documental e baseline de build/test/pack. A
+solution esta buildable e testable no ambiente local. A automacao de CI/release
+foi preparada, mas a release stable ainda permanece bloqueada por baseline de
+API, estrategia final de versionamento, SBOM formal, package signing opcional e
+publish NuGet ainda desabilitado.
 
 ## Concluido
 
@@ -67,6 +68,20 @@ SourceLink/reproducibilidade e CI de release.
   no nuspec.
 - Revisada decisao de strong naming: nao adicionar neste prompt.
 - Revisada package signing: nao assinar neste prompt.
+- Criado `06-ci-release-design.md`.
+- Adicionado `global.json` com SDK `10.0.302`.
+- Centralizado `VersionPrefix` dos pacotes em
+  `FluentMapPackageVersionPrefix`.
+- Habilitado NuGet Audit transitive em `Directory.Build.props`.
+- Configurado `NU1901`-`NU1904` como erro em CI.
+- Adicionado `.github/dependabot.yml` para GitHub Actions e NuGet.
+- Endurecido `.github/workflows/ci.yml` com actions pinadas por SHA,
+  checkout sem credencial persistida, timeouts, concurrency, artifact retention
+  e upload de `.nupkg`, `.snupkg` e metadata.
+- Criado `.github/workflows/release.yml` manual para validar versao, restaurar,
+  auditar, compilar, testar, empacotar, validar artefatos, gerar metadata e
+  gerar provenance.
+- Mantida publicacao NuGet desabilitada por design.
 
 ## Em andamento
 
@@ -91,7 +106,8 @@ SourceLink/reproducibilidade e CI de release.
   trimming/AOT.
 - High: Dapper TypeHandler interoperability depende de internal shape por
   reflection.
-- Medium: nao ha `global.json`, package lock ou Central Package Management.
+- Medium: nao ha package lock ou Central Package Management.
+- Medium: SBOM formal SPDX/CycloneDX ainda nao foi adotado.
 - Medium: analyzer/generator release manifests precisam revisao para release.
 - Medium: packages nao estao assinados; `dotnet nuget verify` falha com
   `NU3004` por ausencia de assinatura.
@@ -110,6 +126,8 @@ SourceLink/reproducibilidade e CI de release.
 - Nao declarar Native AOT completo no estado atual.
 - Usar RC antes de stable; recomendacao inicial `3.0.0-rc.1`, salvo prova
   formal que permita `2.1.0-rc.1`.
+- Publish NuGet deve usar trusted publishing/OIDC e ambiente de aprovacao antes
+  de ser habilitado.
 
 ## Packages
 
@@ -145,6 +163,7 @@ SourceLink/reproducibilidade e CI de release.
 - `.sdd/etapa-12/03-compatibility-matrix.md`
 - `.sdd/etapa-12/04-provider-matrix.md`
 - `.sdd/etapa-12/05-public-api-review.md`
+- `.sdd/etapa-12/06-ci-release-design.md`
 - `.sdd/etapa-12/DECISIONS.md`
 - `.sdd/etapa-12/STATUS.md`
 - `README.md`
@@ -218,7 +237,7 @@ Resultados:
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 12.4
+Ultimo prompt executado: 12.5
 
 ## Validacao do Prompt 12.3
 
@@ -305,3 +324,53 @@ Resultados:
 - `dotnet nuget verify` nos pacotes finais confirmou hashes, mas falhou com
   `NU3004` porque os pacotes nao estao assinados. Isso permanece decisao
   documentada, nao falha de build/pack.
+
+## Validacao do Prompt 12.5
+
+Executada localmente em 2026-07-29:
+
+```bash
+python - .github/workflows/ci.yml .github/workflows/release.yml .github/dependabot.yml
+dotnet restore ./Dapper.FluentMap.sln
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages-12.5-final
+dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
+dotnet list ./Dapper.FluentMap.sln package --include-transitive --format json
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:VersionPrefix=3.0.0-rc.1
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages-12.5-rc -p:VersionPrefix=3.0.0-rc.1
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+$env:CI='true'; dotnet restore ./Dapper.FluentMap.sln
+git diff --check
+```
+
+Resultados:
+
+- YAML de `ci.yml`, `release.yml` e `dependabot.yml` parseado com sucesso via
+  PyYAML.
+- `pwsh` e Ruby nao estavam disponiveis localmente; os scripts PowerShell de
+  validacao de artefatos foram executados em Windows PowerShell com comandos
+  equivalentes. O runner GitHub `ubuntu-latest` fornece `pwsh`.
+- Restore padrao: sucesso.
+- Build Release padrao: sucesso, 0 warnings, 0 errors.
+- Test solution apos build padrao: sucesso; 460 aprovados, 14
+  ignored/skipped, 0 falhas.
+- Pack padrao em `artifacts/packages-12.5-final`: sucesso; gerou 5 `.nupkg` e
+  3 `.snupkg`.
+- Validacao de artefatos padrao: sucesso; nenhum pacote de test, benchmark ou
+  AOT smoke foi gerado.
+- Vulnerability audit: nenhum pacote vulneravel encontrado nas fontes atuais.
+- `dependencies.json` gerado via `dotnet list package --include-transitive
+  --format json`.
+- Build com `-p:VersionPrefix=3.0.0-rc.1`: sucesso, 0 warnings, 0 errors.
+- Pack RC em `artifacts/packages-12.5-rc`: sucesso; gerou os 5 `.nupkg` e 3
+  `.snupkg` com versao `3.0.0-rc.1`.
+- Test solution apos build RC: sucesso; 460 aprovados, 14 ignored/skipped, 0
+  falhas.
+- Restore com `CI=true`: sucesso, validando a politica de `WarningsAsErrors`
+  para `NU1901`-`NU1904`.
+- `git diff --check`: sem erros; apenas avisos esperados de normalizacao LF ->
+  CRLF no Windows.
+- Todos os `uses:` em workflows estao pinados por SHA completo.
+- Provenance nao foi executado localmente porque depende do ambiente GitHub
+  Actions/OIDC.
