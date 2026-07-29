@@ -19,6 +19,7 @@ namespace Dapper.FluentMap
             DynamicallyAccessedMemberTypes.PublicProperties;
 
         private static readonly MappingRegistry _registry = new MappingRegistry();
+        private static readonly FluentMapRuntime _runtime = new FluentMapRuntime(_registry);
         private static readonly FluentMapConfiguration _configuration = new FluentMapConfiguration();
 
         /// <summary>
@@ -43,6 +44,8 @@ namespace Dapper.FluentMap
 
         internal static MappingRegistry Registry => _registry;
 
+        internal static FluentMapRuntime Runtime => _runtime;
+
         /// <summary>
         /// Initializes Dapper.FluentMap with the specified configuration.
         /// This is method should be called when the application starts or when the first mapping is needed.
@@ -61,7 +64,7 @@ namespace Dapper.FluentMap
         /// </exception>
         public static void Validate()
         {
-            _registry.ValidateConfiguration();
+            _runtime.Validate();
         }
 
         /// <summary>
@@ -91,7 +94,7 @@ namespace Dapper.FluentMap
             [DynamicallyAccessedMembers(EntityMemberTypes)]
             TEntity>()
         {
-            return _registry.Explain(typeof(TEntity));
+            return _runtime.Explain<TEntity>();
         }
 
         /// <summary>
@@ -106,7 +109,7 @@ namespace Dapper.FluentMap
             TProfile>()
             where TProfile : IMappingProfile
         {
-            return _registry.Explain(typeof(TEntity), typeof(TProfile));
+            return _runtime.Explain<TEntity, TProfile>();
         }
 
         /// <summary>

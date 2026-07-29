@@ -5,6 +5,7 @@ using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Order;
 using BenchmarkDotNet.Running;
 using Dapper;
+using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Mapping;
 using Microsoft.Data.Sqlite;
 
@@ -29,6 +30,7 @@ public class MaterializationSteadyStateBenchmarks
     private const int RowCount = 1000;
 
     private SqliteConnection _connection = null!;
+    private FluentMapRuntime _runtime = null!;
 
     [GlobalSetup]
     public async Task GlobalSetup()
@@ -42,6 +44,9 @@ public class MaterializationSteadyStateBenchmarks
             configuration.AddGeneratedMappings();
         });
 
+        _runtime = new FluentMapRuntime(new FluentMapConfigurationBuilder()
+            .Configure(configuration => configuration.AddGeneratedMappings())
+            .Build());
         _connection = OpenPopulatedConnection();
 
         DapperPure();
@@ -49,9 +54,13 @@ public class MaterializationSteadyStateBenchmarks
         await DapperPureUnbufferedAsync();
         DapperWithFluentMapRootMapping();
         QueryMappedSimple();
+        RuntimeQueryMappedSimple();
         QueryMappedSimpleUnbuffered();
+        RuntimeQueryMappedSimpleUnbuffered();
         await QueryMappedSimpleUnbufferedAsync();
+        await RuntimeQueryMappedSimpleUnbufferedAsync();
         QueryMappedSimpleRuntimeFallback();
+        RuntimeQueryMappedSimpleRuntimeFallback();
         QueryMappedSimpleUnbufferedRuntimeFallback();
         await QueryMappedSimpleUnbufferedAsyncRuntimeFallback();
         QueryMappedImmutableConstructor();
@@ -61,6 +70,7 @@ public class MaterializationSteadyStateBenchmarks
         QueryMappedValueObjectRuntimeFallback();
         DapperQueryMultipleBuffered();
         QueryMultipleMappedSimple();
+        RuntimeQueryMultipleMappedSimple();
         QueryMultipleMappedSimpleRuntimeFallback();
         QueryMappedRuntimeNoConverter();
         QueryMappedGeneratedSimpleConverter();
@@ -120,9 +130,27 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public int RuntimeQueryMappedSimple()
+    {
+        return _runtime.QueryMapped<QueryMappedSimpleCustomer>(
+                _connection,
+                "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
     public int QueryMappedSimpleUnbuffered()
     {
         return _connection.QueryMappedUnbuffered<QueryMappedSimpleCustomer>(
+                "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int RuntimeQueryMappedSimpleUnbuffered()
+    {
+        return _runtime.QueryMappedUnbuffered<QueryMappedSimpleCustomer>(
+                _connection,
                 "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
             .Count();
     }
@@ -135,9 +163,26 @@ public class MaterializationSteadyStateBenchmarks
     }
 
     [Benchmark]
+    public Task<int> RuntimeQueryMappedSimpleUnbufferedAsync()
+    {
+        return CountAsync(_runtime.QueryMappedUnbufferedAsync<QueryMappedSimpleCustomer>(
+            _connection,
+            "SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;"));
+    }
+
+    [Benchmark]
     public int QueryMappedSimpleRuntimeFallback()
     {
         return _connection.QueryMapped<QueryMappedSimpleCustomer>(
+                "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
+            .Count();
+    }
+
+    [Benchmark]
+    public int RuntimeQueryMappedSimpleRuntimeFallback()
+    {
+        return _runtime.QueryMapped<QueryMappedSimpleCustomer>(
+                _connection,
                 "SELECT Name AS full_name, Id AS customer_id, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows;")
             .Count();
     }
@@ -212,6 +257,18 @@ public class MaterializationSteadyStateBenchmarks
     public int QueryMultipleMappedSimple()
     {
         using var multi = _connection.QueryMultipleMapped(
+            @"SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id <= 500;
+              SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id > 500;");
+
+        return multi.ReadMapped<QueryMappedSimpleCustomer>().Count() +
+               multi.ReadMapped<QueryMappedSimpleCustomer>().Count();
+    }
+
+    [Benchmark]
+    public int RuntimeQueryMultipleMappedSimple()
+    {
+        using var multi = _runtime.QueryMultipleMapped(
+            _connection,
             @"SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id <= 500;
               SELECT Id AS customer_id, Name AS full_name, Age AS customer_age, Balance AS account_balance, CreatedAt AS created_at FROM BenchmarkRows WHERE Id > 500;");
 

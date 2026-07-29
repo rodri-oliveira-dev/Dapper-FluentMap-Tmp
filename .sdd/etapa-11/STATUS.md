@@ -29,20 +29,32 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `FluentMapConfiguration` e `FluentConventionConfiguration` foram desacopladas do singleton global por registry injetado internamente, preservando os construtores/APIs publicas existentes.
 - `MappingRegistry` agora pode operar sem instalar type maps globais do Dapper, permitindo builders independentes sem colisao process-wide.
 - Criados testes de empty configuration, single map, multiple maps, convention, naming, inheritance, profiles, converters, generated registrations, duplicate maps, invalid map, Build, immutability, independent configurations e concurrent reads.
+- Criado `04-isolated-runtime.md`.
+- Criado `05-performance-impact.md`.
+- Implementado `FluentMapRuntime` associado a `ImmutableFluentMapConfiguration`.
+- `MappedRowMaterializer` passou a receber runtime e deixou de consultar `FluentMapper.Registry` diretamente.
+- `MappedGridReader` passou a carregar o runtime usado por `ReadMapped<T>()` e `ReadMapped<T, TProfile>()`.
+- `FluentMapper` passou a delegar `Validate()` e `Explain<T>()` ao runtime global de compatibilidade.
+- Caches de property lookup, generated lookup e materialization plan agora ficam escopados ao registry possuido por cada runtime isolado.
+- Generated materializers registrados no builder/snapshot sao reconstruidos por runtime, sem registry global compartilhado.
+- Adicionados entry points de instancia no runtime para `QueryMapped`, profile, unbuffered sync, async streaming e `QueryMultipleMapped`.
+- Criados testes de runtime isolado para duas configuracoes da mesma entidade, mesmo profile type em configuracoes diferentes, generated materializers, converters, nested mappings, cache isolation, `ReadMapped`, unbuffered, async streaming, diagnostics e concorrencia.
+- Benchmarks existentes foram estendidos com cenarios `RuntimeQueryMapped*` comparaveis aos helpers estaticos.
+- `README.md` atualizado para documentar `FluentMapRuntime` e os limites restantes de `FluentMapper`, Dapper puro e Dommel.
 
 ## Em andamento
 
+- Restore/build/test completos.
 - Revisao final de diff.
-- Commit semantico.
+- Commit semantico do prompt 11.3.
 
 ## Proximos passos
 
-1. Extrair runtime isolado a partir de `MappingRegistry`.
-2. Adaptar `QueryMapped*`/`MappedGridReader` para runtime default e planejar overloads por runtime.
-3. Reescrever `FluentMapper` como bridge de compatibilidade, preservando `Initialize` aditivo.
-4. Projetar DI em incremento separado.
-5. Migrar testes de isolamento/concurrencia para runtime instanciado.
-6. Endurecer documentacao e limites de Dommel/Dapper process-wide.
+1. Expandir overloads publicos configuration-aware se a API desejada for extension methods em vez de metodos de instancia.
+2. Projetar DI em incremento separado.
+3. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
+4. Avaliar full benchmark antes de release.
+5. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
 
 ## Decisoes relevantes
 
@@ -52,7 +64,7 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `ImmutableFluentMapConfiguration` e o snapshot imutavel publico inicial.
 - `FluentMapConfiguration` permanece a fachada mutavel historica por compatibilidade.
 - Caches derivados pertencem ao runtime futuro, nao ao estado global.
-- `FluentMapper` deve delegar ao runtime default em incremento futuro.
+- `FluentMapper` delega ao runtime default para diagnostics e query helpers estaticos.
 - `Initialize` deve continuar aditivo inicialmente.
 - `Reset` nao e solucao arquitetural principal.
 - DI deve registrar configuracao e runtime como singleton.
@@ -112,7 +124,7 @@ e preparando configuracoes imutaveis com runtime isolado.
 - Dommel resolvers/builders sao globais.
 - Mutacao direta de dicionarios publicos bypassa validacao, invalidacao e instalacao de type map.
 - Interfaces publicas expõem `IList`, dificultando congelamento sem descritores internos.
-- Runtime isolado ainda nao foi extraido; APIs `QueryMapped*` atuais continuam no registry default.
+- Runtime isolado foi introduzido para os entry points controlados pelo FluentMap.
 - Converter instances podem ser reutilizadas concorrentemente.
 - Generated materializers por instancia/delegate ainda usam fallback runtime.
 - Native AOT completo continua fora do contrato atual.
@@ -128,10 +140,17 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `README.md`
 - `src/Dapper.FluentMap/Configuration/FluentMapConfigurationBuilder.cs`
 - `src/Dapper.FluentMap/Configuration/ImmutableFluentMapConfiguration.cs`
+- `src/Dapper.FluentMap/Configuration/RuntimeConfigurationRegistryFactory.cs`
+- `src/Dapper.FluentMap/FluentMapRuntime.cs`
 - `src/Dapper.FluentMap/Configuration/FluentMapConfiguration.cs`
 - `src/Dapper.FluentMap/Configuration/FluentConventionConfiguration.cs`
 - `src/Dapper.FluentMap/MappingRegistry.cs`
+- `src/Dapper.FluentMap/Materialization/MappedRowMaterializer.cs`
+- `src/Dapper.FluentMap/MappedGridReader.cs`
+- `src/Dapper.FluentMap/QueryMappedExtensions.cs`
 - `test/Dapper.FluentMap.Tests/ImmutableConfigurationModelTests.cs`
+- `test/Dapper.FluentMap.Tests/IsolatedRuntimeTests.cs`
+- `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Validacao do Prompt 11.1
 
@@ -149,6 +168,18 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 419 testes aprovados no total.
 - `dotnet pack`: nao executado; o prompt 11.2 nao alterou empacotamento nem metadata de pacote.
 
+## Validacao do Prompt 11.3
+
+- `dotnet build .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~IsolatedRuntimeTests"`: sucesso, 10 testes aprovados.
+- `dotnet build .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release -- --filter "*MaterializationSteadyStateBenchmarks*QueryMappedSimple*" --job Dry`: sucesso; smoke executou cenarios `Dry` e `ShortRun`, registrado em `05-performance-impact.md`.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 429 testes aprovados.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; criou `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`; warning existente `NU5125` sobre `licenseUrl` obsoleto.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 11.2
+Ultimo prompt executado: 11.3

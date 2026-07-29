@@ -11,11 +11,12 @@ namespace Dapper.FluentMap.Materialization
             [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
             TEntity>(
             IDataReader reader,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
             var results = new List<TEntity>();
-            var materializer = CreateMaterializer<TEntity>(reader, profileType);
+            var materializer = CreateMaterializer<TEntity>(reader, profileType, runtime);
 
             while (reader.Read())
             {
@@ -29,13 +30,19 @@ namespace Dapper.FluentMap.Materialization
             [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
             TEntity>(
             IDataRecord reader,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
             var columnNames = GetColumnNames(reader);
 
             Func<IDataRecord, object> generatedMaterializer;
-            if (FluentMapper.Registry.TryGetGeneratedMaterializer(
+            if (runtime.Registry.TryGetGeneratedMaterializer(
                 typeof(TEntity),
                 profileType,
                 columnNames,
@@ -44,7 +51,7 @@ namespace Dapper.FluentMap.Materialization
                 return record => (TEntity)generatedMaterializer(record);
             }
 
-            var plan = FluentMapper.Registry.GetMaterializationPlan(typeof(TEntity), profileType, columnNames);
+            var plan = runtime.Registry.GetMaterializationPlan(typeof(TEntity), profileType, columnNames);
             return record => (TEntity)plan.Materialize(record);
         }
 

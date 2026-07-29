@@ -337,14 +337,17 @@ var configuration = new FluentMapConfigurationBuilder()
     .AddMap<CustomerMap>()
     .Configure(config => config.AddGeneratedMappings())
     .Build();
+
+var runtime = new FluentMapRuntime(configuration);
 ```
 
 `Build()` validates the same invariants used by `FluentMapper.Validate()` and
 returns an `ImmutableFluentMapConfiguration` with read-only metadata for maps,
 profiles, conventions, naming policies, persistence metadata, converters and
 generated materializer registrations. The builder is sealed after `Build()`.
-Existing runtime APIs still use the global compatibility layer until isolated
-runtime entry points are introduced.
+Create a `FluentMapRuntime` from the immutable configuration when multiple
+configuration-specific `QueryMapped*` pipelines must coexist in the same
+process. `FluentMapper.Initialize(...)` remains the global compatibility layer.
 
 ## Conventions and Naming Policies
 
@@ -582,6 +585,24 @@ var orders = multi.ReadMapped<Order>();
 
 `QueryMapped*` and `ReadMapped*` return buffered results and are the paths that support nested object materialization, constructor-built value objects and profile-specific mapping. When a generated materializer is registered for the entity, profile and ordered column shape, these APIs use it; otherwise they use the runtime materializer fallback.
 
+For independent configurations in the same process, create a runtime from an
+immutable configuration and use its query entry points:
+
+```csharp
+var configuration = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Build();
+
+var runtime = new FluentMapRuntime(configuration);
+var customers = runtime.QueryMapped<Customer>(
+    connection,
+    "SELECT 7 AS customer_id, 'Ada' AS Name;");
+```
+
+The runtime owns configuration-scoped caches for mapping lookup, generated
+materializer lookup and runtime materialization plans. It is safe to share across
+concurrent queries when the configuration is immutable.
+
 Use `QueryMultipleMapped(...)` when one command returns multiple result sets that all need FluentMap-controlled materialization:
 
 ```csharp
@@ -704,7 +725,7 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 
 ## Current Limitations
 
-- FluentMap configuration is process-wide. Configure at startup and avoid changing mappings while queries are running.
+- `FluentMapper.Initialize(...)`, `Dapper.Query<T>()` and Dommel still use process-wide compatibility bridges. Use `ImmutableFluentMapConfiguration` + `FluentMapRuntime` with `QueryMapped*`/`ReadMapped*` when multiple configurations must coexist in the same process.
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Property converters are not a general object mapper, serializer, SQL hook or replacement for Dapper `TypeHandler<T>`.
@@ -1077,14 +1098,18 @@ var configuration = new FluentMapConfigurationBuilder()
     .AddMap<CustomerMap>()
     .Configure(config => config.AddGeneratedMappings())
     .Build();
+
+var runtime = new FluentMapRuntime(configuration);
 ```
 
 `Build()` valida os mesmos invariants usados por `FluentMapper.Validate()` e
 retorna um `ImmutableFluentMapConfiguration` com metadata read-only para maps,
 profiles, conventions, naming policies, persistence metadata, converters e
 generated materializer registrations. O builder fica selado depois de `Build()`.
-As APIs de runtime existentes ainda usam a camada global de compatibilidade ate
-que entry points de runtime isolado sejam introduzidos.
+Crie um `FluentMapRuntime` a partir da configuracao imutavel quando multiplos
+pipelines `QueryMapped*` especificos por configuracao precisarem coexistir no
+mesmo processo. `FluentMapper.Initialize(...)` continua sendo a camada global de
+compatibilidade.
 
 ## Convenções e Políticas de Nomenclatura
 
@@ -1322,6 +1347,25 @@ var orders = multi.ReadMapped<Order>();
 
 `QueryMapped*` e `ReadMapped*` retornam resultados bufferizados e são os caminhos que suportam materialização de objetos aninhados, Value Objects construídos por construtor e mapeamento específico por profile. Quando existe materializador gerado para entidade, profile e shape ordenado de colunas, essas APIs o utilizam; caso contrário, usam o fallback de materialização em runtime.
 
+Para configuracoes independentes no mesmo processo, crie um runtime a partir de
+uma configuracao imutavel e use seus entry points de consulta:
+
+```csharp
+var configuration = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Build();
+
+var runtime = new FluentMapRuntime(configuration);
+var customers = runtime.QueryMapped<Customer>(
+    connection,
+    "SELECT 7 AS customer_id, 'Ada' AS Name;");
+```
+
+O runtime possui caches escopados por configuracao para lookup de mapping,
+lookup de materializador gerado e planos de materializacao runtime. Ele e seguro
+para compartilhamento entre queries concorrentes quando a configuracao e
+imutavel.
+
 Use `QueryMultipleMapped(...)` quando um comando retorna múltiplos result sets que precisam de materialização controlada pelo FluentMap:
 
 ```csharp
@@ -1445,7 +1489,7 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 
 ## Limitações Atuais
 
-- A configuração do FluentMap é global no processo. Configure no startup e evite alterar mappings enquanto consultas estão em execução.
+- `FluentMapper.Initialize(...)`, `Dapper.Query<T>()` e Dommel continuam usando bridges globais/process-wide. Para multiplas configuracoes simultaneas no mesmo processo, use `ImmutableFluentMapConfiguration` + `FluentMapRuntime` com os entry points `QueryMapped*`/`ReadMapped*`.
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
 - Property converters nao sao object mapper geral, serializer, hook de SQL nem substituto para `TypeHandler<T>` do Dapper.
 - Write converters sao metadata-only na integracao Dommel atual e nao sao executados por `Insert` ou `Update`.

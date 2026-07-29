@@ -292,6 +292,44 @@ namespace Dapper.FluentMap
             }
         }
 
+        internal void AddGeneratedMaterializer(
+            Type entityType,
+            Type profileType,
+            IReadOnlyList<GeneratedMaterializerColumn> columns,
+            Func<IDataRecord, object> materializer)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            if (columns == null)
+            {
+                throw new ArgumentNullException(nameof(columns));
+            }
+
+            if (materializer == null)
+            {
+                throw new ArgumentNullException(nameof(materializer));
+            }
+
+            var key = new MaterializationPlanCacheKey(
+                entityType,
+                profileType,
+                columns.Select(column => column.ColumnName));
+            var entry = GeneratedMaterializerEntry.Create(columns, materializer);
+
+            if (!_generatedMaterializers.TryAdd(key, entry))
+            {
+                var profileContext = profileType == null
+                    ? string.Empty
+                    : $" and profile '{profileType.FullName}'";
+
+                throw new FluentMapConfigurationException(
+                    $"Entity '{entityType.FullName}' already has a generated materializer registered for the same column shape{profileContext}.");
+            }
+        }
+
         internal bool TryGetGeneratedMaterializer(
             Type type,
             Type profileType,
@@ -423,7 +461,7 @@ namespace Dapper.FluentMap
 
             if (hasEntityMap)
             {
-                entityMapType = entityMap.GetType();
+                entityMapType = GetEntityMapType(entityMap);
 
                 foreach (var descriptor in ComposeExplicitPropertyMapDescriptors(type, entityMap, profileType))
                 {
@@ -665,7 +703,7 @@ namespace Dapper.FluentMap
                 return new Type[0];
             }
 
-            return conventions.Select(c => c.GetType()).ToList();
+            return conventions.Select(GetConventionType).ToList();
         }
 
         private void ValidateIncludedBaseMaps(Type type, IEntityMap entityMap, Type profileType)
@@ -757,6 +795,29 @@ namespace Dapper.FluentMap
             }
 
             return mapWithIncludedBases.IncludedBaseTypes;
+        }
+
+        private static Type GetEntityMapType(IEntityMap entityMap)
+        {
+            var runtimeMetadata = entityMap as IRuntimeEntityMapMetadata;
+            return runtimeMetadata == null ? entityMap.GetType() : runtimeMetadata.MapType;
+        }
+
+        private static Type GetConventionType(Convention convention)
+        {
+            var runtimeMetadata = convention as IRuntimeConventionMetadata;
+            return runtimeMetadata == null ? convention.GetType() : runtimeMetadata.ConventionType;
+        }
+
+        private static bool IsNamingPolicyConvention(Convention convention)
+        {
+            if (convention is NamingPolicyConvention)
+            {
+                return true;
+            }
+
+            var runtimeMetadata = convention as IRuntimeConventionMetadata;
+            return runtimeMetadata != null && runtimeMetadata.ConventionType == typeof(NamingPolicyConvention);
         }
 
         private IEnumerable<MappingDiagnosticDescriptor> GetConventionPropertyMapDescriptors(Type type, IList<MemberPath> configuredPaths)
@@ -1005,6 +1066,13 @@ namespace Dapper.FluentMap
                     record => descriptor.Materializer(record));
             }
 
+            internal static GeneratedMaterializerEntry Create(
+                IReadOnlyList<GeneratedMaterializerColumn> columns,
+                Func<IDataRecord, object> materialize)
+            {
+                return new GeneratedMaterializerEntry(columns, materialize);
+            }
+
             internal IReadOnlyList<GeneratedMaterializerColumn> Columns { get; }
 
             internal Func<IDataRecord, object> Materialize { get; }
@@ -1035,11 +1103,11 @@ namespace Dapper.FluentMap
 
             internal static MappingDiagnosticDescriptor Convention(IPropertyMap map, Convention convention)
             {
-                var source = convention is NamingPolicyConvention
+                var source = IsNamingPolicyConvention(convention)
                     ? MappingSource.NamingPolicy
                     : MappingSource.Convention;
 
-                return new MappingDiagnosticDescriptor(map, source, null, convention.GetType());
+                return new MappingDiagnosticDescriptor(map, source, null, GetConventionType(convention));
             }
 
             internal MappingDiagnosticDescriptor AsInheritedFrom(Type baseType)

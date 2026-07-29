@@ -14,12 +14,19 @@ namespace Dapper.FluentMap
     public sealed class MappedGridReader : IDisposable
     {
         private readonly IDataReader _reader;
+        private readonly FluentMapRuntime _runtime;
         private bool _disposed;
         private bool _isConsumed;
 
         internal MappedGridReader(IDataReader reader)
+            : this(reader, FluentMapper.Runtime)
+        {
+        }
+
+        internal MappedGridReader(IDataReader reader, FluentMapRuntime runtime)
         {
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+            _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         }
 
         /// <summary>
@@ -123,7 +130,7 @@ namespace Dapper.FluentMap
 
             try
             {
-                var results = MappedRowMaterializer.Materialize<TEntity>(_reader, profileType);
+                var results = MappedRowMaterializer.Materialize<TEntity>(_reader, profileType, _runtime);
                 _isConsumed = !_reader.NextResult();
                 return results;
             }

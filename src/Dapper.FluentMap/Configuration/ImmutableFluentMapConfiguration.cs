@@ -271,6 +271,7 @@ namespace Dapper.FluentMap.Configuration
     {
         private PropertyMappingConfiguration(
             string memberPath,
+            IReadOnlyList<PropertyInfo> memberPathProperties,
             PropertyInfo propertyInfo,
             string columnName,
             bool caseSensitive,
@@ -279,6 +280,7 @@ namespace Dapper.FluentMap.Configuration
             PropertyConversionMetadata conversion)
         {
             MemberPath = memberPath;
+            MemberPathProperties = memberPathProperties;
             PropertyInfo = propertyInfo;
             ColumnName = columnName;
             CaseSensitive = caseSensitive;
@@ -291,6 +293,8 @@ namespace Dapper.FluentMap.Configuration
         /// Gets the mapped member path.
         /// </summary>
         public string MemberPath { get; }
+
+        internal IReadOnlyList<PropertyInfo> MemberPathProperties { get; }
 
         /// <summary>
         /// Gets the terminal property metadata for the mapped member path.
@@ -329,8 +333,10 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(map));
             }
 
+            var memberPath = PropertyMapIdentity.GetMemberPath(map);
             return new PropertyMappingConfiguration(
-                PropertyMapIdentity.GetMemberPath(map).ToString(),
+                memberPath.ToString(),
+                new ReadOnlyCollection<PropertyInfo>(memberPath.Properties.ToList()),
                 map.PropertyInfo,
                 map.ColumnName,
                 map.CaseSensitive,

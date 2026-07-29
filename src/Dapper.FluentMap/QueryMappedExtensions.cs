@@ -109,7 +109,7 @@ namespace Dapper.FluentMap
             CommandDefinition command)
             where TEntity : class
         {
-            return ExecuteMapped<TEntity>(connection, command, profileType: null);
+            return ExecuteMapped<TEntity>(connection, command, profileType: null, FluentMapper.Runtime);
         }
 
         /// <summary>
@@ -131,7 +131,7 @@ namespace Dapper.FluentMap
             where TEntity : class
             where TProfile : IMappingProfile
         {
-            return ExecuteMapped<TEntity>(connection, command, typeof(TProfile));
+            return ExecuteMapped<TEntity>(connection, command, typeof(TProfile), FluentMapper.Runtime);
         }
 
         /// <summary>
@@ -231,7 +231,7 @@ namespace Dapper.FluentMap
             CommandDefinition command)
             where TEntity : class
         {
-            return ExecuteMappedUnbuffered<TEntity>(connection, command, profileType: null);
+            return ExecuteMappedUnbuffered<TEntity>(connection, command, profileType: null, FluentMapper.Runtime);
         }
 
         /// <summary>
@@ -253,7 +253,7 @@ namespace Dapper.FluentMap
             where TEntity : class
             where TProfile : IMappingProfile
         {
-            return ExecuteMappedUnbuffered<TEntity>(connection, command, typeof(TProfile));
+            return ExecuteMappedUnbuffered<TEntity>(connection, command, typeof(TProfile), FluentMapper.Runtime);
         }
 
         /// <summary>
@@ -421,7 +421,7 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(connection));
             }
 
-            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, profileType: null, command.CancellationToken);
+            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, profileType: null, FluentMapper.Runtime, command.CancellationToken);
         }
 
         /// <summary>
@@ -448,7 +448,7 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(connection));
             }
 
-            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, typeof(TProfile), command.CancellationToken);
+            return ExecuteMappedUnbufferedAsync<TEntity>(connection, command, typeof(TProfile), FluentMapper.Runtime, command.CancellationToken);
         }
 
         /// <summary>
@@ -564,7 +564,7 @@ namespace Dapper.FluentMap
             where TEntity : class
             where TProfile : IMappingProfile
         {
-            return ExecuteMappedAsync<TEntity>(connection, command, typeof(TProfile));
+            return ExecuteMappedAsync<TEntity>(connection, command, typeof(TProfile), FluentMapper.Runtime);
         }
 
         /// <summary>
@@ -652,34 +652,41 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(connection));
             }
 
-            return new MappedGridReader(SqlMapper.ExecuteReader(connection, command));
+            return new MappedGridReader(SqlMapper.ExecuteReader(connection, command), FluentMapper.Runtime);
         }
 
-        private static IEnumerable<TEntity> ExecuteMapped<
+        internal static IEnumerable<TEntity> ExecuteMapped<
             [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
             TEntity>(
             IDbConnection connection,
             CommandDefinition command,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
             if (connection == null)
             {
                 throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
             }
 
             using (var reader = SqlMapper.ExecuteReader(connection, command))
             {
-                return MappedRowMaterializer.Materialize<TEntity>(reader, profileType);
+                return MappedRowMaterializer.Materialize<TEntity>(reader, profileType, runtime);
             }
         }
 
-        private static IEnumerable<TEntity> ExecuteMappedUnbuffered<
+        internal static IEnumerable<TEntity> ExecuteMappedUnbuffered<
             [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
             TEntity>(
             IDbConnection connection,
             CommandDefinition command,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
             if (connection == null)
@@ -687,7 +694,12 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(connection));
             }
 
-            return ExecuteMappedUnbufferedIterator<TEntity>(connection, command, profileType);
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
+            return ExecuteMappedUnbufferedIterator<TEntity>(connection, command, profileType, runtime);
         }
 
         private static IEnumerable<TEntity> ExecuteMappedUnbufferedIterator<
@@ -695,12 +707,13 @@ namespace Dapper.FluentMap
             TEntity>(
             IDbConnection connection,
             CommandDefinition command,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
             using (var reader = SqlMapper.ExecuteReader(connection, command))
             {
-                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType);
+                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType, runtime);
 
                 while (reader.Read())
                 {
@@ -714,7 +727,8 @@ namespace Dapper.FluentMap
             TEntity>(
             IDbConnection connection,
             CommandDefinition command,
-            Type profileType)
+            Type profileType,
+            FluentMapRuntime runtime)
             where TEntity : class
         {
             if (connection == null)
@@ -722,24 +736,35 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(connection));
             }
 
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
+            }
+
             using (var reader = await SqlMapper.ExecuteReaderAsync(connection, command).ConfigureAwait(false))
             {
-                return MappedRowMaterializer.Materialize<TEntity>(reader, profileType);
+                return MappedRowMaterializer.Materialize<TEntity>(reader, profileType, runtime);
             }
         }
 
-        private static async IAsyncEnumerable<TEntity> ExecuteMappedUnbufferedAsync<
+        internal static async IAsyncEnumerable<TEntity> ExecuteMappedUnbufferedAsync<
             [DynamicallyAccessedMembers(QueryMappedApiAnnotations.MaterializedEntityMemberTypes)]
             TEntity>(
             DbConnection connection,
             CommandDefinition command,
             Type profileType,
+            FluentMapRuntime runtime,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
             where TEntity : class
         {
             if (connection == null)
             {
                 throw new ArgumentNullException(nameof(connection));
+            }
+
+            if (runtime == null)
+            {
+                throw new ArgumentNullException(nameof(runtime));
             }
 
             DbDataReader reader = null;
@@ -750,7 +775,7 @@ namespace Dapper.FluentMap
 
                 var effectiveCommand = WithCancellation(command, cancellationToken);
                 reader = await SqlMapper.ExecuteReaderAsync(connection, effectiveCommand).ConfigureAwait(false);
-                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType);
+                var materializer = MappedRowMaterializer.CreateMaterializer<TEntity>(reader, profileType, runtime);
 
                 while (true)
                 {
