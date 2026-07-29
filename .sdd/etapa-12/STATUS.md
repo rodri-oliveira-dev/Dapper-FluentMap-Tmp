@@ -8,11 +8,14 @@ features.
 
 ## Estado geral
 
-Etapa 12 iniciou com auditoria documental e baseline de build/test/pack. A
-solution esta buildable e testable no ambiente local. A automacao de CI/release
-foi preparada, mas a release stable ainda permanece bloqueada por baseline de
-API, estrategia final de versionamento, SBOM formal, package signing opcional e
-publish NuGet ainda desabilitado.
+Status: Concluida com release blockers para stable.
+
+Ultimo prompt executado: 12.7
+
+Etapa 12 foi encerrada com auditoria final de release readiness. A solution esta
+buildable, testable, packable e documentada no ambiente local. A recomendacao
+final e preparar uma Release Candidate do fork, preferencialmente
+`3.0.0-rc.1`, e nao publicar stable neste estado.
 
 ## Concluido
 
@@ -102,6 +105,12 @@ publish NuGet ainda desabilitado.
   auditar, compilar, testar, empacotar, validar artefatos, gerar metadata e
   gerar provenance.
 - Mantida publicacao NuGet desabilitada por design.
+- Criado `.sdd/etapa-12/FINAL-REPORT.md`.
+- Criado `.sdd/ROADMAP-SUMMARY.md`.
+- Executada auditoria final do Prompt 12.7.
+- Reexecutados restore, build Release, test Release, provider tests,
+  vulnerability audit, pack padrao, pack RC override, smokes AOT/trimming e
+  benchmark smoke.
 
 ## Em andamento
 
@@ -109,13 +118,23 @@ publish NuGet ainda desabilitado.
 
 ## Proximos passos
 
-1. Definir baseline de API do proprio fork apos primeiro RC/versao aprovada.
-2. Documentar migration guide, support policy e provider certification.
-3. Validar SourceLink URL/checksum em CI apos push.
-4. Definir e validar release candidate antes de stable.
-5. Fazer auditoria final de release blockers.
+1. Executar release workflow no GitHub para `3.0.0-rc.1`, sem publish NuGet.
+2. Validar SourceLink URL/checksum e provenance no SHA remoto.
+3. Instalar os pacotes RC em consumer smoke externo.
+4. Criar baseline API/binaria do proprio fork apos a RC aprovada.
+5. Promover para stable somente depois de feedback real e blockers zerados ou
+   explicitamente aceitos.
 
 ## Release blockers
+
+Para RC:
+
+- Critical se publicar artefato errado: o pack padrao ainda gera `2.0.0`; RC
+  deve usar override/versionamento `3.0.0-rc.1` ou equivalente.
+- High: SourceLink URL/checksum precisa ser validado em CI apos push do commit.
+- High: consumer smoke externo dos pacotes RC ainda nao foi executado.
+
+Para stable:
 
 - Critical: `2.0.0` ja existe no NuGet.org para core e Dommel; a estrategia de
   versionamento do fork precisa mudar antes de publicar.
@@ -431,18 +450,60 @@ Resultados:
 - `git diff --check`: sem erros; apenas avisos esperados de normalizacao LF ->
   CRLF no Windows para `README.md` e `.sdd/etapa-12/STATUS.md`.
 
-## Blockers restantes para 12.7
+## Validacao do Prompt 12.7
 
-- Critical: estrategia final de versionamento do fork ainda precisa ser
-  confirmada antes de publicar, pois `2.0.0` ja existe para core/Dommel.
-- Critical: baseline de API/binario do proprio fork ainda precisa ser
-  estabelecida antes de stable.
-- High: SourceLink URL/checksum precisa ser validado em CI apos push.
-- High: CI ainda nao certifica SQL Server/PostgreSQL com servicos reais nem
-  smokes trimming/AOT.
-- High: interoperabilidade com Dapper TypeHandler depende de boundary interna
-  por reflection.
-- Medium: manifests de release dos analyzers/generators precisam revisao antes
-  de stable.
-- Medium: SBOM formal e package signing seguem decisao futura/adiada.
-- Medium: package lock ou Central Package Management ainda nao foram decididos.
+Executada localmente em 2026-07-29:
+
+```bash
+dotnet --version
+dotnet restore ./Dapper.FluentMap.sln
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+dotnet test ./test/Dapper.FluentMap.ProviderCompatibility.Tests/Dapper.FluentMap.ProviderCompatibility.Tests.csproj --configuration Release --no-build
+dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages-12.7-final
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages-12.7-rc -p:VersionPrefix=3.0.0-rc.1
+dotnet nuget verify artifacts\packages-12.7-final\*.nupkg
+dotnet run --project ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_EXPLICIT -p:UseSharedCompilation=false
+dotnet run --project ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_GENERATED -p:UseSharedCompilation=false
+dotnet run --project ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false
+dotnet run --project ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_GENERATED -p:UseSharedCompilation=false
+dotnet publish ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false --output ./.tmp/aot-smoke-12.7/di-explicit-trimmed
+./.tmp/aot-smoke-12.7/di-explicit-trimmed/Dapper.FluentMap.AotSmoke.exe
+dotnet publish ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_GENERATED -p:UseSharedCompilation=false --output ./.tmp/aot-smoke-12.7/di-generated-trimmed
+./.tmp/aot-smoke-12.7/di-generated-trimmed/Dapper.FluentMap.AotSmoke.exe
+dotnet publish ./test/Dapper.FluentMap.AotSmoke/Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishAot=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false --output ./.tmp/aot-smoke-12.7/di-explicit-aot
+dotnet run --project ./benchmarks/Dapper.FluentMap.Benchmarks/Dapper.FluentMap.Benchmarks.csproj --configuration Release -- --filter "*MaterializationSteadyStateBenchmarks*QueryMappedSimple*" --job Dry
+```
+
+Resultados:
+
+- SDK: `10.0.302`.
+- Restore: sucesso.
+- Build Release: sucesso, 0 warnings, 0 errors.
+- Test solution: sucesso; 460 passed, 14 skipped, 0 failed.
+- Provider compatibility: SQLite 7 passed; SQL Server/PostgreSQL 14 skipped por
+  ausencia de connection strings.
+- NuGet vulnerability audit: nenhuma vulnerabilidade reportada.
+- Pack padrao: sucesso; 5 `.nupkg`, 3 `.snupkg`, versao `2.0.0` nao publicavel.
+- Pack RC override `3.0.0-rc.1`: sucesso; 5 `.nupkg`, 3 `.snupkg`.
+- Package contents/nuspecs: README, license MIT, repository URL/commit,
+  dependency ranges e layouts esperados confirmados.
+- SourceLink: PDB contem URL GitHub para o commit local; checksum remoto nao
+  validado porque `sourcelink` nao esta instalado e o SHA precisa existir no
+  remoto.
+- `dotnet nuget verify`: hashes confirmados, falha `NU3004` por pacotes nao
+  assinados.
+- AOT smoke executavel: `explicit:ok`, `generated:ok`, `di-explicit:ok`,
+  `di-generated:ok`.
+- Publish trimmed DI explicit/generated: sucesso e execucao OK; warnings
+  conhecidos `IL2104`.
+- Native AOT publish: falha por ausencia de platform linker/toolchain nativa.
+- Benchmark smoke: sucesso; 20 cenarios executados; sem regressao severa de
+  alocacao observada; tempos sao guardrail, nao claim publico.
+
+## Recomendacao final
+
+Release recommendation: Release Candidate.
+
+Stable: nao recomendado.
