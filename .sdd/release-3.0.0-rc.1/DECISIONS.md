@@ -163,3 +163,32 @@ versao.
 
 Pack default e pack RC devem gerar cinco `.nupkg`; core, Dommel e DI tambem
 devem gerar `.snupkg`.
+
+## ADR-RC-9 - Manifest e validacao de artefatos
+
+### Contexto
+
+O workflow RC.1 validava a contagem basica de artefatos diretamente no YAML e
+gerava metadata simples. Para a qualificacao final da RC, o gate precisa
+inspecionar nuspecs, dependency ranges, repository commit, layouts de pacote e
+checksums sem duplicar regras complexas no workflow.
+
+### Decisao
+
+Criar `eng/validate-release-artifacts.ps1` como contrato reutilizavel local e
+CI para validar os artefatos da versao `3.0.0-rc.1` e gerar
+`artifact-manifest.json`.
+
+### Alternativas consideradas
+
+- Manter toda a logica em YAML: rejeitada por baixa reutilizacao local e maior
+  risco de divergencia.
+- Adicionar ferramenta externa de manifest/SBOM neste prompt: rejeitada porque
+  SBOM formal permanece decisao futura e o gate atual nao deve introduzir nova
+  dependencia operacional.
+
+### Consequencias
+
+O workflow de release passa a orquestrar restore, audit, build, test, pack,
+validacao, manifest e provenance. A semantica de validacao dos artefatos fica
+concentrada no script sem exigir secrets nem publicar pacotes.

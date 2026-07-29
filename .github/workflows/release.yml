@@ -50,20 +50,17 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = '${{ inputs.package-version }}'
 
-          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)$') {
             throw "Package version '$version' is not a supported SemVer value."
           }
 
-          if ($version -eq '2.0.0') {
-            throw "Version 2.0.0 already exists for historical package IDs and must not be used by this fork."
+          if ($version -ne '3.0.0-rc.1') {
+            throw "This release workflow is locked to 3.0.0-rc.1. Received '$version'."
           }
 
-          if ($version -eq '3.0.0') {
-            throw "Stable version 3.0.0 is disabled during the 3.0.0-rc.1 release freeze."
-          }
-
-          if ($version -notmatch '-') {
-            throw "Release freeze requires an explicit prerelease package version."
+          $ref = '${{ github.ref }}'
+          if ($ref -ne 'refs/heads/release/3.0.0-rc.1') {
+            throw "This release workflow is locked to refs/heads/release/3.0.0-rc.1. Received '$ref'."
           }
 
       - name: Guard disabled publish path
@@ -91,71 +88,26 @@ jobs:
       - name: Pack Release
         run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:Version=${{ inputs.package-version }}
 
-      - name: Validate package artifact set
+      - name: Validate release artifacts and write manifest
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $packageDir = './artifacts/packages'
-          $version = '${{ inputs.package-version }}'
-          $expectedNupkgs = @(
-            "Dapper.FluentMap.$version.nupkg",
-            "Dapper.FluentMap.Dommel.$version.nupkg",
-            "Dapper.FluentMap.DependencyInjection.$version.nupkg",
-            "Dapper.FluentMap.Analyzers.$version.nupkg",
-            "Dapper.FluentMap.Generators.$version.nupkg"
-          )
-          $expectedSnupkgs = @(
-            "Dapper.FluentMap.$version.snupkg",
-            "Dapper.FluentMap.Dommel.$version.snupkg",
-            "Dapper.FluentMap.DependencyInjection.$version.snupkg"
-          )
-          $actualNupkgs = @(Get-ChildItem -Path $packageDir -Filter '*.nupkg' -File | Select-Object -ExpandProperty Name)
-          $actualSnupkgs = @(Get-ChildItem -Path $packageDir -Filter '*.snupkg' -File | Select-Object -ExpandProperty Name)
-          $missing = @($expectedNupkgs + $expectedSnupkgs | Where-Object { $_ -notin @($actualNupkgs + $actualSnupkgs) })
-          $unexpected = @($actualNupkgs + $actualSnupkgs | Where-Object { $_ -notin @($expectedNupkgs + $expectedSnupkgs) })
+          ./eng/validate-release-artifacts.ps1 `
+            -PackageDirectory './artifacts/packages' `
+            -Version '${{ inputs.package-version }}' `
+            -ManifestPath './artifacts/release-metadata/artifact-manifest.json' `
+            -Repository '${{ github.repository }}' `
+            -RepositoryUrl 'https://github.com/${{ github.repository }}' `
+            -Commit '${{ github.sha }}' `
+            -Branch '${{ github.ref }}'
 
-          if ($missing.Count -gt 0) {
-            throw "Missing package artifacts: $($missing -join ', ')"
-          }
-
-          if ($unexpected.Count -gt 0) {
-            throw "Unexpected package artifacts: $($unexpected -join ', ')"
-          }
-
-      - name: Write release metadata
+      - name: Write dependency inventory
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path './artifacts/release-metadata' | Out-Null
           dotnet list ./Dapper.FluentMap.sln package --include-transitive --format json |
             Set-Content -Encoding utf8NoBOM -Path './artifacts/release-metadata/dependencies.json'
-
-          $packageFiles = @(
-            Get-ChildItem -Path './artifacts/packages' -Filter '*.nupkg' -File
-            Get-ChildItem -Path './artifacts/packages' -Filter '*.snupkg' -File
-          ) |
-            Sort-Object Name |
-            ForEach-Object {
-              [ordered]@{
-                name = $_.Name
-                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-                size = $_.Length
-              }
-            }
-
-          [ordered]@{
-            schemaVersion = '1.0'
-            repository = '${{ github.repository }}'
-            ref = '${{ github.ref }}'
-            sha = '${{ github.sha }}'
-            runId = '${{ github.run_id }}'
-            runAttempt = '${{ github.run_attempt }}'
-            packageVersion = '${{ inputs.package-version }}'
-            dotnetSdk = (dotnet --version)
-            packageFiles = @($packageFiles)
-          } |
-            ConvertTo-Json -Depth 5 |
-            Set-Content -Encoding utf8NoBOM -Path './artifacts/release-metadata/release-metadata.json'
 
       - name: Upload release package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
