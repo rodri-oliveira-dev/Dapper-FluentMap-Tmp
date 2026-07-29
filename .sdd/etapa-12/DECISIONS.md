@@ -337,3 +337,91 @@ SQL Server/PostgreSQL ficam prontos para validacao assim que connection strings
 ou service containers dedicados forem configurados. A documentacao deve usar
 `Validated`, `Partial`, `Not validated` e `Unsupported upstream` de forma
 explicita.
+
+## ADR-15 - Package metadata, SourceLink and symbols
+
+### Contexto
+
+Core e Dommel ainda usavam `PackageLicenseUrl`, nao incluiam README no pacote e
+apontavam `PackageProjectUrl` para o repositorio upstream original. Nenhum
+pacote gerava `.snupkg` e nao havia propriedades explicitas de repository
+metadata, SourceLink, determinismo ou CI build.
+
+### Decisao
+
+Centralizar metadata moderna em `Directory.Build.props`: repository URL do
+fork, project URL, license expression MIT, README, SourceLink/repository
+metadata, determinismo e symbol packages. Analyzer e generator nao geram
+`.snupkg`, porque o layout correto desses pacotes e `analyzers/dotnet/cs`, sem
+`lib/`; seus PDBs sao empacotados ao lado das DLLs no pacote principal.
+
+### Alternativas consideradas
+
+- Manter metadata upstream original: rejeitado porque o fork precisa apontar
+  para o repositorio que contem o codigo publicado.
+- Referenciar pacote SourceLink explicitamente: rejeitado porque o SDK 10 ja
+  inclui suporte SourceLink para GitHub; adicionar pacote seria redundante.
+- Gerar `.snupkg` para analyzer/generator: rejeitado porque o SDK produziu
+  symbol package vazio e falhou com `NU5017`.
+
+### Consequencias
+
+Pacotes runtime passam a ter `.snupkg`; todos os pacotes possuem README,
+license expression e repository URL/commit. A validacao completa de URL/checksum
+do SourceLink deve rodar apos o commit estar disponivel no remoto.
+
+## ADR-16 - API/package validation baseline
+
+### Contexto
+
+O SDK oferece package validation nativa no `Pack`. O fork ja divergiu bastante
+do pacote original `2.0.0`, com APIs novas e uma quebra confirmada em Dommel
+(`GeneratedOption` nullable). Uma baseline obrigatoria contra o pacote original
+nao representa um gate verde para a linha atual.
+
+### Decisao
+
+Habilitar `EnablePackageValidation=true` nos pacotes com `lib/`: core, Dommel e
+DependencyInjection. Nao adicionar `PublicApiAnalyzers` neste prompt. A baseline
+historica contra `2.0.0` original fica documentada no public API review e a
+baseline obrigatoria do fork deve ser definida contra o primeiro RC/versao
+aprovada do proprio fork.
+
+### Alternativas consideradas
+
+- Adicionar `PublicApiAnalyzers` agora: rejeitado por redundancia e por criar um
+  baseline textual grande antes da decisao de versao.
+- Bloquear pack contra `2.0.0` original: rejeitado porque registraria quebras
+  ja acumuladas do fork, nao apenas mudancas acidentais futuras.
+- Nao habilitar tooling: rejeitado porque package validation sem baseline ja
+  protege consistencia de pacote e prepara o gate para uma baseline futura.
+
+### Consequencias
+
+`dotnet pack` passa a executar package validation nativa para pacotes runtime.
+A release ainda precisa de baseline do fork antes de stable.
+
+## ADR-17 - Strong naming and package signing
+
+### Contexto
+
+Assemblies atuais nao possuem public key token. O prompt pediu revisar a
+necessidade historica de strong naming e validar pacotes. `dotnet nuget verify`
+confirmou hashes, mas falhou com `NU3004` porque os pacotes nao estao assinados.
+
+### Decisao
+
+Nao adicionar strong naming e nao assinar pacotes neste prompt.
+
+### Alternativas consideradas
+
+- Assinar assemblies strong-name por tradicao: rejeitado porque muda identidade
+  de assembly e pode ser breaking.
+- Assinar `.nupkg` sem processo de release/certificado definido: rejeitado por
+  risco operacional e segredo ausente.
+
+### Consequencias
+
+Strong naming e package signing permanecem decisoes de release engineering
+separadas. Se forem adotados futuramente, devem ter chave/certificado,
+validacao, ownership e estrategia de migracao.

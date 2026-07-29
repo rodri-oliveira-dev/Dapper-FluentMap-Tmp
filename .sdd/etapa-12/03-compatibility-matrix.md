@@ -30,6 +30,18 @@ pre-releases antigas da linha `1.x`, sem valor para a matriz de release atual.
 Dommel permanece pacote opcional e bridge process-wide. A matriz do core nao
 promete isolamento Dommel por runtime.
 
+A dependencia NuGet declarada para Dommel e:
+
+```xml
+[3.5.3,4.0.0)
+```
+
+Rationale:
+
+- `3.5.3` e a versao minima e latest stable validada no Prompt 12.2.
+- O limite exclusivo `4.0.0` evita que um major futuro nao validado seja
+  selecionado automaticamente por consumidores.
+
 ## Analyzer And Generator Components
 
 | Component | TFM | Compiler References | Build | Tests | Status |

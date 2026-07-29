@@ -9,9 +9,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Dapper.FluentMap.DependencyInjection</PackageId>
     <PackageTags>c#;dapper;mapping;fluentmap;dependency-injection</PackageTags>
-    <PackageProjectUrl>https://github.com/henkmollema/Dapper-FluentMap</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Dapper.FluentMap\Dapper.FluentMap.csproj" />

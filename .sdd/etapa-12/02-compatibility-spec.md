@@ -37,7 +37,7 @@ Politica proposta:
 
 Politica proposta:
 
-- Suporte minimo atual: `Dommel >= 3.5.3`.
+- Suporte atual declarado no pacote: `Dommel [3.5.3,4.0.0)`.
 - Dommel e pacote opcional e nao faz parte do contrato do core.
 - A integracao Dommel atual e process-wide porque usa extension points globais
   de `DommelMapper`.
