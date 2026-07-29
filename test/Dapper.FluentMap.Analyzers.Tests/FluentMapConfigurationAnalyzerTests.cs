@@ -229,7 +229,7 @@ public sealed class Startup
         }
 
         [Fact]
-        public async Task PersistenceConfigurationAfterIgnoreShouldReportDfm012()
+        public async Task PersistenceConfigurationAfterIgnoreShouldReportDfm013()
         {
             var source = @"
 using Dapper.FluentMap.Mapping;
@@ -255,7 +255,7 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
-        public async Task ComputedAndDatabaseDefaultShouldReportDfm012()
+        public async Task ComputedAndDatabaseDefaultShouldReportDfm013()
         {
             var source = @"
 using Dapper.FluentMap.Mapping;
@@ -280,7 +280,7 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
-        public async Task DatabaseDefaultAndComputedShouldReportDfm012()
+        public async Task DatabaseDefaultAndComputedShouldReportDfm013()
         {
             var source = @"
 using Dapper.FluentMap.Mapping;
@@ -305,7 +305,7 @@ public sealed class CustomerMap : EntityMap<Customer>
         }
 
         [Fact]
-        public async Task ComputedAndKeyShouldReportDfm012()
+        public async Task ComputedAndKeyShouldReportDfm013()
         {
             var source = @"
 using Dapper.FluentMap.Dommel.Mapping;
@@ -330,7 +330,7 @@ public sealed class CustomerMap : DommelEntityMap<Customer>
         }
 
         [Fact]
-        public async Task GeneratedOptionComputedAndDatabaseDefaultShouldReportDfm012()
+        public async Task GeneratedOptionComputedAndDatabaseDefaultShouldReportDfm013()
         {
             var source = @"
 using System.ComponentModel.DataAnnotations.Schema;
@@ -358,7 +358,7 @@ public sealed class CustomerMap : DommelEntityMap<Customer>
         }
 
         [Fact]
-        public async Task ValidPersistenceCombinationsShouldNotReportDfm012()
+        public async Task ValidPersistenceCombinationsShouldNotReportDfm013()
         {
             var source = @"
 using System.ComponentModel.DataAnnotations.Schema;
@@ -398,6 +398,151 @@ public sealed class CustomerMap : DommelEntityMap<Customer>
             var diagnostics = await GetAnalyzerDiagnosticsAsync(source);
 
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == FluentMapConfigurationAnalyzer.InvalidPersistenceBehaviorDiagnosticId);
+        }
+
+        [Fact]
+        public async Task InvalidReadConverterContractShouldReportDfm014()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public enum AccountStatus
+{
+    Active
+}
+
+public sealed class Customer
+{
+    public AccountStatus Status { get; set; }
+}
+
+public sealed class StatusConverter
+{
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Status).ConvertFromDatabaseUsing<StatusConverter, string>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPropertyConverterDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Property path 'Status' has invalid read converter 'StatusConverter'");
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "does not implement IReadPropertyConverter<string, TProperty>");
+            AssertDiagnosticLineContains(source, diagnostic, "ConvertFromDatabaseUsing<StatusConverter, string>()");
+        }
+
+        [Fact]
+        public async Task InvalidWriteConverterContractShouldReportDfm014()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public enum AccountStatus
+{
+    Active
+}
+
+public sealed class Customer
+{
+    public AccountStatus Status { get; set; }
+}
+
+public sealed class StatusConverter : IWritePropertyConverter<int, string>
+{
+    public string ConvertToDatabase(int value) => value.ToString();
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Status).ConvertToDatabaseUsing<StatusConverter, string>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.InvalidPropertyConverterDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Property path 'Status' has invalid write converter 'StatusConverter'");
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "accepts 'int', which is not compatible with mapped property type 'AccountStatus'");
+            AssertDiagnosticLineContains(source, diagnostic, "ConvertToDatabaseUsing<StatusConverter, string>()");
+        }
+
+        [Fact]
+        public async Task DuplicateReadConverterInSameFluentChainShouldReportDfm015()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Name { get; set; }
+}
+
+public sealed class FirstConverter : IReadPropertyConverter<string, string>
+{
+    public string ConvertFromDatabase(string value) => value;
+}
+
+public sealed class SecondConverter : IReadPropertyConverter<string, string>
+{
+    public string ConvertFromDatabase(string value) => value;
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Name)
+            .ConvertFromDatabaseUsing<FirstConverter, string>()
+            .ConvertFromDatabaseUsing<SecondConverter, string>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.DuplicatePropertyConverterDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Property path 'Name' configures more than one read converter");
+            AssertDiagnosticLineContains(source, diagnostic, "ConvertFromDatabaseUsing<SecondConverter, string>()");
+        }
+
+        [Fact]
+        public async Task DuplicateWriteConverterInSameFluentChainShouldReportDfm015()
+        {
+            var source = @"
+using Dapper.FluentMap.Mapping;
+
+public sealed class Customer
+{
+    public string Name { get; set; }
+}
+
+public sealed class FirstConverter : IWritePropertyConverter<string, string>
+{
+    public string ConvertToDatabase(string value) => value;
+}
+
+public sealed class SecondConverter : IWritePropertyConverter<string, string>
+{
+    public string ConvertToDatabase(string value) => value;
+}
+
+public sealed class CustomerMap : EntityMap<Customer>
+{
+    public CustomerMap()
+    {
+        Map(c => c.Name)
+            .ConvertToDatabaseUsing<FirstConverter, string>()
+            .ConvertToDatabaseUsing<SecondConverter, string>();
+    }
+}";
+
+            var diagnostic = await GetSingleDiagnosticAsync(source, FluentMapConfigurationAnalyzer.DuplicatePropertyConverterDiagnosticId);
+
+            AssertDiagnostic(diagnostic, DiagnosticSeverity.Error, "Property path 'Name' configures more than one write converter");
+            AssertDiagnosticLineContains(source, diagnostic, "ConvertToDatabaseUsing<SecondConverter, string>()");
         }
 
         [Fact]

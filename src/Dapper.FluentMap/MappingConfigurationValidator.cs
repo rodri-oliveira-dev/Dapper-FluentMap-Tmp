@@ -151,8 +151,132 @@ namespace Dapper.FluentMap
             }
 
             ValidatePersistenceMetadata(entityType, map, memberPath, sourceKind, sourceType);
+            ValidateConversionMetadata(entityType, map, memberPath, sourceKind, sourceType);
 
             return new MapDescriptor(map, memberPath);
+        }
+
+        private static void ValidateConversionMetadata(Type entityType, IPropertyMap map, MemberPath memberPath, string sourceKind, Type sourceType)
+        {
+            var conversion = PropertyMapConversion.GetConversion(map);
+            if (conversion == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Conversion metadata cannot be null.");
+            }
+
+            if (conversion.HasReadConverter)
+            {
+                ValidateConverterDescriptor(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    conversion.ReadConverter,
+                    PropertyConversionDirection.Read);
+            }
+
+            if (conversion.HasWriteConverter)
+            {
+                ValidateConverterDescriptor(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    conversion.WriteConverter,
+                    PropertyConversionDirection.Write);
+            }
+
+            var persistence = PropertyMapPersistence.GetPersistence(map);
+            if (persistence == null)
+            {
+                return;
+            }
+
+            if (persistence.IgnoredByFluentMap && conversion.HasReadConverter)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Ignored properties are never materialized by FluentMap and cannot use read converters.");
+            }
+
+            if (conversion.HasWriteConverter &&
+                persistence.IgnoredByFluentMap)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Ignored properties are never persisted and cannot use write converters.");
+            }
+
+            if (conversion.HasWriteConverter &&
+                !persistence.ParticipatesInInsert &&
+                !persistence.ParticipatesInUpdate &&
+                !persistence.IsKey)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "The write converter is configured for a property that never participates in insert, update or key persistence.");
+            }
+        }
+
+        private static void ValidateConverterDescriptor(
+            Type entityType,
+            MemberPath memberPath,
+            string sourceKind,
+            Type sourceType,
+            PropertyConverterMetadata converter,
+            PropertyConversionDirection expectedDirection)
+        {
+            if (converter == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    $"The {expectedDirection.ToString().ToLowerInvariant()} converter descriptor cannot be null.");
+            }
+
+            if (converter.Direction != expectedDirection)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    $"The converter descriptor direction is '{converter.Direction}' but '{expectedDirection}' was expected.");
+            }
+
+            if (converter.ConverterType == null ||
+                converter.DatabaseType == null ||
+                converter.PropertyType == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Converter type, database type and property type must all be present.");
+            }
+        }
+
+        private static FluentMapConfigurationException InvalidConversionMetadata(Type entityType, MemberPath memberPath, string sourceKind, Type sourceType, string reason)
+        {
+            return new FluentMapConfigurationException(
+                $"Property path '{memberPath}' on entity '{FormatType(entityType)}' has invalid conversion metadata in {sourceKind} '{FormatType(sourceType)}'. {reason}");
         }
 
         private static void ValidatePersistenceMetadata(Type entityType, IPropertyMap map, MemberPath memberPath, string sourceKind, Type sourceType)

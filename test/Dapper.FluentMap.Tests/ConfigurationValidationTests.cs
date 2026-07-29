@@ -171,6 +171,32 @@ namespace Dapper.FluentMap.Tests
         }
 
         [Fact]
+        public void InvalidConversionMetadataShouldThrowUsefulConfigurationException()
+        {
+            PreTest(typeof(ConversionValidationEntity));
+
+            var exception = Assert.Throws<FluentMapConfigurationException>(() =>
+                FluentMapper.Initialize(c => c.AddMap(new InvalidConversionValidationMap())));
+
+            Assert.Contains(nameof(ConversionValidationEntity.Status), exception.Message);
+            Assert.Contains("invalid conversion metadata", exception.Message);
+            Assert.Contains("Conversion metadata cannot be null", exception.Message);
+        }
+
+        [Fact]
+        public void WriteConverterForNeverPersistedPropertyShouldThrowUsefulConfigurationException()
+        {
+            PreTest(typeof(ConversionValidationEntity));
+
+            var exception = Assert.Throws<FluentMapConfigurationException>(() =>
+                FluentMapper.Initialize(c => c.AddMap(new ReadOnlyWriteConversionValidationMap())));
+
+            Assert.Contains(nameof(ConversionValidationEntity.Status), exception.Message);
+            Assert.Contains("write converter", exception.Message);
+            Assert.Contains("never participates", exception.Message);
+        }
+
+        [Fact]
         public void ConventionWithoutConfigureShouldThrowConfigurationException()
         {
             PreTest(typeof(ValidEntity));
@@ -341,6 +367,61 @@ namespace Dapper.FluentMap.Tests
             public bool Ignored => true;
 
             public PropertyPersistenceMetadata Persistence => PropertyPersistenceMetadata.Default;
+        }
+
+        private class ConversionValidationEntity
+        {
+            public string Status { get; set; }
+        }
+
+        private class ReadOnlyWriteConversionValidationMap : EntityMap<ConversionValidationEntity>
+        {
+            public ReadOnlyWriteConversionValidationMap()
+            {
+                Map(e => e.Status)
+                    .ConvertToDatabaseUsing<StatusWriteConverter, string>()
+                    .ReadOnly();
+            }
+        }
+
+        private class InvalidConversionValidationMap : IEntityMap<ConversionValidationEntity>
+        {
+            public InvalidConversionValidationMap()
+            {
+                PropertyMaps = new List<IPropertyMap>
+                {
+                    new InvalidConversionPropertyMap(
+                        typeof(ConversionValidationEntity).GetProperty(nameof(ConversionValidationEntity.Status)))
+                };
+            }
+
+            public IList<IPropertyMap> PropertyMaps { get; }
+        }
+
+        private class InvalidConversionPropertyMap : IPropertyMap, IPropertyMapWithConversionMetadata
+        {
+            public InvalidConversionPropertyMap(PropertyInfo propertyInfo)
+            {
+                PropertyInfo = propertyInfo;
+            }
+
+            public string ColumnName => PropertyInfo.Name;
+
+            public PropertyInfo PropertyInfo { get; }
+
+            public bool CaseSensitive => true;
+
+            public bool Ignored => false;
+
+            public PropertyConversionMetadata Conversion => null;
+        }
+
+        private sealed class StatusWriteConverter : IWritePropertyConverter<string, string>
+        {
+            public string ConvertToDatabase(string value)
+            {
+                return value;
+            }
         }
 
         private class NestedLevelEntity

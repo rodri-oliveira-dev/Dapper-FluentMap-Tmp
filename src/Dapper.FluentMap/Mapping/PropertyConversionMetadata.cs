@@ -7,6 +7,9 @@ namespace Dapper.FluentMap.Mapping
     /// <summary>
     /// Converts database/provider values to property values for one mapped property.
     /// </summary>
+    /// <remarks>
+    /// Converter instances may be reused by concurrent materialization operations. Implementations should be stateless or otherwise thread-safe.
+    /// </remarks>
     /// <typeparam name="TDatabase">The CLR type produced by the database provider.</typeparam>
     /// <typeparam name="TProperty">The mapped property CLR type.</typeparam>
     public interface IReadPropertyConverter<in TDatabase, out TProperty>
@@ -22,6 +25,9 @@ namespace Dapper.FluentMap.Mapping
     /// <summary>
     /// Converts property values to database/provider values for one mapped property.
     /// </summary>
+    /// <remarks>
+    /// Converter instances may be reused by concurrent persistence operations when an integration supports write conversion. Implementations should be stateless or otherwise thread-safe.
+    /// </remarks>
     /// <typeparam name="TProperty">The mapped property CLR type.</typeparam>
     /// <typeparam name="TDatabase">The CLR type sent to the database provider.</typeparam>
     public interface IWritePropertyConverter<in TProperty, out TDatabase>
@@ -37,6 +43,9 @@ namespace Dapper.FluentMap.Mapping
     /// <summary>
     /// Converts values in both read and write directions for one mapped property.
     /// </summary>
+    /// <remarks>
+    /// Converter instances may be reused concurrently. Implementations should be stateless or otherwise thread-safe.
+    /// </remarks>
     /// <typeparam name="TDatabase">The database/provider CLR type.</typeparam>
     /// <typeparam name="TProperty">The mapped property CLR type.</typeparam>
     public interface IPropertyConverter<TDatabase, TProperty> :

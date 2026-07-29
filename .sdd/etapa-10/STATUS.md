@@ -92,6 +92,24 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
 - Documentada a decisao de nao executar write converters em Dommel nesta etapa,
   preservando persistence semantics da Etapa 8 e comportamento atual de
   `Insert`/`Update`.
+- Criado `.sdd/etapa-10/08-conversion-diagnostics.md`.
+- Consolidada a matriz de diagnostics para converter configuration,
+  runtime validation, analyzer comum, generator e Dommel/write boundary.
+- Renumerado o diagnostic de persistencia do analyzer comum para `DFM013`,
+  evitando colisao com `DFM012` do generator.
+- Adicionados diagnostics do analyzer comum:
+  `DFM014` para property converter por tipo invalido e `DFM015` para converter
+  direcional duplicado na mesma fluent chain.
+- `MappingConfigurationValidator` passou a validar conversion metadata efetiva,
+  incluindo metadata nula em property map externo, direcao inconsistente,
+  converter em propriedade ignorada e write converter em propriedade que nunca
+  participa de insert, update ou key persistence.
+- Documentado no XML docs dos contratos publicos que converters podem ser
+  reutilizados por operacoes concorrentes e devem ser stateless/thread-safe.
+- Reforcados testes de regressao para converters por propriedade com mesmo tipo,
+  read/write asymmetry, profiles concorrentes, generated concurrent conversion,
+  Dommel mantendo write conversion metadata-only e validacao runtime de
+  metadata externa invalida.
 
 ## Em andamento
 
@@ -103,7 +121,8 @@ integracao.
 
 1. Definir hook publico de parametros por propriedade antes de implementar write
    conversion/Dommel.
-2. Evoluir diagnostics/analyzers alem do generator para reconhecer `Convert...`.
+2. Avaliar diagnostics futuros somente quando houver nova superficie de write
+   conversion ou null conversion opt-in.
 3. Aumentar benchmark formal quando houver decisao de otimizacao.
 
 ## Decisoes relevantes
@@ -119,6 +138,10 @@ integracao.
   puder ser emitido com seguranca.
 - Dommel/write conversion e incremento separado porque a integracao atual nao
   transforma valores de parametros por propriedade.
+- Prompt 10.6 consolida diagnostics e hardening sem mudar a semantica de
+  execucao: analyzer comum cobre somente conversores estaticamente provaveis,
+  runtime validation cobre composicao efetiva e Dommel continua metadata-only
+  para write converters.
 - Converters sao stateless/thread-safe por contrato e reutilizados.
 - AOT exige caminho por instancia/delegate ou referencia estatica gerada; nao
   deve depender de ativacao reflection-only.
@@ -283,6 +306,36 @@ public interface IPropertyConverter<TDatabase, TProperty> :
 - `dotnet pack`: nao executado; este prompt alterou somente documentacao SDD e
   nao mudou empacotamento ou codigo produtivo.
 
+## Validacao do Prompt 10.6
+
+- `dotnet test .\test\Dapper.FluentMap.Analyzers.Tests\Dapper.FluentMap.Analyzers.Tests.csproj --configuration Release --filter FullyQualifiedName~FluentMapConfigurationAnalyzerTests`:
+  sucesso, 19 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --filter "FullyQualifiedName~RuntimeReadConversionTests|FullyQualifiedName~ConfigurationValidationTests"`:
+  sucesso, 29 testes aprovados. Uma tentativa paralela anterior falhou por lock
+  temporario de build em `Dapper.FluentMap.dll`; rerun sequencial passou.
+- `dotnet test .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --filter FullyQualifiedName~GeneratedRegistrationIntegrationTests`:
+  sucesso, 5 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --filter FullyQualifiedName~DommelPersistenceIntegrationTests`:
+  sucesso, 5 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 402 testes aprovados no total.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Resultado observado: runtime property converter 1.095 ms /
+  165.98 KB, runtime simple converter 1.190 ms / 189.43 KB, generated property
+  converter 1.203 ms / 166.55 KB, generated simple converter 1.295 ms /
+  189.99 KB, runtime no converter 1.805 ms / 142.55 KB. BenchmarkDotNet
+  alertou que os tempos de iteracao ficaram abaixo de 100 ms; usar como smoke
+  representativo, nao conclusao estatistica.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso, pacote criado em `artifacts/packages/Dapper.FluentMap.2.0.0.nupkg`;
+  warning conhecido `NU5125` sobre `licenseUrl` depreciado.
+- `dotnet pack .\src\Dapper.FluentMap.Analyzers\Dapper.FluentMap.Analyzers.csproj --configuration Release --no-build --output .\artifacts\packages`:
+  sucesso, pacote criado em
+  `artifacts/packages/Dapper.FluentMap.Analyzers.2.0.0.nupkg`.
+
 ## Interacao com Dapper TypeHandler
 
 Precedencia proposta para `QueryMapped*`:
@@ -331,6 +384,7 @@ connection.Query<T>()
 - `.sdd/etapa-10/05-performance-baseline.md`
 - `.sdd/etapa-10/06-generated-conversion.md`
 - `.sdd/etapa-10/07-write-conversion.md`
+- `.sdd/etapa-10/08-conversion-diagnostics.md`
 - `.sdd/etapa-10/DECISIONS.md`
 - `.sdd/etapa-10/STATUS.md`
 - `src/Dapper.FluentMap/Materialization/NestedMaterializationPlan.cs`
@@ -356,4 +410,4 @@ connection.Query<T>()
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 10.5
+Ultimo prompt executado: 10.6

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Dapper;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Naming;
@@ -308,6 +309,45 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
                     Assert.Contains(typeof(GeneratedThrowingStatusConverter).FullName, exception.Message);
                     Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
                 }
+            }
+            finally
+            {
+                ResetMapper();
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void GeneratedQueryMappedShouldApplyReadConvertersAcrossConcurrentDefaultAndProfileQueries()
+        {
+            ResetMapper();
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddGeneratedMappings());
+
+                var results = System.Linq.Enumerable.Range(0, 32)
+                    .AsParallel()
+                    .Select(index =>
+                    {
+                        using (var connection = OpenConnection())
+                        {
+                            if (index % 2 == 0)
+                            {
+                                var current = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer>(
+                                    "SELECT 'A' AS status;");
+                                return current.Status == GeneratedAccountStatus.Active;
+                            }
+
+                            var legacy = connection.QueryMappedSingle<GeneratedConvertedProfileCustomer, GeneratedLegacyProfile>(
+                                "SELECT '1' AS legacy_status;");
+                            return legacy.Status == GeneratedAccountStatus.Inactive;
+                        }
+                    })
+                    .ToList();
+
+                Assert.All(results, Assert.True);
+                Assert.Equal(0, FluentMapper.Registry.MaterializationPlanCacheEntryCount);
             }
             finally
             {

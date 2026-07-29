@@ -116,3 +116,46 @@ Interpretacao:
   gerado apareceu mais lento nesta unica iteracao.
 - A evidencia funcional mais importante do prompt continua sendo equivalencia
   `runtime == generated` e cache runtime zerado no caminho gerado.
+
+## Apos Prompt 10.6
+
+O Prompt 10.6 adicionou diagnostics, validacao runtime e testes de hardening
+sem alterar o hot path de conversao. Foi executado benchmark curto em
+2026-07-29 com o mesmo perfil Dry representativo:
+
+```powershell
+dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2
+```
+
+Ambiente reportado:
+
+```text
+BenchmarkDotNet v0.15.8
+Windows 11 25H2
+.NET SDK 10.0.302
+.NET Runtime 10.0.10
+Intel Core i5-1145G7
+```
+
+Resultado observado:
+
+| Method | Mean | Allocated |
+|---|---:|---:|
+| QueryMappedRuntimePropertyConverter | 1.095 ms | 165.98 KB |
+| QueryMappedRuntimeSimpleConverter | 1.190 ms | 189.43 KB |
+| QueryMappedGeneratedPropertyConverter | 1.203 ms | 166.55 KB |
+| QueryMappedGeneratedSimpleConverter | 1.295 ms | 189.99 KB |
+| QueryMappedRuntimeNoConverter | 1.805 ms | 142.55 KB |
+
+Interpretacao:
+
+- A execucao continua sendo smoke de performance. BenchmarkDotNet alertou que
+  todos os tempos de iteracao ficaram abaixo de 100 ms.
+- A validacao e os analyzers novos atuam em configuracao/compilacao, fora do
+  custo por linha do materializer.
+- O custo fixo de converter permanece na criacao de metadata/plano ou no campo
+  estatico gerado. O custo por linha segue sendo a chamada do converter e, se
+  necessario, a conversao do valor bruto para `TDatabase`.
+- As alocacoes ficaram alinhadas com a baseline anterior: generated converter
+  adiciona diferenca pequena de descriptor/caminho gerado, e runtime converter
+  nao introduziu nova alocacao observavel por linha nesta medicao curta.

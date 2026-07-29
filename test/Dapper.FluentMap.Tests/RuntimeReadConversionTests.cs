@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using Dapper.FluentMap.Mapping;
@@ -180,6 +181,99 @@ namespace Dapper.FluentMap.Tests
                     Assert.Equal(AccountStatus.Active, current.Status);
                     Assert.Equal(AccountStatus.Inactive, legacy.Status);
                 }
+            }
+            finally
+            {
+                PreTest(typeof(ProfileConversionCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedShouldKeepConvertersScopedToPropertyWhenPropertyTypesMatch()
+        {
+            PreTest(typeof(MultipleStatusConversionCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new MultipleStatusConversionCustomerMap()));
+
+                using (var connection = OpenConnection())
+                {
+                    var customer = connection.QueryMappedSingle<MultipleStatusConversionCustomer>(
+                        "SELECT 'same' AS primary_status, 'same' AS secondary_status;");
+
+                    Assert.Equal(AccountStatus.Active, customer.PrimaryStatus);
+                    Assert.Equal(AccountStatus.Inactive, customer.SecondaryStatus);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(MultipleStatusConversionCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedShouldIgnoreWriteOnlyConverterDuringReadMaterialization()
+        {
+            PreTest(typeof(WriteOnlyReadConversionCustomer));
+
+            try
+            {
+                FluentMapper.Initialize(configuration => configuration.AddMap(new WriteOnlyReadConversionCustomerMap()));
+
+                using (var connection = OpenConnection())
+                {
+                    var customer = connection.QueryMappedSingle<WriteOnlyReadConversionCustomer>(
+                        "SELECT 'Active' AS status;");
+
+                    Assert.Equal(AccountStatus.Active, customer.Status);
+                }
+            }
+            finally
+            {
+                PreTest(typeof(WriteOnlyReadConversionCustomer));
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void QueryMappedShouldApplyReadConvertersAcrossConcurrentDefaultAndProfileQueries()
+        {
+            PreTest(typeof(ProfileConversionCustomer));
+            CountingStatusConverter.Calls = 0;
+
+            try
+            {
+                FluentMapper.Initialize(configuration =>
+                {
+                    configuration.AddMap(new DefaultProfileConversionCustomerMap());
+                    configuration.AddProfile<LegacyProfileConversionCustomerMap>();
+                });
+
+                var results = Enumerable.Range(0, 32)
+                    .AsParallel()
+                    .Select(index =>
+                    {
+                        using (var connection = OpenConnection())
+                        {
+                            if (index % 2 == 0)
+                            {
+                                var current = connection.QueryMappedSingle<ProfileConversionCustomer>(
+                                    "SELECT 'A' AS status;");
+                                return current.Status == AccountStatus.Active;
+                            }
+
+                            var legacy = connection.QueryMappedSingle<ProfileConversionCustomer, LegacyProfile>(
+                                "SELECT '1' AS legacy_status;");
+                            return legacy.Status == AccountStatus.Inactive;
+                        }
+                    })
+                    .ToList();
+
+                Assert.All(results, Assert.True);
+                Assert.Equal(16, CountingStatusConverter.Calls);
             }
             finally
             {
@@ -401,11 +495,11 @@ namespace Dapper.FluentMap.Tests
 
         private sealed class CountingStatusConverter : IReadPropertyConverter<string, AccountStatus>
         {
-            public static int Calls { get; set; }
+            public static int Calls;
 
             public AccountStatus ConvertFromDatabase(string value)
             {
-                Calls++;
+                Interlocked.Increment(ref Calls);
                 return value == "A" ? AccountStatus.Active : AccountStatus.Unknown;
             }
         }
@@ -533,6 +627,65 @@ namespace Dapper.FluentMap.Tests
             public LegacyProfileConversionCustomerMap()
             {
                 Map(customer => customer.Status).ToColumn("legacy_status").ConvertFromDatabaseUsing<LegacyStatusConverter, string>();
+            }
+        }
+
+        private sealed class MultipleStatusConversionCustomer
+        {
+            public AccountStatus PrimaryStatus { get; set; }
+
+            public AccountStatus SecondaryStatus { get; set; }
+        }
+
+        private sealed class MultipleStatusConversionCustomerMap : EntityMap<MultipleStatusConversionCustomer>
+        {
+            public MultipleStatusConversionCustomerMap()
+            {
+                Map(customer => customer.PrimaryStatus)
+                    .ToColumn("primary_status")
+                    .ConvertFromDatabaseUsing<PrimaryStatusConverter, string>();
+                Map(customer => customer.SecondaryStatus)
+                    .ToColumn("secondary_status")
+                    .ConvertFromDatabaseUsing<SecondaryStatusConverter, string>();
+            }
+        }
+
+        private sealed class PrimaryStatusConverter : IReadPropertyConverter<string, AccountStatus>
+        {
+            public AccountStatus ConvertFromDatabase(string value)
+            {
+                return AccountStatus.Active;
+            }
+        }
+
+        private sealed class SecondaryStatusConverter : IReadPropertyConverter<string, AccountStatus>
+        {
+            public AccountStatus ConvertFromDatabase(string value)
+            {
+                return AccountStatus.Inactive;
+            }
+        }
+
+        private sealed class WriteOnlyReadConversionCustomer
+        {
+            public AccountStatus Status { get; set; }
+        }
+
+        private sealed class WriteOnlyReadConversionCustomerMap : EntityMap<WriteOnlyReadConversionCustomer>
+        {
+            public WriteOnlyReadConversionCustomerMap()
+            {
+                Map(customer => customer.Status)
+                    .ToColumn("status")
+                    .ConvertToDatabaseUsing<ThrowingWriteConverter, string>();
+            }
+        }
+
+        private sealed class ThrowingWriteConverter : IWritePropertyConverter<AccountStatus, string>
+        {
+            public string ConvertToDatabase(AccountStatus value)
+            {
+                throw new InvalidOperationException("Write converter should not run during read materialization.");
             }
         }
 

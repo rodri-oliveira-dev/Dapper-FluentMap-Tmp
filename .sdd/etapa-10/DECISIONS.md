@@ -425,3 +425,42 @@ tinham antes.
 O suporte futuro depende de um hook publico de parametros por propriedade no
 Dommel ou de uma API explicita no pacote de integracao que deixe claro que usa
 parametros convertidos e nao os metodos Dommel existentes diretamente.
+
+## ADR-15 - Prompt 10.6 conversion diagnostics hardening
+
+### Contexto
+
+Converters agora possuem metadata, execucao runtime, suporte generated parcial
+e uma fronteira Dommel/write documentada. Faltava consolidar diagnostics sem
+transformar analyzers em executor de configuracao nem criar nova feature de
+conversao.
+
+### Decisao
+
+O analyzer comum reporta somente configuracoes estaticamente provaveis:
+
+- `DFM014` para converter por tipo sem contrato read/write compativel;
+- `DFM015` para duplicidade direcional na mesma fluent chain.
+
+O diagnostic de persistencia do analyzer comum foi renumerado para `DFM013`,
+mantendo `DFM012` como diagnostic do generator para read converter gerado
+invalido.
+
+`FluentMapper.Validate()` e o registro runtime continuam responsaveis pela
+composicao efetiva: maps externos, base maps, profiles, conventions,
+persistencia efetiva e converter em propriedade que nunca sera materializada ou
+persistida.
+
+### Consequencias
+
+Nao ha execucao de construtores pelo analyzer. Consumers recebem feedback cedo
+quando o codigo fonte permite prova estatica, e ainda precisam de
+`FluentMapper.Validate()`/testes para configuracoes dinamicas.
+
+`Explain<T>()` permanece com metadata estruturada em
+`MemberMappingExplanation.Conversion`; o `ToString()` nao virou formato
+diagnostico de contrato.
+
+Converters sao explicitamente documentados como stateless/thread-safe por
+contrato, pois instancias podem ser reutilizadas em consultas concorrentes e no
+caminho generated.

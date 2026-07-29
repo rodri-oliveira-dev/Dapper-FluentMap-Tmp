@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using Dapper;
 using Dapper.FluentMap.Dommel.Mapping;
+using Dapper.FluentMap.Mapping;
 using Dommel;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -289,6 +290,51 @@ CREATE TABLE composite_persistence_entities (
             }
         }
 
+        [Fact]
+        public void InsertAndUpdateShouldNotExecuteWriteConvertersWithoutDommelParameterHook()
+        {
+            PreTest();
+            SQLitePCL.Batteries_V2.Init();
+
+            FluentMapper.Initialize(config =>
+            {
+                config.AddMap(new WriteConversionBoundaryEntityMap());
+                config.ForDommel();
+            });
+
+            using (var connection = OpenConnection())
+            {
+                connection.Execute(@"
+CREATE TABLE write_conversion_boundary_entities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL
+);");
+
+                var entity = new WriteConversionBoundaryEntity
+                {
+                    Code = "original-insert"
+                };
+
+                var id = Convert.ToInt32(connection.Insert(entity));
+                var inserted = connection.QuerySingle<string>(
+                    "SELECT code FROM write_conversion_boundary_entities WHERE id = @id;",
+                    new { id });
+
+                Assert.Equal("original-insert", inserted);
+
+                entity.Id = id;
+                entity.Code = "original-update";
+
+                Assert.True(connection.Update(entity));
+
+                var updated = connection.QuerySingle<string>(
+                    "SELECT code FROM write_conversion_boundary_entities WHERE id = @id;",
+                    new { id });
+
+                Assert.Equal("original-update", updated);
+            }
+        }
+
         private static void PreTest()
         {
             FluentMapper.EntityMaps.Clear();
@@ -465,6 +511,33 @@ WHERE id = @id;", new { id });
                 Map(entity => entity.KeyPartOne).ToColumn("key_part_one").IsKey().SetGeneratedOption(DatabaseGeneratedOption.None);
                 Map(entity => entity.KeyPartTwo).ToColumn("key_part_two").IsKey().SetGeneratedOption(DatabaseGeneratedOption.None);
                 Map(entity => entity.Value).ToColumn("value");
+            }
+        }
+
+        private sealed class WriteConversionBoundaryEntity
+        {
+            public int Id { get; set; }
+
+            public string Code { get; set; }
+        }
+
+        private sealed class WriteConversionBoundaryEntityMap : DommelEntityMap<WriteConversionBoundaryEntity>
+        {
+            public WriteConversionBoundaryEntityMap()
+            {
+                ToTable("write_conversion_boundary_entities");
+                Map(entity => entity.Id).ToColumn("id").IsIdentity();
+                Map(entity => entity.Code)
+                    .ToColumn("code")
+                    .ConvertToDatabaseUsing<ThrowingWriteConverter, string>();
+            }
+        }
+
+        private sealed class ThrowingWriteConverter : IWritePropertyConverter<string, string>
+        {
+            public string ConvertToDatabase(string value)
+            {
+                throw new InvalidOperationException("Dommel does not execute property write converters in this stage.");
             }
         }
     }
