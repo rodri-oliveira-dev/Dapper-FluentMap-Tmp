@@ -69,6 +69,26 @@ publish NuGet ainda desabilitado.
 - Revisada decisao de strong naming: nao adicionar neste prompt.
 - Revisada package signing: nao assinar neste prompt.
 - Criado `06-ci-release-design.md`.
+- Criado `07-release-candidate-checklist.md`.
+- Reescrito `README.md` como porta de entrada bilingue mais objetiva, com
+  links para documentos dedicados.
+- Criado `MIGRATION.md` para migracao do FluentMap historico para a linha atual
+  do fork.
+- Criado `COMPATIBILITY.md` com matriz publica de .NET, Dapper, Dommel,
+  providers, AOT/trimming e limitacoes de estado global.
+- Criado `SUPPORT.md` com politica simples de suporte, seguranca, previews e
+  reporte de issues.
+- Criado `CHANGELOG.md` para a nova linha evolutiva do fork, sem reconstruir
+  artificialmente o historico antigo.
+- Auditoria documental do Prompt 12.6:
+  - outdated: README ainda carregava texto de etapa anterior e parte dos
+    detalhes de release sem separar politica de compatibilidade/migracao;
+  - duplicated: README repetia secoes EN/PT longas e mantinha detalhes que
+    agora pertencem a documentos publicos dedicados;
+  - missing: nao havia `MIGRATION.md`, `COMPATIBILITY.md`, `SUPPORT.md`,
+    `CHANGELOG.md` nem checklist publico de RC;
+  - excessive: README estava grande demais para ser apenas porta de entrada de
+    adocao, especialmente com toda a explicacao avancada duplicada em EN/PT.
 - Adicionado `global.json` com SDK `10.0.302`.
 - Centralizado `VersionPrefix` dos pacotes em
   `FluentMapPackageVersionPrefix`.
@@ -237,7 +257,7 @@ Resultados:
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 12.5
+Ultimo prompt executado: 12.6
 
 ## Validacao do Prompt 12.3
 
@@ -374,3 +394,55 @@ Resultados:
 - Todos os `uses:` em workflows estao pinados por SHA completo.
 - Provenance nao foi executado localmente porque depende do ambiente GitHub
   Actions/OIDC.
+
+## Validacao do Prompt 12.6
+
+Executada localmente em 2026-07-29:
+
+```bash
+dotnet restore ./Dapper.FluentMap.sln
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages-12.6-final
+dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
+git diff --check
+```
+
+Resultados:
+
+- Smoke de compilacao dos exemplos documentais representativos: sucesso contra
+  APIs reais de core, DI, generator, profiles, converters, runtime isolado e
+  query helpers. O projeto temporario gerou avisos proprios de scratch e foi
+  removido; nenhum arquivo temporario entrou no git.
+- Restore: sucesso.
+- Build Release: sucesso, 0 warnings, 0 errors.
+- Test solution: sucesso; 460 aprovados, 14 ignored/skipped, 0 falhas.
+- Skips: 14 cenarios condicionais de provider compatibility para SQL Server e
+  PostgreSQL por ausencia das connection strings `DFM_SQLSERVER_CONNECTION_STRING`
+  e `DFM_POSTGRESQL_CONNECTION_STRING`.
+- Pack final em `artifacts/packages-12.6-final`: sucesso; gerou 5 `.nupkg` e
+  3 `.snupkg`.
+- Conteudo dos pacotes inspecionado:
+  - runtime packages contem `README.md`, assembly e XML docs em
+    `lib/netstandard2.0`;
+  - analyzer/generator contem `README.md`, DLL e PDB em
+    `analyzers/dotnet/cs`.
+- Vulnerability audit: nenhum pacote vulneravel encontrado nas fontes atuais.
+- `git diff --check`: sem erros; apenas avisos esperados de normalizacao LF ->
+  CRLF no Windows para `README.md` e `.sdd/etapa-12/STATUS.md`.
+
+## Blockers restantes para 12.7
+
+- Critical: estrategia final de versionamento do fork ainda precisa ser
+  confirmada antes de publicar, pois `2.0.0` ja existe para core/Dommel.
+- Critical: baseline de API/binario do proprio fork ainda precisa ser
+  estabelecida antes de stable.
+- High: SourceLink URL/checksum precisa ser validado em CI apos push.
+- High: CI ainda nao certifica SQL Server/PostgreSQL com servicos reais nem
+  smokes trimming/AOT.
+- High: interoperabilidade com Dapper TypeHandler depende de boundary interna
+  por reflection.
+- Medium: manifests de release dos analyzers/generators precisam revisao antes
+  de stable.
+- Medium: SBOM formal e package signing seguem decisao futura/adiada.
+- Medium: package lock ou Central Package Management ainda nao foram decididos.
