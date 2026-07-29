@@ -159,3 +159,55 @@ Interpretacao:
 - As alocacoes ficaram alinhadas com a baseline anterior: generated converter
   adiciona diferenca pequena de descriptor/caminho gerado, e runtime converter
   nao introduziu nova alocacao observavel por linha nesta medicao curta.
+
+## Resultados finais da Etapa 10
+
+No Prompt 10.7 foram executados benchmarks representativos em 2026-07-29, com
+o mesmo perfil curto usado nos prompts anteriores:
+
+```powershell
+dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2
+```
+
+Tambem foi executado um recorte separado para Dapper puro/default conversion:
+
+```powershell
+dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.DapperPure" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2
+```
+
+Ambiente reportado:
+
+```text
+BenchmarkDotNet v0.15.8
+Windows 11 25H2
+.NET SDK 10.0.302
+.NET Runtime 10.0.10
+Intel Core i5-1145G7
+```
+
+Resultados observados:
+
+| Scenario | Method | Mean | Allocated | Overhead vs comparable no-converter |
+|---|---|---:|---:|---:|
+| Dapper/default conversion | `DapperPure` | 2.071 ms | 283.22 KB | Not comparable: 5-column Dapper baseline |
+| FluentMap sem converter | `QueryMappedRuntimeNoConverter` | 1.536 ms | 142.55 KB | Baseline for 2-column runtime converter shapes |
+| FluentMap runtime converter | `QueryMappedRuntimeSimpleConverter` | 2.036 ms | 189.43 KB | +0.500 ms / +46.88 KB |
+| FluentMap generated converter | `QueryMappedGeneratedSimpleConverter` | 2.206 ms | 189.99 KB | +0.670 ms / +47.44 KB |
+| FluentMap runtime property converter | `QueryMappedRuntimePropertyConverter` | 1.390 ms | 165.98 KB | -0.146 ms / +23.43 KB |
+| FluentMap generated property converter | `QueryMappedGeneratedPropertyConverter` | 1.421 ms | 166.55 KB | -0.115 ms / +24.00 KB |
+
+Interpretacao final:
+
+- Esta continua sendo uma execucao smoke, nao uma amostra estatistica formal.
+  BenchmarkDotNet alertou que todos os tempos de iteracao ficaram abaixo de
+  100 ms.
+- A comparacao Dapper/default conversion usa um shape de 5 colunas e serve como
+  referencia geral do ambiente, nao como par semantico dos benchmarks de
+  converter de 2 colunas.
+- As alocacoes dos cenarios de converter permaneceram na mesma ordem das
+  medicoes anteriores. O custo adicional esperado aparece como chamada do
+  converter e, em alguns cenarios, conversao do valor bruto para `TDatabase`.
+- O resultado de tempo local permanece ruidoso: nao ha evidencia suficiente
+  para afirmar vantagem de runtime ou generated converter em throughput.
+  A conclusao suportada e que a Etapa 10 nao introduziu regressao obvia de
+  alocacao ou falha funcional nos cenarios representativos.

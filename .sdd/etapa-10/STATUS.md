@@ -1,5 +1,9 @@
 # Etapa 10 Status
 
+Status: Concluída
+
+Último prompt executado: 10.7
+
 ## Objetivo
 
 Definir discovery, boundaries e arquitetura inicial para Property Conversion &
@@ -111,7 +115,7 @@ tipo e abrindo espaco para conversao por propriedade, map e profile.
   Dommel mantendo write conversion metadata-only e validacao runtime de
   metadata externa invalida.
 
-## Em andamento
+## Itens adiados
 
 Write/Dommel conversion permanece bloqueada ate existir um hook publico de
 parametros por propriedade no Dommel ou uma API explicita no pacote de
@@ -408,6 +412,32 @@ connection.Query<T>()
 - `test/Dapper.FluentMap.AotSmoke/Program.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
+## Validacao do Prompt 10.7
+
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`:
+  sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`:
+  sucesso, 402 testes aprovados no total.
+- `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`:
+  sucesso, 22 testes Dommel aprovados.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.QueryMapped*Converter*" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Resultado observado: runtime property converter 1.390 ms /
+  165.98 KB, generated property converter 1.421 ms / 166.55 KB, runtime no
+  converter 1.536 ms / 142.55 KB, runtime simple converter 2.036 ms /
+  189.43 KB, generated simple converter 2.206 ms / 189.99 KB.
+- `dotnet run --configuration Release --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj -- --filter "*MaterializationSteadyStateBenchmarks.DapperPure" --job Dry --warmupCount 1 --minIterationCount 1 --maxIterationCount 2`:
+  sucesso. Resultado observado: DapperPure 2.071 ms / 283.22 KB.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_GENERATED --output .\.tmp\aot-smoke\generated-trimmed` seguido de execucao do binario:
+  sucesso, executavel retornou `generated:ok`; warnings esperados `IL2026` em
+  `QueryMapped*` e `IL2104` em `Dapper.FluentMap`/`Dapper`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishAot=true -p:DefineConstants=AOT_SMOKE_GENERATED --output .\.tmp\aot-smoke\generated-aot`:
+  bloqueado pelo ambiente com `Platform linker not found`; antes do bloqueio
+  foram emitidos warnings esperados `IL2026` e `IL3050` nas chamadas
+  `QueryMapped*`.
+- `dotnet pack`: nao executado no Prompt 10.7; as alteracoes foram
+  documentacao/SDD e nao mudaram assemblies ou empacotamento.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 10.6
+Ultimo prompt executado: 10.7

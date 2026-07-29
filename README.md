@@ -159,26 +159,125 @@ Map(product => product.Total)
 
 Computed properties participate in reads and are excluded from generated `INSERT` and `UPDATE` metadata.
 
-### Property Read Conversion
+## Property Converters
 
-Property read converters can be attached to a mapping when a column value needs
-property-specific conversion during FluentMap-controlled materialization:
+Property converters are configured on a specific mapping when a column value
+needs member-specific conversion. They are useful when two properties of the
+same CLR type need different database representations, or when a mapping
+profile reads a legacy SQL shape differently from the default map.
+
+```csharp
+public sealed class ProductMap : EntityMap<Product>
+{
+    public ProductMap()
+    {
+        Map(product => product.Status)
+            .ToColumn("status_code")
+            .ConvertFromDatabaseUsing<ProductStatusConverter, string>();
+    }
+}
+
+public sealed class ProductStatusConverter :
+    IReadPropertyConverter<string, ProductStatus>
+{
+    public ProductStatus ConvertFromDatabase(string value)
+    {
+        return value == "A" ? ProductStatus.Active : ProductStatus.Inactive;
+    }
+}
+```
+
+Converter instances may be reused by concurrent materialization operations.
+Implementations should be stateless or otherwise thread-safe.
+
+### Read Conversion
+
+Read conversion runs only in FluentMap-controlled materialization:
+`QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped`, synchronous unbuffered
+streaming and asynchronous unbuffered streaming.
+
+For those APIs the effective precedence is:
+
+```text
+null/DBNull handling
+    -> property read converter
+    -> Dapper TypeHandler<TProperty>
+    -> FluentMap default conversion
+```
+
+`null` and `DBNull.Value` are not passed to read converters by default.
+Nullable/reference targets receive `null`; non-nullable value types receive
+`default(T)`. Normal Dapper queries such as `Query<T>()` are unchanged and do
+not execute FluentMap property converters.
+
+Generated materializers can emit read converter calls for converter types that
+are statically supported, accessible and parameterless:
 
 ```csharp
 Map(product => product.Status)
-    .ConvertFromDatabaseUsing<StatusReadConverter, string>()
-    .ConvertToDatabaseUsing<StatusWriteConverter, string>();
+    .ToColumn("status_code")
+    .ConvertFromDatabaseUsing<ProductStatusConverter, string>();
 ```
 
-`QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped` and unbuffered streaming
-apply read converters in the runtime materializer before falling back to a
-Dapper `TypeHandler<TProperty>` or FluentMap's default conversion. Normal Dapper
-queries (`Query<T>()`) and Dommel write operations are unchanged; write
-converter metadata is stored for a later parameter-conversion increment.
+Converters supplied by instance or delegate continue to use the runtime
+materializer fallback.
 
-Generated materializers can emit property read converter calls for statically
-supported converter-type mappings. Converter instances and delegates continue to
-use the runtime fallback.
+### Converter Metadata For Writes
+
+The core package can store write converter metadata:
+
+```csharp
+Map(product => product.Status)
+    .ToColumn("status_code")
+    .ConvertToDatabaseUsing<ProductStatusWriteConverter, string>();
+```
+
+This does not currently convert parameters for Dapper or Dommel operations.
+`Insert`, `Update` and other Dommel writes keep using the original entity values
+and Dapper/provider parameter handling. Write converter execution is deferred
+until there is a supported parameter-value hook.
+
+### Profiles
+
+Converters configured in a profile map apply only when that profile is selected:
+
+```csharp
+public sealed class LegacyProductMap :
+    EntityMap<Product>,
+    IProfileMap<LegacyProfile>
+{
+    public LegacyProductMap()
+    {
+        Map(product => product.Status)
+            .ToColumn("legacy_status")
+            .ConvertFromDatabaseUsing<LegacyProductStatusConverter, string>();
+    }
+}
+
+var product = connection.QueryMappedSingle<Product, LegacyProfile>(
+    "SELECT '1' AS legacy_status;");
+```
+
+Default-map converters do not automatically leak into profiles. Reuse must be
+explicit, for example through `IncludeBase<T>()` or by configuring the converter
+again in the profile map.
+
+### Dapper TypeHandlers
+
+Use a Dapper `TypeHandler<T>` when a type has one database representation across
+the application. Use a FluentMap property converter when the conversion belongs
+to one mapping, member path or profile.
+
+```text
+TypeHandler -> behavior by type
+Property Converter -> behavior by mapping/member/profile
+```
+
+When both are present on a FluentMap-controlled read, the property read
+converter wins for that mapped property. Without a property converter,
+`QueryMapped*` uses the registered `TypeHandler<TProperty>` before FluentMap's
+default conversion. Generated materializers do not call Dapper TypeHandlers in
+this stage; scenarios that depend on TypeHandlers use the runtime fallback.
 
 Inherited explicit mappings can be included when the derived entity should reuse a base entity map:
 
@@ -589,6 +688,10 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 - FluentMap configuration is process-wide. Configure at startup and avoid changing mappings while queries are running.
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
+- Property converters are not a general object mapper, serializer, SQL hook or replacement for Dapper `TypeHandler<T>`.
+- Write converters are metadata-only in the current Dommel integration and are not executed by `Insert` or `Update`.
+- Converter type overloads require a public parameterless constructor; instance and delegate overloads are the preferred runtime configuration forms when a converter needs explicit construction.
+- Generated read conversion supports statically visible converter types; converter instances, delegates, inaccessible converter types and unsupported fluent patterns use runtime fallback.
 - Mapping profiles are selected through `QueryMapped<TEntity, TProfile>()` and `ReadMapped<TEntity, TProfile>()` APIs.
 - `QueryMapped*` and `ReadMapped*` are buffered. Use `QueryMappedUnbuffered*` for explicit synchronous or asynchronous unbuffered streaming.
 - `QueryMultipleMapped` consumes result sets sequentially and does not support concurrent reads from the same `MappedGridReader`.
@@ -775,28 +878,127 @@ Map(product => product.Total)
 
 Propriedades computed participam de leituras e são excluídas da metadata de `INSERT` e `UPDATE` gerados.
 
-### Conversao de Leitura por Propriedade
+## Conversores de Propriedade
 
-Conversores de leitura podem ser anexados a um mapping quando um valor de
-coluna precisa de conversao especifica da propriedade durante materializacao
-controlada pelo FluentMap:
+Conversores de propriedade sao configurados em um mapping especifico quando um
+valor de coluna precisa de conversao local ao membro. Eles sao uteis quando duas
+propriedades do mesmo tipo CLR precisam de representacoes de banco diferentes,
+ou quando um mapping profile le um shape SQL legado de forma diferente do map
+default.
+
+```csharp
+public sealed class ProductMap : EntityMap<Product>
+{
+    public ProductMap()
+    {
+        Map(product => product.Status)
+            .ToColumn("status_code")
+            .ConvertFromDatabaseUsing<ProductStatusConverter, string>();
+    }
+}
+
+public sealed class ProductStatusConverter :
+    IReadPropertyConverter<string, ProductStatus>
+{
+    public ProductStatus ConvertFromDatabase(string value)
+    {
+        return value == "A" ? ProductStatus.Active : ProductStatus.Inactive;
+    }
+}
+```
+
+Instancias de converter podem ser reutilizadas por materializacoes concorrentes.
+Implementacoes devem ser stateless ou thread-safe.
+
+### Conversao de Leitura
+
+Conversao de leitura executa somente na materializacao controlada pelo
+FluentMap: `QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped`, streaming
+unbuffered sincrono e streaming unbuffered assincrono.
+
+Para essas APIs, a precedencia efetiva e:
+
+```text
+tratamento de null/DBNull
+    -> property read converter
+    -> Dapper TypeHandler<TProperty>
+    -> conversao padrao do FluentMap
+```
+
+`null` e `DBNull.Value` nao sao enviados aos read converters por default.
+Targets nullable/reference recebem `null`; value types nao nullable recebem
+`default(T)`. Consultas Dapper normais, como `Query<T>()`, nao mudam e nao
+executam converters de propriedade do FluentMap.
+
+Materializadores gerados podem emitir chamadas de read converter para converter
+types suportados estaticamente, acessiveis e parameterless:
 
 ```csharp
 Map(product => product.Status)
-    .ConvertFromDatabaseUsing<StatusReadConverter, string>()
-    .ConvertToDatabaseUsing<StatusWriteConverter, string>();
+    .ToColumn("status_code")
+    .ConvertFromDatabaseUsing<ProductStatusConverter, string>();
 ```
 
-`QueryMapped*`, `ReadMapped*`, `QueryMultipleMapped` e streaming unbuffered
-aplicam conversores de leitura no materializador de runtime antes de cair para
-um `TypeHandler<TProperty>` do Dapper ou para a conversao padrao do FluentMap.
-Consultas Dapper normais (`Query<T>()`) e escritas Dommel nao mudam; metadata de
-write converter fica armazenada para um incremento futuro de conversao de
-parametros.
+Converters fornecidos por instancia ou delegate continuam usando fallback do
+materializador de runtime.
 
-Materializadores gerados podem emitir chamadas de read converter por propriedade
-quando o mapping usa um converter por tipo suportado estaticamente. Converters
-por instancia e delegate continuam usando runtime fallback.
+### Metadata de Conversao para Escrita
+
+O pacote core consegue armazenar metadata de write converter:
+
+```csharp
+Map(product => product.Status)
+    .ToColumn("status_code")
+    .ConvertToDatabaseUsing<ProductStatusWriteConverter, string>();
+```
+
+Isso ainda nao converte parametros em operacoes Dapper ou Dommel. `Insert`,
+`Update` e outras escritas Dommel continuam usando os valores originais da
+entidade e a parametrizacao do Dapper/provider. A execucao de write converters
+fica adiada ate existir um hook suportado para valores de parametros.
+
+### Profiles
+
+Converters configurados em um profile map valem somente quando aquele profile e
+selecionado:
+
+```csharp
+public sealed class LegacyProductMap :
+    EntityMap<Product>,
+    IProfileMap<LegacyProfile>
+{
+    public LegacyProductMap()
+    {
+        Map(product => product.Status)
+            .ToColumn("legacy_status")
+            .ConvertFromDatabaseUsing<LegacyProductStatusConverter, string>();
+    }
+}
+
+var product = connection.QueryMappedSingle<Product, LegacyProfile>(
+    "SELECT '1' AS legacy_status;");
+```
+
+Converters do map default nao vazam automaticamente para profiles. Reuso deve
+ser explicito, por exemplo com `IncludeBase<T>()` ou configurando o converter
+novamente no profile map.
+
+### Dapper TypeHandlers
+
+Use um `TypeHandler<T>` do Dapper quando um tipo tem uma representacao de banco
+unica na aplicacao. Use um property converter do FluentMap quando a conversao
+pertence a um mapping, member path ou profile especifico.
+
+```text
+TypeHandler -> comportamento por tipo
+Property Converter -> comportamento por mapping/member/profile
+```
+
+Quando ambos existem em uma leitura controlada pelo FluentMap, o property read
+converter tem precedencia naquela propriedade mapeada. Sem property converter,
+`QueryMapped*` usa o `TypeHandler<TProperty>` registrado antes da conversao
+padrao do FluentMap. Materializadores gerados nao chamam TypeHandlers do Dapper
+nesta etapa; cenarios que dependem de TypeHandlers usam fallback runtime.
 
 Mapeamentos explícitos herdados podem ser incluídos quando a entidade derivada deve reutilizar um map da entidade base:
 
@@ -1207,6 +1409,10 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 
 - A configuração do FluentMap é global no processo. Configure no startup e evite alterar mappings enquanto consultas estão em execução.
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
+- Property converters nao sao object mapper geral, serializer, hook de SQL nem substituto para `TypeHandler<T>` do Dapper.
+- Write converters sao metadata-only na integracao Dommel atual e nao sao executados por `Insert` ou `Update`.
+- Overloads por tipo de converter exigem construtor publico parameterless; overloads por instancia e delegate sao as formas preferidas de configuracao runtime quando o converter precisa de construcao explicita.
+- Conversao de leitura gerada suporta converter types visiveis estaticamente; instancias, delegates, converter types inacessiveis e padroes fluent nao suportados usam fallback runtime.
 - `QueryMapped*` pode usar materializadores gerados para shapes flat, aninhados e Value Object suportados, mas ainda pode cair para metadados de runtime e código dinâmico; ele ainda não é um caminho de materialização garantidamente seguro para Native AOT.
 - Mapping profiles são selecionados pelas APIs `QueryMapped<TEntity, TProfile>()` e `ReadMapped<TEntity, TProfile>()`.
 - `QueryMapped*` e `ReadMapped*` são bufferizados. Use `QueryMappedUnbuffered*` para streaming unbuffered síncrono ou assíncrono explícito.
