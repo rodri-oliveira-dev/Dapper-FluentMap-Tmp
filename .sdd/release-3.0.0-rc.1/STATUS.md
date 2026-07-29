@@ -2,10 +2,14 @@
 
 ## Estado
 
-RC.4 consumer smoke concluido. Os packages `3.0.0-rc.1` registrados no RC.3
-foram consumidos fora da solution do FluentMap a partir de feed NuGet local
-temporario formado exclusivamente pelos artifacts remotos validados, com
-NuGet.org apenas para dependencias externas.
+RC.5 gate local concluido sem blockers Critical ou High de RC. Os packages
+`3.0.0-rc.1` foram validados por restore, build, tests, provider SQLite,
+artifact validation, consumer smoke, trimming smoke, vulnerability audit e
+benchmark guardrail representativo.
+
+Candidate state: Ready for publication qualification
+Candidate commit: registrado apos a criacao do commit unico RC.5, sem segundo
+commit de evidencia, para evitar ciclo autorreferencial de hash.
 
 ## Commit candidato atual
 
@@ -76,6 +80,10 @@ existente na default branch.
   de `Dapper 2.1.79` e `Dommel 3.5.3`, e nenhum package `2.0.0`.
 - Workflow `Release` passou a executar consumer smoke como gate apos validacao
   de artifacts.
+- Prompt RC.5 executou inventario de gates, classificacao de problemas e
+  validacao local final antes do commit candidato.
+- `.sdd/release-3.0.0-rc.1/05-rc-gate-report.md` criado.
+- `CHANGELOG.md` finalizado para a secao `3.0.0-rc.1 - Unreleased`.
 
 ## Em andamento
 
@@ -83,13 +91,17 @@ existente na default branch.
 
 ## Proximos passos
 
-1. Revisar o commit de evidencia do RC.4.
-2. Prosseguir para RC.5 com decisao de promocao/publicacao sem publicar
-   automaticamente.
+1. Revisar o commit candidato RC.5.
+2. Regenerar/qualificar artifacts remotos apos push autorizado da branch de
+   release.
+3. Antes do Prompt RC.6, criar autorizacao manual
+   `.sdd/release-3.0.0-rc.1/PUBLISH-AUTHORIZATION.md`.
 
 ## RC blockers
 
-- Remote qualification: Passed with limitations.
+- Critical blockers: 0.
+- High RC blockers: 0.
+- Remote qualification infrastructure: Ready with documented limitation.
 - `workflow_dispatch` de `release.yml` continua indisponivel ate o workflow
   existir na default branch ou outro caminho de promocao ser definido. A
   qualificacao RC.3 foi executada por evento `push` na branch de release.
@@ -133,4 +145,4 @@ existente na default branch.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: RC.4
+Ultimo prompt executado: RC.5
