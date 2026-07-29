@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - release/3.0.0-rc.1
   workflow_dispatch:
     inputs:
       package-version:
@@ -17,6 +20,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
   CI: "true"
+  PACKAGE_VERSION: ${{ inputs.package-version || '3.0.0-rc.1' }}
+  PUBLISH_REQUESTED: ${{ inputs.publish && 'true' || 'false' }}
 
 permissions:
   contents: read
@@ -48,7 +53,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '${{ inputs.package-version }}'
+          $version = '${{ env.PACKAGE_VERSION }}'
 
           if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)$') {
             throw "Package version '$version' is not a supported SemVer value."
@@ -64,7 +69,7 @@ jobs:
           }
 
       - name: Guard disabled publish path
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH_REQUESTED == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -80,13 +85,13 @@ jobs:
         run: dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
 
       - name: Build Release
-        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:Version=${{ inputs.package-version }}
+        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:Version=${{ env.PACKAGE_VERSION }}
 
       - name: Test Release
         run: dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
 
       - name: Pack Release
-        run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:Version=${{ inputs.package-version }}
+        run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:Version=${{ env.PACKAGE_VERSION }}
 
       - name: Validate release artifacts and write manifest
         shell: pwsh
@@ -94,7 +99,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           ./eng/validate-release-artifacts.ps1 `
             -PackageDirectory './artifacts/packages' `
-            -Version '${{ inputs.package-version }}' `
+            -Version '${{ env.PACKAGE_VERSION }}' `
             -ManifestPath './artifacts/release-metadata/artifact-manifest.json' `
             -Repository '${{ github.repository }}' `
             -RepositoryUrl 'https://github.com/${{ github.repository }}' `
@@ -112,7 +117,7 @@ jobs:
       - name: Upload release package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: release-packages-${{ inputs.package-version }}
+          name: release-packages-${{ env.PACKAGE_VERSION }}
           path: |
             ./artifacts/packages/*.nupkg
             ./artifacts/packages/*.snupkg
@@ -134,7 +139,7 @@ jobs:
       - name: Download release package artifacts
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: release-packages-${{ inputs.package-version }}
+          name: release-packages-${{ env.PACKAGE_VERSION }}
           path: ./artifacts/release
 
       - name: Collect package subjects
