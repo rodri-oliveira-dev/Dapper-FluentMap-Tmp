@@ -2,25 +2,31 @@
 
 ## Estado
 
-RC.2 qualificado localmente. O workflow de release agora atua como gate seguro
-para gerar exatamente `3.0.0-rc.1`, validar artefatos, gerar manifest com
-checksums e preparar provenance sem publicar.
+RC.3 qualificado remotamente com limitacoes. Os artifacts `3.0.0-rc.1` foram
+gerados no GitHub Actions a partir de commit disponivel no remoto, baixados,
+validados com o mesmo script do RC.2, conferidos contra manifest, SourceLink e
+GitHub artifact attestations.
 
 ## Commit candidato atual
 
 Base inicial: `15e926c` (`chore(release): complete FluentMap readiness audit`).
 RC.1 local: `a71d0213976c51437e1301bbaae699e4b4519c1d`
 (`chore(release): prepare versioning for 3.0.0-rc.1`).
-O commit que deve ser usado na qualificacao remota do Prompt RC.3 e o commit
-final do Prompt RC.2, com mensagem
-`ci(release): qualify 3.0.0-rc.1 artifacts`. O hash exato sera obtido apos a
-criacao do commit, porque registra-lo dentro do proprio commit alteraria o hash.
+RC.2 local: `e6e462782c0151763679fc7802518b8026333d54`
+(`ci(release): qualify 3.0.0-rc.1 artifacts`).
+RC.3 remoto qualificado: `44f690195f9a06703e04c051411047b993644186`
+(`fix(release): allow remote qualification on release branch`).
+
+O commit RC.3 contem somente correcao de workflow necessaria porque
+`release.yml` nao podia ser executado por `workflow_dispatch` enquanto nao
+existente na default branch.
 
 ## Branch
 
 - Origem: `feature/etapa-3`.
 - Atual/final esperada: `release/3.0.0-rc.1`.
-- Nenhum push executado neste prompt.
+- Branch remota: `origin/release/3.0.0-rc.1`.
+- Push executado neste prompt somente para a branch de release, sem `--force`.
 
 ## Concluido
 
@@ -47,6 +53,18 @@ criacao do commit, porque registra-lo dentro do proprio commit alteraria o hash.
   README, license MIT e layouts analyzer/generator.
 - Gate local RC.2 executado: restore, audit, build, test da solution, provider
   SQLite, pack, manifest, YAML parse e `git diff --check`.
+- Push controlado da branch `release/3.0.0-rc.1`.
+- Workflow remoto `Release` executado no run `30476842589`.
+- Artifacts remotos baixados em `artifacts/release-3.0.0-rc.1/remote/`.
+- Script `eng/validate-release-artifacts.ps1` passou contra os artifacts
+  remotos.
+- Manifest remoto comparado com manifest recalculado localmente e SHA-256
+  confirmados.
+- SourceLink validado nos PDBs de core, DI, Dommel, analyzers e generators.
+- GitHub artifact attestations validadas com predicado SLSA provenance v1,
+  cert identity, repository, source ref, source digest e subjects/hashes.
+- Relatorio `.sdd/release-3.0.0-rc.1/03-remote-qualification.md` criado.
+- Manifest versionado `.sdd/release-3.0.0-rc.1/artifacts.json` criado.
 
 ## Em andamento
 
@@ -54,14 +72,16 @@ criacao do commit, porque registra-lo dentro do proprio commit alteraria o hash.
 
 ## Proximos passos
 
-1. Revisar `git diff` e `git diff --check`.
-2. Criar o commit `chore(release): prepare versioning for 3.0.0-rc.1`.
-3. Em prompt futuro, executar workflow remoto apos push autorizado.
+1. Revisar o commit de evidencia do RC.3.
+2. Definir no RC.4 o caminho de promocao/publicacao sem publicar
+   automaticamente.
 
 ## RC blockers
 
-- SourceLink/provenance ainda precisam ser validados em SHA remoto apos push do
-  commit RC.2.
+- Remote qualification: Passed with limitations.
+- `workflow_dispatch` de `release.yml` continua indisponivel ate o workflow
+  existir na default branch ou outro caminho de promocao ser definido. A
+  qualificacao RC.3 foi executada por evento `push` na branch de release.
 - Consumer smoke externo com os cinco pacotes RC ainda nao foi executado.
 
 ## Stable-only blockers
@@ -81,12 +101,17 @@ criacao do commit, porque registra-lo dentro do proprio commit alteraria o hash.
   `3.0.0-rc.1`.
 - RC.2 local: `artifacts/release-3.0.0-rc.1/rc2-local`, com 5 `.nupkg`, 3
   `.snupkg`, `artifact-manifest.json` e `dependencies.json`.
+- RC.3 remoto: `artifacts/release-3.0.0-rc.1/remote`, com 5 `.nupkg`, 3
+  `.snupkg`, `artifact-manifest.json`, `dependencies.json`, PDBs extraidos para
+  SourceLink e bundles de attestation locais nao versionados.
 - Bloqueios negativos confirmados para `2.0.0` e stable `3.0.0`.
 
 ## Workflow runs
 
-- Nenhum workflow remoto executado neste prompt.
+- `30476842589`: `Release`, branch `release/3.0.0-rc.1`, commit
+  `44f690195f9a06703e04c051411047b993644186`, evento `push`, resultado
+  `success`.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: RC.2
+Ultimo prompt executado: RC.3
