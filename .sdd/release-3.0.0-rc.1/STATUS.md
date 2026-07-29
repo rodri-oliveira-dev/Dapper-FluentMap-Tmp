@@ -2,6 +2,14 @@
 
 ## Estado
 
+Publication: Blocked
+Version: 3.0.0-rc.1
+
+Prompt RC.6 bloqueado antes de qualquer acao irreversivel porque o arquivo
+obrigatorio `.sdd/release-3.0.0-rc.1/PUBLISH-AUTHORIZATION.md` nao existe.
+Nenhum package foi publicado, nenhuma tag foi criada e nenhuma GitHub Release
+foi criada.
+
 RC.5 gate local concluido sem blockers Critical ou High de RC. Os packages
 `3.0.0-rc.1` foram validados por restore, build, tests, provider SQLite,
 artifact validation, consumer smoke, trimming smoke, vulnerability audit e
@@ -145,4 +153,4 @@ existente na default branch.
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: RC.5
+Ultimo prompt executado: RC.6
