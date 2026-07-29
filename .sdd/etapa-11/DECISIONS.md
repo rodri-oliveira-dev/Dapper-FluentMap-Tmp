@@ -228,3 +228,31 @@ Isolamento de configuracao deve favorecer registro explicito/gerado e snapshots,
 ### Consequencias
 
 Compatibilidade e preservada. Um caminho generated-only/AOT-safe deve ser decisao futura separada.
+
+## ADR-13 - Naming do modelo inicial
+
+### Contexto
+
+`FluentMapConfiguration` ja e uma API publica mutavel usada por
+`FluentMapper.Initialize(...)` e por extensoes existentes. Trocar esse tipo por
+uma configuracao imutavel nesta etapa quebraria compatibilidade de fonte e
+provavelmente binaria.
+
+### Decisao
+
+Introduzir `FluentMapConfigurationBuilder` como builder publico novo e
+`ImmutableFluentMapConfiguration` como snapshot imutavel publico. Manter
+`FluentMapConfiguration` como fachada historica mutavel, mas desacopla-la do
+singleton por um `MappingRegistry` injetado internamente.
+
+### Alternativas consideradas
+
+- Renomear ou transformar `FluentMapConfiguration` diretamente em imutavel.
+- Criar um segundo builder com DSL propria independente.
+- Exigir que o source generator conheca o singleton global.
+
+### Consequencias
+
+A etapa fica aditiva e preserva `Initialize`. O builder consegue reutilizar
+extensoes existentes via `Configure(Action<FluentMapConfiguration>)`, enquanto
+o snapshot evita expor maps/conventions mutaveis como configuracao efetiva.

@@ -327,6 +327,25 @@ FluentMapper.Validate();
 
 For read-only inspection, use `FluentMapper.GetEntityMaps()` and `FluentMapper.GetTypeConventions()`. The public mutable dictionaries `FluentMapper.EntityMaps` and `FluentMapper.TypeConventions` remain for compatibility, but new code should prefer the registration APIs.
 
+You can also build an immutable configuration snapshot without mutating the
+global FluentMapper state:
+
+```csharp
+using Dapper.FluentMap.Configuration;
+
+var configuration = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Configure(config => config.AddGeneratedMappings())
+    .Build();
+```
+
+`Build()` validates the same invariants used by `FluentMapper.Validate()` and
+returns an `ImmutableFluentMapConfiguration` with read-only metadata for maps,
+profiles, conventions, naming policies, persistence metadata, converters and
+generated materializer registrations. The builder is sealed after `Build()`.
+Existing runtime APIs still use the global compatibility layer until isolated
+runtime entry points are introduced.
+
 ## Conventions and Naming Policies
 
 Conventions let you map repeated column patterns:
@@ -1047,6 +1066,25 @@ FluentMapper.Validate();
 ```
 
 Para inspeção somente leitura, use `FluentMapper.GetEntityMaps()` e `FluentMapper.GetTypeConventions()`. Os dicionários públicos mutáveis `FluentMapper.EntityMaps` e `FluentMapper.TypeConventions` permanecem por compatibilidade, mas código novo deve preferir as APIs de registro.
+
+Tambem e possivel construir um snapshot imutavel sem alterar o estado global do
+`FluentMapper`:
+
+```csharp
+using Dapper.FluentMap.Configuration;
+
+var configuration = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Configure(config => config.AddGeneratedMappings())
+    .Build();
+```
+
+`Build()` valida os mesmos invariants usados por `FluentMapper.Validate()` e
+retorna um `ImmutableFluentMapConfiguration` com metadata read-only para maps,
+profiles, conventions, naming policies, persistence metadata, converters e
+generated materializer registrations. O builder fica selado depois de `Build()`.
+As APIs de runtime existentes ainda usam a camada global de compatibilidade ate
+que entry points de runtime isolado sejam introduzidos.
 
 ## Convenções e Políticas de Nomenclatura
 

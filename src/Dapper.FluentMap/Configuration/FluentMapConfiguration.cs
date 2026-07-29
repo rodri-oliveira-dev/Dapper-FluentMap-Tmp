@@ -19,6 +19,23 @@ namespace Dapper.FluentMap.Configuration
         private const string AssemblyScanningRequiresUnreferencedCodeMessage =
             "Assembly scanning discovers entity maps by reflection. Register maps explicitly with AddMap<TMap>() when publishing trimmed or Native AOT applications.";
 
+        private readonly MappingRegistry _registry;
+        private readonly Action _ensureMutable;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FluentMapConfiguration"/> class.
+        /// </summary>
+        public FluentMapConfiguration()
+            : this(FluentMapper.Registry, ensureMutable: null)
+        {
+        }
+
+        internal FluentMapConfiguration(MappingRegistry registry, Action ensureMutable)
+        {
+            _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+            _ensureMutable = ensureMutable;
+        }
+
         /// <summary>
         /// Adds the specified <see cref="T:Dapper.FluentMap.Mapping.EntityMap"/> to the configuration of Dapper.FluentMap.
         /// </summary>
@@ -34,7 +51,8 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(mapper));
             }
 
-            FluentMapper.Registry.AddEntityMap(mapper);
+            EnsureCanMutate();
+            _registry.AddEntityMap(mapper);
         }
 
         /// <summary>
@@ -51,7 +69,8 @@ namespace Dapper.FluentMap.Configuration
             var entityType = GetMappedEntityType(mapType);
             var mapper = CreateEntityMap<TMap>();
 
-            FluentMapper.Registry.AddEntityMap(entityType, mapper);
+            EnsureCanMutate();
+            _registry.AddEntityMap(entityType, mapper);
             return this;
         }
 
@@ -70,7 +89,8 @@ namespace Dapper.FluentMap.Configuration
             var profileType = GetMappedProfileType(mapType);
             var mapper = CreateEntityMap<TMap>();
 
-            FluentMapper.Registry.AddProfileMap(entityType, profileType, mapper);
+            EnsureCanMutate();
+            _registry.AddProfileMap(entityType, profileType, mapper);
             return this;
         }
 
@@ -121,7 +141,8 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(descriptor));
             }
 
-            FluentMapper.Registry.AddGeneratedMaterializer(descriptor);
+            EnsureCanMutate();
+            _registry.AddGeneratedMaterializer(descriptor);
             return this;
         }
 
@@ -139,6 +160,7 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(assembly));
             }
 
+            EnsureCanMutate();
             var definitions = FindEntityMapDefinitions(assembly, namespaces).ToList();
             EnsureNoDuplicateEntityMaps(definitions);
 
@@ -151,7 +173,7 @@ namespace Dapper.FluentMap.Configuration
 
             foreach (var registration in OrderByIncludedBaseMaps(registrations))
             {
-                FluentMapper.Registry.AddEntityMap(registration.EntityType, registration.Map);
+                _registry.AddEntityMap(registration.EntityType, registration.Map);
             }
 
             return this;
@@ -180,7 +202,8 @@ namespace Dapper.FluentMap.Configuration
         /// </returns>
         public FluentConventionConfiguration AddConvention<TConvention>() where TConvention : Convention, new()
         {
-            return new FluentConventionConfiguration(new TConvention());
+            EnsureCanMutate();
+            return new FluentConventionConfiguration(new TConvention(), _registry, EnsureCanMutate);
         }
 
         /// <summary>
@@ -199,7 +222,8 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(namingPolicy));
             }
 
-            return new FluentConventionConfiguration(new NamingPolicyConvention(namingPolicy, caseSensitive));
+            EnsureCanMutate();
+            return new FluentConventionConfiguration(new NamingPolicyConvention(namingPolicy, caseSensitive), _registry, EnsureCanMutate);
         }
 
         /// <summary>
@@ -341,6 +365,11 @@ namespace Dapper.FluentMap.Configuration
                     $"Entity map type '{typeof(TMap).FullName}' could not be created. Ensure it has a public parameterless constructor and the constructor completes successfully.",
                     ex);
             }
+        }
+
+        private void EnsureCanMutate()
+        {
+            _ensureMutable?.Invoke();
         }
 
         private static void EnsureNoDuplicateEntityMaps(IList<EntityMapDefinition> definitions)

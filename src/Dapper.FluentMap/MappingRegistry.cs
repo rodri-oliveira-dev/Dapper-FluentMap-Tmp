@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
@@ -17,6 +18,8 @@ namespace Dapper.FluentMap
 {
     internal sealed class MappingRegistry
     {
+        private readonly bool _installDapperTypeMaps;
+
         private readonly ConcurrentDictionary<MappingCacheKey, MappingCacheEntry> _propertyMapCache =
             new ConcurrentDictionary<MappingCacheKey, MappingCacheEntry>();
 
@@ -34,6 +37,11 @@ namespace Dapper.FluentMap
 
         internal ConcurrentDictionary<Type, IList<Convention>> TypeConventions { get; } =
             new ConcurrentDictionary<Type, IList<Convention>>();
+
+        internal MappingRegistry(bool installDapperTypeMaps = true)
+        {
+            _installDapperTypeMaps = installDapperTypeMaps;
+        }
 
         internal int CacheEntryCount => _propertyMapCache.Count;
 
@@ -59,6 +67,20 @@ namespace Dapper.FluentMap
                     conventions => (IReadOnlyList<Convention>)new ReadOnlyCollection<Convention>(conventions.Value.ToList()));
 
             return new ReadOnlyDictionary<Type, IReadOnlyList<Convention>>(snapshot);
+        }
+
+        internal IReadOnlyList<GeneratedMaterializerRegistrationSnapshot> GetGeneratedMaterializerSnapshots()
+        {
+            return _generatedMaterializers
+                .OrderBy(materializer => materializer.Key.Type.FullName, StringComparer.Ordinal)
+                .ThenBy(materializer => materializer.Key.ProfileType == null ? string.Empty : materializer.Key.ProfileType.FullName, StringComparer.Ordinal)
+                .ThenBy(materializer => string.Join("|", materializer.Key.ColumnNames), StringComparer.Ordinal)
+                .Select(materializer => new GeneratedMaterializerRegistrationSnapshot(
+                    materializer.Key.Type,
+                    materializer.Key.ProfileType,
+                    materializer.Value.Columns,
+                    materializer.Value.Materialize))
+                .ToList();
         }
 
         internal void AddEntityMap<TEntity>(IEntityMap<TEntity> mapper)
@@ -471,6 +493,11 @@ namespace Dapper.FluentMap
 
         private void SetDapperTypeMap(Type type)
         {
+            if (!_installDapperTypeMaps)
+            {
+                return;
+            }
+
             var instance = new FluentMapTypeMap(type);
             SqlMapper.SetTypeMap(type, instance);
         }
