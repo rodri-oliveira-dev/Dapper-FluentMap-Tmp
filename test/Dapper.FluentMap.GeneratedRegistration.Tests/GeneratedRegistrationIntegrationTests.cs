@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
 using Dapper;
+using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Mapping;
 using Dapper.FluentMap.Naming;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Dapper.FluentMap.GeneratedRegistration.Tests
@@ -108,6 +110,29 @@ namespace Dapper.FluentMap.GeneratedRegistration.Tests
             finally
             {
                 ResetMapper();
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void GeneratedRegistrationShouldWorkThroughDependencyInjection()
+        {
+            using (var provider = new ServiceCollection()
+                .AddFluentMap(builder => builder.Configure(configuration => configuration.AddGeneratedMappings()))
+                .BuildServiceProvider())
+            using (var connection = OpenConnection())
+            {
+                var configuration = provider.GetRequiredService<ImmutableFluentMapConfiguration>();
+                var runtime = provider.GetRequiredService<FluentMapRuntime>();
+
+                var customer = runtime.QueryMappedSingle<GeneratedCustomer>(
+                    connection,
+                    "SELECT 41 AS customer_id, 'DI' AS Name;");
+
+                Assert.Same(configuration, runtime.Configuration);
+                Assert.Contains(configuration.GeneratedMaterializers, materializer => materializer.EntityType == typeof(GeneratedCustomer));
+                Assert.Equal(41, customer.Id);
+                Assert.Equal("DI", customer.Name);
             }
         }
 

@@ -26,6 +26,7 @@ Install the package that matches the functionality you need:
 | Package | Purpose |
 |---|---|
 | `Dapper.FluentMap` | Core mapping API and Dapper integration. |
+| `Dapper.FluentMap.DependencyInjection` | Optional Microsoft.Extensions.DependencyInjection integration. |
 | `Dapper.FluentMap.Dommel` | Optional Dommel integration for table, key and generated-column mapping. |
 | `Dapper.FluentMap.Analyzers` | Roslyn analyzers for statically provable configuration mistakes. |
 | `Dapper.FluentMap.Generators` | Source generator for build-time map registration. |
@@ -350,6 +351,56 @@ configuration-specific `QueryMapped*` pipelines must coexist in the same
 process. `FluentMapper.Initialize(...)` remains the global compatibility layer,
 with `FluentMapper.Configuration` and `FluentMapper.Runtime` exposing the
 currently published default configuration and runtime.
+
+## Dependency Injection
+
+Install `Dapper.FluentMap.DependencyInjection` when using ASP.NET Core, Worker
+Services or the generic host:
+
+```bash
+dotnet add package Dapper.FluentMap.DependencyInjection
+```
+
+Register FluentMap during service composition:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+services.AddFluentMap(builder =>
+{
+    builder.AddMap<CustomerMap>();
+    builder.Configure(config => config.AddGeneratedMappings());
+});
+```
+
+`AddFluentMap(...)` builds and validates the immutable configuration
+immediately, then registers both `ImmutableFluentMapConfiguration` and
+`FluentMapRuntime` as singletons. Use the resolved runtime with the
+configuration-aware query APIs:
+
+```csharp
+public sealed class CustomerReader
+{
+    private readonly FluentMapRuntime _runtime;
+
+    public CustomerReader(FluentMapRuntime runtime)
+    {
+        _runtime = runtime;
+    }
+
+    public Customer Read(IDbConnection connection)
+    {
+        return _runtime.QueryMappedSingle<Customer>(
+            connection,
+            "SELECT 7 AS customer_id, 'Ada' AS name;");
+    }
+}
+```
+
+The DI package does not register database connections, repositories, Dommel
+bridges or global Dapper type maps. Use explicit or generated registration for
+trimmed and Native AOT applications; assembly scanning remains available but is
+not the recommended DI path for those deployments.
 
 ## Conventions and Naming Policies
 
@@ -787,6 +838,7 @@ Instale o pacote conforme a funcionalidade necessária:
 | Pacote | Finalidade |
 |---|---|
 | `Dapper.FluentMap` | API principal de mapeamento e integração com Dapper. |
+| `Dapper.FluentMap.DependencyInjection` | Integração opcional com Microsoft.Extensions.DependencyInjection. |
 | `Dapper.FluentMap.Dommel` | Integração opcional com Dommel para tabela, chave e colunas geradas. |
 | `Dapper.FluentMap.Analyzers` | Analyzers Roslyn para erros de configuração detectáveis estaticamente. |
 | `Dapper.FluentMap.Generators` | Source generator para registro de maps em tempo de build. |
@@ -1113,6 +1165,55 @@ pipelines `QueryMapped*` especificos por configuracao precisarem coexistir no
 mesmo processo. `FluentMapper.Initialize(...)` continua sendo a camada global de
 compatibilidade, com `FluentMapper.Configuration` e `FluentMapper.Runtime`
 expondo a configuracao e o runtime default publicados.
+
+## Dependency Injection
+
+Instale `Dapper.FluentMap.DependencyInjection` ao usar ASP.NET Core, Worker
+Services ou generic host:
+
+```bash
+dotnet add package Dapper.FluentMap.DependencyInjection
+```
+
+Registre o FluentMap na composição de serviços:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+services.AddFluentMap(builder =>
+{
+    builder.AddMap<CustomerMap>();
+    builder.Configure(config => config.AddGeneratedMappings());
+});
+```
+
+`AddFluentMap(...)` constrói e valida a configuração imutável imediatamente, e
+registra `ImmutableFluentMapConfiguration` e `FluentMapRuntime` como singletons.
+Use o runtime resolvido com as APIs de query por configuração:
+
+```csharp
+public sealed class CustomerReader
+{
+    private readonly FluentMapRuntime _runtime;
+
+    public CustomerReader(FluentMapRuntime runtime)
+    {
+        _runtime = runtime;
+    }
+
+    public Customer Read(IDbConnection connection)
+    {
+        return _runtime.QueryMappedSingle<Customer>(
+            connection,
+            "SELECT 7 AS customer_id, 'Ada' AS name;");
+    }
+}
+```
+
+O pacote de DI não registra conexões, repositories, bridges Dommel ou type maps
+globais do Dapper. Use registro explícito ou gerado para aplicações com
+trimming e Native AOT; assembly scanning continua disponível, mas não é o
+caminho recomendado em DI para esses deployments.
 
 ## Convenções e Políticas de Nomenclatura
 

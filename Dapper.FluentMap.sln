@@ -35,6 +35,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.Benchmarks", "benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj", "{B09CFDAC-19CB-48F2-B7F7-03A47430C707}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.DependencyInjection", "src\Dapper.FluentMap.DependencyInjection\Dapper.FluentMap.DependencyInjection.csproj", "{23695A6A-DC6C-44F0-99DF-8570AC9118F2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dapper.FluentMap.DependencyInjection.Tests", "test\Dapper.FluentMap.DependencyInjection.Tests\Dapper.FluentMap.DependencyInjection.Tests.csproj", "{D90BE707-E2E4-4085-A09D-11BE81B379A5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +89,14 @@ Global
 		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B09CFDAC-19CB-48F2-B7F7-03A47430C707}.Release|Any CPU.Build.0 = Release|Any CPU
+		{23695A6A-DC6C-44F0-99DF-8570AC9118F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{23695A6A-DC6C-44F0-99DF-8570AC9118F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{23695A6A-DC6C-44F0-99DF-8570AC9118F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{23695A6A-DC6C-44F0-99DF-8570AC9118F2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D90BE707-E2E4-4085-A09D-11BE81B379A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D90BE707-E2E4-4085-A09D-11BE81B379A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D90BE707-E2E4-4085-A09D-11BE81B379A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D90BE707-E2E4-4085-A09D-11BE81B379A5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -101,6 +113,8 @@ Global
 		{BA72BEA0-BB6E-41EE-ABFE-215FF0A1E9BB} = {742442F2-CAE7-4DC8-BD73-8C54C0005A53}
 		{87E09F49-F805-44EB-BA59-87C93C68497D} = {742442F2-CAE7-4DC8-BD73-8C54C0005A53}
 		{B09CFDAC-19CB-48F2-B7F7-03A47430C707} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
+		{23695A6A-DC6C-44F0-99DF-8570AC9118F2} = {580E3446-6579-4414-9875-970849E635E5}
+		{D90BE707-E2E4-4085-A09D-11BE81B379A5} = {742442F2-CAE7-4DC8-BD73-8C54C0005A53}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {10834736-59FD-47FF-9344-096247DC48CD}

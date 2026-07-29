@@ -49,6 +49,15 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `GetEntityMaps()` e `GetTypeConventions()` continuam retornando snapshots das colecoes historicas registradas, preservando instancias de maps/conventions.
 - Dommel foi mantido como bridge process-wide sobre as colecoes legadas porque depende de metadata especifica de `DommelEntityMap` e `DommelPropertyMap`.
 - Criados testes de compatibility bridge para runtime default, API configuration-aware, equivalencia legacy/new, repeated Initialize, Initialize concorrente, colecoes legadas, generated materializers, profiles e converters.
+- Criado `07-dependency-injection-spec.md`.
+- Criado projeto `Dapper.FluentMap.DependencyInjection` em pacote separado.
+- Implementado `services.AddFluentMap(builder => ...)`.
+- `AddFluentMap(...)` constroi e valida a configuracao imediatamente.
+- `ImmutableFluentMapConfiguration` e `FluentMapRuntime` sao registrados como singletons.
+- O pacote DI depende de `Microsoft.Extensions.DependencyInjection.Abstractions` e nao adiciona dependencias de Hosting, Options, ASP.NET Core, Dommel ou runtime DI concreto.
+- Criados testes de registration, service resolution, singleton identity, invalid config, explicit registration, profiles, multiple service providers, independent configurations e concurrency.
+- Adicionado teste de generated registration via DI no projeto do source generator.
+- `README.md` atualizado com instalacao e uso de `Dapper.FluentMap.DependencyInjection`.
 
 ## Em andamento
 
@@ -56,10 +65,10 @@ e preparando configuracoes imutaveis com runtime isolado.
 
 ## Proximos passos
 
-1. Projetar DI em incremento separado.
-2. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
-3. Avaliar full benchmark antes de release.
-4. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
+1. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
+2. Avaliar full benchmark antes de release.
+3. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
+4. Estender smoke Native AOT para cobrir o pacote DI publicado com registro gerado, se a matriz de release exigir esse contrato.
 
 ## Decisoes relevantes
 
@@ -75,6 +84,9 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `FluentMapper.Configuration` e `FluentMapper.Runtime` representam a configuracao/runtime default publicados.
 - `ImmutableFluentMapConfiguration.CreateRuntime()` e o caminho ergonomico para criar runtime isolado.
 - DI deve registrar configuracao e runtime como singleton.
+- DI fica em pacote separado `Dapper.FluentMap.DependencyInjection`.
+- `AddFluentMap(...)` faz fail-fast em configuracao invalida.
+- Named/keyed configurations nao foram adicionadas no prompt 11.5.
 - Dommel permanece bridge process-wide ate design especifico.
 - Native AOT nao deve ser prometido alem do que os smokes validam.
 
@@ -162,6 +174,11 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `test/Dapper.FluentMap.Tests/ImmutableConfigurationModelTests.cs`
 - `test/Dapper.FluentMap.Tests/IsolatedRuntimeTests.cs`
 - `test/Dapper.FluentMap.Tests/CompatibilityBridgeTests.cs`
+- `.sdd/etapa-11/07-dependency-injection-spec.md`
+- `src/Dapper.FluentMap.DependencyInjection/Dapper.FluentMap.DependencyInjection.csproj`
+- `src/Dapper.FluentMap.DependencyInjection/FluentMapServiceCollectionExtensions.cs`
+- `test/Dapper.FluentMap.DependencyInjection.Tests/Dapper.FluentMap.DependencyInjection.Tests.csproj`
+- `test/Dapper.FluentMap.DependencyInjection.Tests/FluentMapServiceCollectionExtensionsTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Validacao do Prompt 11.1
@@ -208,6 +225,27 @@ e preparando configuracoes imutaveis com runtime isolado.
 - Inspecionado `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`: contem nuspec/metadados e `lib/netstandard2.0/Dapper.FluentMap.dll` + XML; nao contem projetos de teste.
 - Ferramenta dedicada de API compatibility nao foi encontrada no projeto atual; ha referencias planejadas para Etapa 12, mas sem `ApiCompat`, `PublicApiAnalyzers` ou package validation configurados nesta etapa.
 
+## Validacao do Prompt 11.5
+
+- Detectado runner de testes como VSTest: SDK `10.0.302`, sem `global.json`, sem `Directory.Build.props`/`Directory.Packages.props` e projetos de teste com `Microsoft.NET.Test.Sdk` + xUnit runner.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\src\Dapper.FluentMap.DependencyInjection\Dapper.FluentMap.DependencyInjection.csproj --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.DependencyInjection.Tests\Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\test\Dapper.FluentMap.DependencyInjection.Tests\Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release --no-build`: sucesso, 8 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.GeneratedRegistration.Tests\Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~GeneratedRegistrationShouldWorkThroughDependencyInjection"`: sucesso, 1 teste aprovado.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT`: sucesso; binario retornou `di-explicit:ok`.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_GENERATED`: sucesso; binario retornou `di-generated:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT --output .\.tmp\aot-smoke\di-explicit-trimmed`: sucesso; warning conhecido `IL2104` do Dapper.
+- `.\.tmp\aot-smoke\di-explicit-trimmed\Dapper.FluentMap.AotSmoke.exe`: sucesso; binario retornou `di-explicit:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_GENERATED --output .\.tmp\aot-smoke\di-generated-trimmed`: sucesso; warnings conhecidos `IL2104` de `Dapper.FluentMap`/Dapper.
+- `.\.tmp\aot-smoke\di-generated-trimmed\Dapper.FluentMap.AotSmoke.exe`: sucesso; binario retornou `di-generated:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishAot=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT --output .\.tmp\aot-smoke\di-explicit-aot`: bloqueado pelo ambiente; erro `Platform linker not found`, exigindo prerequisites de Native AOT/Desktop Development for C++.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 443 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap.DependencyInjection\Dapper.FluentMap.DependencyInjection.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; criou `artifacts\packages\Dapper.FluentMap.DependencyInjection.2.0.0.nupkg`.
+- Inspecionado `artifacts\packages\Dapper.FluentMap.DependencyInjection.2.0.0.nupkg`: contem `README.md`, `lib/netstandard2.0/Dapper.FluentMap.DependencyInjection.dll`, XML documentation e nuspec; dependencias `Dapper.FluentMap` 2.0.0 e `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.10; nao contem projetos de teste.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 11.4
+Ultimo prompt executado: 11.5

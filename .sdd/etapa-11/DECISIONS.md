@@ -310,3 +310,82 @@ O core avanca para runtime isolado sem transformar Dommel em parte da
 configuracao imutavel do core. Multiplas configuracoes Dommel no mesmo processo
 continuam fora do contrato ate design especifico dos extension points globais de
 `DommelMapper`.
+
+## ADR-16 - Dependency Injection package boundary
+
+### Contexto
+
+O FluentMap agora possui `ImmutableFluentMapConfiguration` e
+`FluentMapRuntime`, que sao naturais para registro em DI. O core, porem,
+continua sendo biblioteca publica de mapeamento e deve permanecer utilizavel sem
+`Microsoft.Extensions.*`.
+
+### Decisao
+
+Criar um pacote separado `Dapper.FluentMap.DependencyInjection`, com projeto em
+`src/Dapper.FluentMap.DependencyInjection`, dependente apenas de
+`Dapper.FluentMap` e `Microsoft.Extensions.DependencyInjection.Abstractions`.
+
+### Alternativas consideradas
+
+- Colocar `AddFluentMap` diretamente no core.
+- Criar integracao ASP.NET Core/Hosting mais ampla.
+- Registrar conexoes, repositories ou Dommel junto com FluentMap.
+
+### Consequencias
+
+Consumidores que nao usam DI nao recebem dependencia nova. A descoberta por
+NuGet permanece clara e o versionamento pode acompanhar o core sem misturar
+dependencias opcionais. O pacote DI continua pequeno e nao torna DI obrigatoria.
+
+## ADR-17 - Dependency Injection registration and lifetimes
+
+### Contexto
+
+Configuracao e runtime sao imutaveis/thread-safe depois de construidos. O
+runtime possui caches por configuracao, mas nao possui estado por query nem
+recursos descartaveis.
+
+### Decisao
+
+`AddFluentMap(...)` constroi e valida a configuracao imediatamente, cria o
+runtime e registra `ImmutableFluentMapConfiguration` e `FluentMapRuntime` como
+singletons.
+
+### Alternativas consideradas
+
+- Construir a configuracao somente na primeira resolucao.
+- Registrar runtime scoped por request.
+- Aceitar callback com `IServiceProvider`.
+
+### Consequencias
+
+Falhas de configuracao aparecem durante startup/composition root. Caches sao
+amortizados por aplicacao. A API evita service locator e nao cria dependencia
+entre maps e services scoped.
+
+## ADR-18 - No named/keyed DI configurations in 11.5
+
+### Contexto
+
+Aplicacoes modulares podem precisar de mais de uma configuracao, mas ainda nao
+ha contrato publico de selecao nomeada de runtime. Keyed services exigiriam
+TFMs/dependencias modernas que aumentariam o escopo.
+
+### Decisao
+
+Nao introduzir named options nem keyed services no prompt 11.5. A API registra
+uma configuracao default por composition root. Multiplas configuracoes seguem
+suportadas por service providers independentes ou construcao manual de
+`FluentMapRuntime`.
+
+### Alternativas consideradas
+
+- Overloads `AddFluentMap(name, ...)`.
+- Keyed services condicionais para .NET 8+.
+- `IOptionsMonitor`/named options.
+
+### Consequencias
+
+A superficie inicial permanece pequena e compativel com `netstandard2.0`. A
+evolucao futura pode adicionar overloads sem quebrar `AddFluentMap(...)`.
