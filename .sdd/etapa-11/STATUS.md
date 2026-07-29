@@ -1,10 +1,15 @@
 # Etapa 11 Status
 
+Status: Concluída
+
+Último prompt executado: 11.7
+
 ## Objetivo
 
-Definir discovery e arquitetura para Configuration Isolation & Dependency
-Injection, preservando a API estatica historica como camada de compatibilidade
-e preparando configuracoes imutaveis com runtime isolado.
+Definir, implementar, auditar e encerrar Configuration Isolation & Dependency
+Injection, preservando a API estatica historica como camada de compatibilidade,
+introduzindo configuracoes imutaveis com runtime isolado e documentando limites
+estruturais de Dapper/Dommel, trimming e Native AOT.
 
 ## Concluido
 
@@ -65,17 +70,24 @@ e preparando configuracoes imutaveis com runtime isolado.
 - Adicionado teste que prova que Dommel resolve metadata pela configuracao legada process-wide e nao por runtimes isolados do core.
 - Atualizada a classificacao final da issue #101 como `Partially resolved`.
 - Repetido benchmark smoke de `MaterializationSteadyStateBenchmarks*QueryMappedSimple*` e registrado resultado no relatorio de performance.
+- Executada auditoria final do prompt 11.7 sobre SDD, API publica, imutabilidade, isolamento, bridge estatica, DI, performance, trimming/AOT, Dommel e documentacao publica.
+- Atualizado `README.md` com secoes explicitas de static configuration compatibility, isolated configuration, multiple configurations, test isolation e known limitations.
+- Atualizado `05-performance-impact.md` com benchmark smoke do prompt 11.7.
+- Criado `FINAL-REPORT.md` com matriz de requisitos, status da issue #101, validacoes e recomendacoes para Etapa 12.
+- Executada validacao final obrigatoria de restore, build e tests da solution.
+- Executados smokes de benchmark, AOT/trimming, pack e inspecao de pacotes.
 
 ## Em andamento
 
-- Nenhum item em andamento para o prompt 11.6.
+- Nenhum item em andamento.
 
 ## Proximos passos
 
-1. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
-2. Avaliar full benchmark antes de release.
-3. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
-4. Estender smoke Native AOT para cobrir o pacote DI publicado com registro gerado, se a matriz de release exigir esse contrato.
+1. Introduzir validacao formal de API/binary compatibility antes de release.
+2. Decidir politica de obsolescencia gradual para colecoes publicas mutaveis legadas.
+3. Avaliar caminho generated-only/AOT-safe em etapa propria.
+4. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
+5. Avaliar benchmark completo antes de release.
 
 ## Decisoes relevantes
 
@@ -273,6 +285,28 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 453 testes aprovados no total.
 - `dotnet pack`: nao executado; o prompt 11.6 alterou testes e documentacao SDD, sem mudanca de empacotamento, metadata de pacote ou assemblies de producao.
 
+## Validacao do Prompt 11.7
+
+- Detectado runner de testes como VSTest: SDK `10.0.302`, sem `global.json`, sem `Directory.Build.props`/`Directory.Packages.props` e projetos de teste com `Microsoft.NET.Test.Sdk` + xUnit runner.
+- `dotnet restore ./Dapper.FluentMap.sln`: sucesso.
+- `dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 453 testes aprovados no total.
+- `dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release -- --filter "*MaterializationSteadyStateBenchmarks*QueryMappedSimple*" --job Dry`: sucesso; 20 cenarios executados; BenchmarkDotNet emitiu warnings esperados de iteracao curta.
+- Tentativa inicial de smokes AOT em paralelo falhou com `CS2012` no assembly intermediario do generator por disputa de arquivo; os mesmos smokes foram reexecutados sequencialmente com sucesso.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_EXPLICIT -p:UseSharedCompilation=false`: sucesso; `explicit:ok`.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_GENERATED -p:UseSharedCompilation=false`: sucesso; `generated:ok`.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false`: sucesso; `di-explicit:ok`.
+- `dotnet run --project .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:DefineConstants=AOT_SMOKE_DI_GENERATED -p:UseSharedCompilation=false`: sucesso; `di-generated:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false --output .\.tmp\aot-smoke\di-explicit-trimmed`: sucesso; warning conhecido `IL2104` do Dapper.
+- `.\.tmp\aot-smoke\di-explicit-trimmed\Dapper.FluentMap.AotSmoke.exe`: sucesso; `di-explicit:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishTrimmed=true -p:DefineConstants=AOT_SMOKE_DI_GENERATED -p:UseSharedCompilation=false --output .\.tmp\aot-smoke\di-generated-trimmed`: sucesso; warnings conhecidos `IL2104` de `Dapper.FluentMap`/Dapper.
+- `.\.tmp\aot-smoke\di-generated-trimmed\Dapper.FluentMap.AotSmoke.exe`: sucesso; `di-generated:ok`.
+- `dotnet publish .\test\Dapper.FluentMap.AotSmoke\Dapper.FluentMap.AotSmoke.csproj --configuration Release -p:PublishAot=true -p:DefineConstants=AOT_SMOKE_DI_EXPLICIT -p:UseSharedCompilation=false --output .\.tmp\aot-smoke\di-explicit-aot`: bloqueado pelo ambiente; erro `Platform linker not found`, exigindo prerequisites de Native AOT/Desktop Development for C++.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; warning legado `NU5125` sobre `licenseUrl` obsoleto e aviso de README ausente no pacote.
+- `dotnet pack .\src\Dapper.FluentMap.DependencyInjection\Dapper.FluentMap.DependencyInjection.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso.
+- Inspecionado `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`: contem nuspec/metadados e `lib/netstandard2.0/Dapper.FluentMap.dll` + XML; nao contem projetos de teste.
+- Inspecionado `artifacts\packages\Dapper.FluentMap.DependencyInjection.2.0.0.nupkg`: contem `README.md`, `lib/netstandard2.0/Dapper.FluentMap.DependencyInjection.dll`, XML documentation e nuspec; nao contem projetos de teste.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 11.6
+Ultimo prompt executado: 11.7

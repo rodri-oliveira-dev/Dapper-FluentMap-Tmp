@@ -328,8 +328,30 @@ FluentMapper.Validate();
 
 For read-only inspection, use `FluentMapper.GetEntityMaps()` and `FluentMapper.GetTypeConventions()`. The public mutable dictionaries `FluentMapper.EntityMaps` and `FluentMapper.TypeConventions` remain for compatibility, but new code should prefer the registration APIs.
 
-You can also build an immutable configuration snapshot without mutating the
-global FluentMapper state:
+### Static configuration - compatibility
+
+The historical static configuration remains supported:
+
+```csharp
+FluentMapper.Initialize(config =>
+{
+    config.AddMap<CustomerMap>();
+});
+
+FluentMapper.Validate();
+```
+
+This path publishes the default `ImmutableFluentMapConfiguration` and
+`FluentMapRuntime` exposed by `FluentMapper.Configuration` and
+`FluentMapper.Runtime`, and installs global Dapper type maps for default maps
+and conventions. Use it when your process has one effective FluentMap
+configuration and you want normal `connection.Query<T>()` calls to use the
+global Dapper type map bridge.
+
+### Isolated configuration
+
+You can build an immutable configuration snapshot without mutating the global
+`FluentMapper` state:
 
 ```csharp
 using Dapper.FluentMap.Configuration;
@@ -351,6 +373,57 @@ configuration-specific `QueryMapped*` pipelines must coexist in the same
 process. `FluentMapper.Initialize(...)` remains the global compatibility layer,
 with `FluentMapper.Configuration` and `FluentMapper.Runtime` exposing the
 currently published default configuration and runtime.
+
+### Multiple configurations
+
+Multiple configurations are supported for FluentMap-controlled materialization
+when each operation uses the intended `FluentMapRuntime`:
+
+```csharp
+var current = new FluentMapConfigurationBuilder()
+    .AddMap<CurrentCustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var legacy = new FluentMapConfigurationBuilder()
+    .AddMap<LegacyCustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var currentCustomer = current.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 1 AS customer_id, 'Ada' AS customer_name;");
+
+var legacyCustomer = legacy.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 2 AS customer_id, 'Grace' AS legacy_name;");
+```
+
+This isolation applies to `QueryMapped*`, `ReadMapped*`,
+`QueryMultipleMapped`, profiles, converters, generated materializers and
+runtime diagnostics. It does not make normal `Dapper.Query<T>()` or Dommel
+select a FluentMap runtime per call.
+
+### Test isolation
+
+Tests can create a local builder and runtime instead of resetting global
+FluentMap state:
+
+```csharp
+var runtime = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var customer = runtime.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 42 AS customer_id, 'Grace' AS Name;");
+```
+
+This lets tests use different mappings for the same entity type in the same
+process. Tests that exercise `FluentMapper.Initialize(...)`, direct
+`FluentMapper.EntityMaps` mutation, normal Dapper type maps or Dommel still
+touch process-wide state and should remain isolated accordingly.
 
 ## Dependency Injection
 
@@ -779,6 +852,8 @@ persistence behavior that matches the intent: `ReadOnly()`, `Computed()`,
 ## Current Limitations
 
 - `FluentMapper.Initialize(...)`, `Dapper.Query<T>()` and Dommel still use process-wide compatibility bridges. Use `ImmutableFluentMapConfiguration` + `FluentMapRuntime` with `QueryMapped*`/`ReadMapped*` when multiple configurations must coexist in the same process.
+- Multiple configurations are isolated only for FluentMap-controlled materialization. Normal `Dapper.Query<T>()` uses the global `SqlMapper.SetTypeMap` registered for the entity type.
+- Dommel integration uses global `DommelMapper` resolvers/builders and reads the legacy process-wide FluentMap collections; isolated core runtimes do not configure Dommel.
 - Assembly scanning depends on reflection discovery and is not the recommended path for trimmed or Native AOT applications.
 - `QueryMapped*` may use generated materializers for supported flat, nested and Value Object shapes, but it can still fall back to runtime metadata and dynamic code; it is not yet a guaranteed Native AOT-safe materialization path.
 - Property converters are not a general object mapper, serializer, SQL hook or replacement for Dapper `TypeHandler<T>`.
@@ -1142,6 +1217,28 @@ FluentMapper.Validate();
 
 Para inspeção somente leitura, use `FluentMapper.GetEntityMaps()` e `FluentMapper.GetTypeConventions()`. Os dicionários públicos mutáveis `FluentMapper.EntityMaps` e `FluentMapper.TypeConventions` permanecem por compatibilidade, mas código novo deve preferir as APIs de registro.
 
+### Configuração Estática - Compatibilidade
+
+A configuração estática histórica continua suportada:
+
+```csharp
+FluentMapper.Initialize(config =>
+{
+    config.AddMap<CustomerMap>();
+});
+
+FluentMapper.Validate();
+```
+
+Esse caminho publica o `ImmutableFluentMapConfiguration` e o
+`FluentMapRuntime` default expostos por `FluentMapper.Configuration` e
+`FluentMapper.Runtime`, e instala type maps globais do Dapper para maps default
+e conventions. Use esse caminho quando o processo possui uma única configuração
+FluentMap efetiva e você quer que chamadas normais a `connection.Query<T>()`
+usem a bridge global de type map do Dapper.
+
+### Configuração Isolada
+
 Tambem e possivel construir um snapshot imutavel sem alterar o estado global do
 `FluentMapper`:
 
@@ -1165,6 +1262,57 @@ pipelines `QueryMapped*` especificos por configuracao precisarem coexistir no
 mesmo processo. `FluentMapper.Initialize(...)` continua sendo a camada global de
 compatibilidade, com `FluentMapper.Configuration` e `FluentMapper.Runtime`
 expondo a configuracao e o runtime default publicados.
+
+### Múltiplas Configurações
+
+Múltiplas configurações são suportadas para materialização controlada pelo
+FluentMap quando cada operação usa o `FluentMapRuntime` correto:
+
+```csharp
+var current = new FluentMapConfigurationBuilder()
+    .AddMap<CurrentCustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var legacy = new FluentMapConfigurationBuilder()
+    .AddMap<LegacyCustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var currentCustomer = current.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 1 AS customer_id, 'Ada' AS customer_name;");
+
+var legacyCustomer = legacy.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 2 AS customer_id, 'Grace' AS legacy_name;");
+```
+
+Esse isolamento vale para `QueryMapped*`, `ReadMapped*`,
+`QueryMultipleMapped`, profiles, converters, materializadores gerados e
+diagnósticos do runtime. Ele não faz `Dapper.Query<T>()` normal nem Dommel
+selecionarem um runtime FluentMap por chamada.
+
+### Isolamento de Testes
+
+Testes podem criar um builder e runtime locais em vez de resetar o estado
+global do FluentMap:
+
+```csharp
+var runtime = new FluentMapConfigurationBuilder()
+    .AddMap<CustomerMap>()
+    .Build()
+    .CreateRuntime();
+
+var customer = runtime.QueryMappedSingle<Customer>(
+    connection,
+    "SELECT 42 AS customer_id, 'Grace' AS Name;");
+```
+
+Isso permite que testes usem mappings diferentes para o mesmo tipo de entidade
+no mesmo processo. Testes que exercitam `FluentMapper.Initialize(...)`,
+mutação direta de `FluentMapper.EntityMaps`, type maps normais do Dapper ou
+Dommel ainda tocam estado process-wide e devem continuar isolados de acordo.
 
 ## Dependency Injection
 
@@ -1594,6 +1742,8 @@ ainda devem ser lidos, use o persistence behavior correspondente:
 ## Limitações Atuais
 
 - `FluentMapper.Initialize(...)`, `Dapper.Query<T>()` e Dommel continuam usando bridges globais/process-wide. Para multiplas configuracoes simultaneas no mesmo processo, use `ImmutableFluentMapConfiguration` + `FluentMapRuntime` com os entry points `QueryMapped*`/`ReadMapped*`.
+- Múltiplas configurações são isoladas somente para materialização controlada pelo FluentMap. `Dapper.Query<T>()` normal usa o `SqlMapper.SetTypeMap` global registrado para o tipo de entidade.
+- A integração Dommel usa resolvers/builders globais do `DommelMapper` e lê as coleções legadas process-wide do FluentMap; runtimes isolados do core não configuram o Dommel.
 - Assembly scanning depende de descoberta por reflection e não é o caminho recomendado para aplicações com trimming ou Native AOT.
 - Property converters nao sao object mapper geral, serializer, hook de SQL nem substituto para `TypeHandler<T>` do Dapper.
 - Write converters sao metadata-only na integracao Dommel atual e nao sao executados por `Insert` ou `Update`.

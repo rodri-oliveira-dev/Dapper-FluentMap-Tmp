@@ -146,3 +146,41 @@ Leitura do prompt 11.6:
   entao devem ser tratadas como smoke/guardrail;
 - benchmark completo segue recomendado antes de release para cold start,
   muitos runtimes ativos e cenarios com converters/generated materializers.
+
+## Repeticao no prompt 11.7
+
+Comando executado:
+
+```powershell
+dotnet run --project .\benchmarks\Dapper.FluentMap.Benchmarks\Dapper.FluentMap.Benchmarks.csproj --configuration Release -- --filter "*MaterializationSteadyStateBenchmarks*QueryMappedSimple*" --job Dry
+```
+
+Ambiente reportado:
+
+- Windows 11;
+- .NET SDK 10.0.302;
+- runtime .NET 10.0.10;
+- BenchmarkDotNet 0.15.8.
+
+ShortRun, 1000 linhas em SQLite in-memory:
+
+| Comparacao | Metodo | Mean | Allocated |
+| --- | --- | ---: | ---: |
+| legacy default runtime | `QueryMappedSimple` | 1.976 ms | 261.16 KB |
+| isolated runtime | `RuntimeQueryMappedSimple` | 2.070 ms | 261.16 KB |
+| legacy default runtime | `QueryMappedSimpleUnbuffered` | 2.295 ms | 245.20 KB |
+| isolated runtime | `RuntimeQueryMappedSimpleUnbuffered` | 2.667 ms | 245.20 KB |
+| legacy default runtime | `QueryMappedSimpleUnbufferedAsync` | 2.002 ms | 245.61 KB |
+| isolated runtime | `RuntimeQueryMappedSimpleUnbufferedAsync` | 2.155 ms | 245.61 KB |
+| legacy default runtime | `QueryMappedSimpleRuntimeFallback` | 1.965 ms | 361.58 KB |
+| isolated runtime | `RuntimeQueryMappedSimpleRuntimeFallback` | 1.922 ms | 361.58 KB |
+
+Leitura do prompt 11.7:
+
+- alocacao permaneceu equivalente nos pares comparaveis entre bridge estatica
+  e runtime isolado;
+- nao ha evidencia de lookup significativo por linha introduzido pelo runtime,
+  porque a resolucao segue ocorrendo na criacao do materializer por reader;
+- os tempos continuam ruidosos por `ShortRun`/`Dry`, com aviso de iteracoes
+  abaixo de 100 ms, portanto nao devem ser usados como claim formal de
+  throughput.
