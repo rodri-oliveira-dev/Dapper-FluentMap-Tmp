@@ -58,6 +58,9 @@ jobs:
       - name: Test Dommel compatibility
         run: dotnet test ./test/Dapper.FluentMap.Dommel.Tests/Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build
 
+      - name: Test provider compatibility
+        run: dotnet test ./test/Dapper.FluentMap.ProviderCompatibility.Tests/Dapper.FluentMap.ProviderCompatibility.Tests.csproj --configuration Release --no-build
+
   roslyn-components:
     name: Analyzer and generator compatibility
     runs-on: ubuntu-latest

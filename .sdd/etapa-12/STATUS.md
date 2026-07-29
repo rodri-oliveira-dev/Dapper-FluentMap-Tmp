@@ -40,6 +40,16 @@ SourceLink/reproducibilidade e CI de release.
   especificas na matriz.
 - Confirmado por `git ls-remote` que as tags atuais de GitHub Actions usadas no
   workflow existem (`checkout@v7`, `setup-dotnet@v6`, `upload-artifact@v7`).
+- Criado `04-provider-matrix.md`.
+- Criado projeto `test/Dapper.FluentMap.ProviderCompatibility.Tests`.
+- Adicionados testes reais de provider para SQLite cobrindo leitura basica,
+  materializacao avancada, `QueryMultipleMapped`, streaming sync/async e
+  persistencia Dommel.
+- Adicionado harness condicional para SQL Server via
+  `DFM_SQLSERVER_CONNECTION_STRING`.
+- Adicionado harness condicional para PostgreSQL via
+  `DFM_POSTGRESQL_CONNECTION_STRING`.
+- Adicionada etapa de provider compatibility ao job `compatibility` da CI.
 
 ## Em andamento
 
@@ -63,7 +73,8 @@ SourceLink/reproducibilidade e CI de release.
 - High: NuGet metadata ainda aponta para o repositorio upstream original.
 - High: nao ha SourceLink, repository metadata, symbols ou deterministic CI
   policy.
-- High: CI ainda nao valida matriz de provider/SDK nem smokes trimming/AOT.
+- High: CI ainda nao valida SQL Server/PostgreSQL com servicos reais nem smokes
+  trimming/AOT.
 - High: Dapper TypeHandler interoperability depende de internal shape por
   reflection.
 - Medium: nao ha `global.json`, package lock ou Central Package Management.
@@ -93,8 +104,11 @@ SourceLink/reproducibilidade e CI de release.
 
 - Certified in automated tests: SQLite.
 - Provider-independent coverage: `DataTableReader`/ADO.NET interfaces.
-- Supported by Dommel builder registration but not certified in CI: SQL Server,
-  SQL CE, PostgreSQL, MySQL.
+- Conditional harness but not certified in CI: SQL Server, PostgreSQL.
+- Supported by Dommel builder registration but not certified in CI:
+  SQL Server, SQL CE, PostgreSQL, MySQL.
+- MySQL/MariaDB: not validated; no mandatory lane added in Prompt 12.3.
+- SQL CE: unsupported upstream/legacy validation lane.
 
 ## Known risks
 
@@ -183,4 +197,44 @@ Resultados:
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 12.2
+Ultimo prompt executado: 12.3
+
+## Validacao do Prompt 12.3
+
+Executada localmente em 2026-07-29:
+
+```bash
+dotnet test ./test/Dapper.FluentMap.ProviderCompatibility.Tests/Dapper.FluentMap.ProviderCompatibility.Tests.csproj --configuration Release
+dotnet restore ./Dapper.FluentMap.sln
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages
+dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
+```
+
+Resultados:
+
+- Build/test do projeto provider compatibility: sucesso.
+- SQLite: 7 cenarios aprovados.
+- SQL Server: 7 cenarios skipped por ausencia de
+  `DFM_SQLSERVER_CONNECTION_STRING`.
+- PostgreSQL: 7 cenarios skipped por ausencia de
+  `DFM_POSTGRESQL_CONNECTION_STRING`.
+- Restore solution: sucesso.
+- Build Release solution: sucesso, 0 warnings, 0 errors.
+- Test solution: sucesso; 460 aprovados, 14 ignored/skipped, 0 falhas.
+- Pack solution: sucesso; pacotes packable gerados.
+- Pack warnings conhecidos: `NU5125` e README ausente em core/Dommel.
+- Vulnerability audit: nenhum pacote vulneravel encontrado nas fontes atuais,
+  incluindo as novas dependencias de teste `Microsoft.Data.SqlClient` e
+  `Npgsql`.
+
+Status por provider:
+
+| Provider | Status | Observacao |
+| --- | --- | --- |
+| SQLite | `Validated` | Testes reais automatizados passaram localmente. |
+| SQL Server | `Not validated` | Harness condicional existe, mas nao foi executado contra servico real. |
+| PostgreSQL | `Not validated` | Harness condicional existe, mas nao foi executado contra servico real. |
+| MySQL/MariaDB | `Not validated` | Nao ha harness obrigatorio neste prompt. |
+| SQL Server CE | `Unsupported upstream` | Builder legado permanece, sem lane moderna de validacao. |

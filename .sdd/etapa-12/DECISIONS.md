@@ -298,3 +298,42 @@ O pacote fica mais conservador contra Dapper `3.x`. Quando surgir nova stable
 de Dapper `2.x`, o workflow deve ganhar lane `latest-stable` antes da release
 reivindicar essa versao como validada. Dommel continua validado apenas como
 integracao opcional process-wide.
+
+## ADR-14 - Provider certification boundary
+
+### Contexto
+
+O core e desenhado sobre ADO.NET/Dapper, mas isso nao certifica automaticamente
+SQL Server, PostgreSQL, SQLite, MySQL/MariaDB ou SQL CE. O Prompt 12.3 exigiu
+separar design provider-agnostic de validacao real e criar uma matriz de
+provider.
+
+### Decisao
+
+Criar um projeto dedicado `Dapper.FluentMap.ProviderCompatibility.Tests`.
+SQLite e certificado automaticamente na lane rapida. SQL Server e PostgreSQL
+ganham harness condicional por `DFM_SQLSERVER_CONNECTION_STRING` e
+`DFM_POSTGRESQL_CONNECTION_STRING`, mas permanecem `Not validated` ate serem
+executados contra servicos reais em ambiente controlado ou CI.
+
+MySQL/MariaDB nao vira obrigatorio neste prompt porque nao havia dependencia,
+imagem, service container ou cobertura previa suficiente. SQL CE e tratado como
+limitacao upstream/legado, apesar do builder Dommel continuar registrado.
+
+### Alternativas consideradas
+
+- Declarar todos os builders Dommel como certificados: rejeitado por ausencia
+  de teste real.
+- Adicionar Testcontainers imediatamente: rejeitado porque o repositorio nao
+  tinha infraestrutura existente e a instrucao pediu nao adicionar
+  automaticamente se houver caminho mais simples.
+- Rodar contra containers locais de outros projetos: rejeitado porque isso
+  acoplaria a validacao a estado externo nao reprodutivel deste repositorio.
+
+### Consequencias
+
+A CI valida SQLite como provider real sem deixar o build principal muito lento.
+SQL Server/PostgreSQL ficam prontos para validacao assim que connection strings
+ou service containers dedicados forem configurados. A documentacao deve usar
+`Validated`, `Partial`, `Not validated` e `Unsupported upstream` de forma
+explicita.
