@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <DapperMinimumSupportedVersion>2.1.79</DapperMinimumSupportedVersion>
+    <DapperLatestStableVersion>2.1.79</DapperLatestStableVersion>
+    <DapperPackageVersion Condition="'$(DapperPackageVersion)' == ''">[$(DapperMinimumSupportedVersion),3.0.0)</DapperPackageVersion>
+  </PropertyGroup>
+</Project>

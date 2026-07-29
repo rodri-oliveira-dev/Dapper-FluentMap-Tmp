@@ -16,7 +16,7 @@
     <Reference Include="Dapper.FluentMap.DependencyInjection" Condition="'$(PublishTrimmed)' == 'true' Or '$(PublishAot)' == 'true'">
       <HintPath>..\..\src\Dapper.FluentMap.DependencyInjection\bin\$(Configuration)\netstandard2.0\Dapper.FluentMap.DependencyInjection.dll</HintPath>
     </Reference>
-    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="Dapper" Version="$(DapperPackageVersion)" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.10" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />

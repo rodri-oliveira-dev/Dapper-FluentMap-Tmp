@@ -261,3 +261,40 @@ generator/provider universal, permanecem nao suportados.
 
 Known limitations e compatibility matrix viram artefatos obrigatorios da
 release.
+
+## ADR-13 - Runtime and Dapper compatibility matrix
+
+### Contexto
+
+Os pacotes publicos targetam `netstandard2.0`, enquanto a suite executavel roda
+em `net10.0`. A dependencia direta em Dapper era declarada como versao exata no
+`.csproj`, mas no pacote NuGet isso virava minimo aberto `>= 2.1.79`. O prompt
+12.2 exigiu matriz pragmatica entre TFMs suportados e versoes Dapper
+suportadas.
+
+### Decisao
+
+Declarar a faixa `Dapper [2.1.79,3.0.0)` e validar em CI a lane essencial de
+Dapper por propriedade MSBuild sobregravavel `DapperPackageVersion`. Como
+`2.1.79` e simultaneamente a minima suportada e a latest stable em NuGet.org em
+2026-07-29, a matriz atual possui uma unica lane
+`minimum-and-latest-stable`.
+
+Separar analyzer/generator em job proprio de CI, porque esses pacotes dependem
+de Roslyn/compiler references e nao representam runtime TFM support.
+
+### Alternativas consideradas
+
+- Manter dependencia aberta sem upper bound: rejeitado porque permitiria Dapper
+  major futuro sem validacao.
+- Fixar exatamente `2.1.79` no pacote: rejeitado porque bloquearia consumidores
+  sem evidencia de incompatibilidade dentro da major atual.
+- Criar matriz combinatoria de OS/provider/preview: rejeitado ate haver pergunta
+  concreta de compatibilidade.
+
+### Consequencias
+
+O pacote fica mais conservador contra Dapper `3.x`. Quando surgir nova stable
+de Dapper `2.x`, o workflow deve ganhar lane `latest-stable` antes da release
+reivindicar essa versao como validada. Dommel continua validado apenas como
+integracao opcional process-wide.

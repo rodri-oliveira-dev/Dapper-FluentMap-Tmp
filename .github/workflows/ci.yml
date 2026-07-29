@@ -16,8 +16,50 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build, test and pack
+  compatibility:
+    name: Compatibility (${{ matrix.dapper-lane }}, Dapper ${{ matrix.dapper-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dapper-lane: minimum-and-latest-stable
+            dapper-version: 2.1.79
+            dotnet-version: 10.0.x
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+          dotnet-quality: ga
+
+      - name: Show .NET info
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore ./Dapper.FluentMap.sln -p:DapperPackageVersion=${{ matrix.dapper-version }}
+
+      - name: Build Release
+        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:DapperPackageVersion=${{ matrix.dapper-version }}
+
+      - name: Test core compatibility
+        run: dotnet test ./test/Dapper.FluentMap.Tests/Dapper.FluentMap.Tests.csproj --configuration Release --no-build
+
+      - name: Test generated registration compatibility
+        run: dotnet test ./test/Dapper.FluentMap.GeneratedRegistration.Tests/Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --no-build
+
+      - name: Test dependency injection compatibility
+        run: dotnet test ./test/Dapper.FluentMap.DependencyInjection.Tests/Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release --no-build
+
+      - name: Test Dommel compatibility
+        run: dotnet test ./test/Dapper.FluentMap.Dommel.Tests/Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build
+
+  roslyn-components:
+    name: Analyzer and generator compatibility
     runs-on: ubuntu-latest
 
     steps:
@@ -30,17 +72,43 @@ jobs:
           dotnet-version: 10.0.x
           dotnet-quality: ga
 
-      - name: Show .NET info
-        run: dotnet --info
+      - name: Restore
+        run: dotnet restore ./Dapper.FluentMap.sln
+
+      - name: Build analyzers
+        run: dotnet build ./src/Dapper.FluentMap.Analyzers/Dapper.FluentMap.Analyzers.csproj --configuration Release --no-restore
+
+      - name: Build generators
+        run: dotnet build ./src/Dapper.FluentMap.Generators/Dapper.FluentMap.Generators.csproj --configuration Release --no-restore
+
+      - name: Test analyzers
+        run: dotnet test ./test/Dapper.FluentMap.Analyzers.Tests/Dapper.FluentMap.Analyzers.Tests.csproj --configuration Release
+
+      - name: Test generators
+        run: dotnet test ./test/Dapper.FluentMap.Generators.Tests/Dapper.FluentMap.Generators.Tests.csproj --configuration Release
+
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    needs:
+      - compatibility
+      - roslyn-components
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+          dotnet-quality: ga
 
       - name: Restore
         run: dotnet restore ./Dapper.FluentMap.sln
 
       - name: Build Release
         run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
-
-      - name: Test Release
-        run: dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
 
       - name: Pack Release
         run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages

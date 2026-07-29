@@ -33,22 +33,26 @@ SourceLink/reproducibilidade e CI de release.
 - Executada validacao inicial obrigatoria de restore/build/test/pack.
 - Executada auditoria de vulnerabilidades via NuGet.
 - Consultado historico NuGet dos package IDs relevantes.
+- Criado `03-compatibility-matrix.md`.
+- Adicionada matriz essencial de CI por versao Dapper.
+- Separada validacao de analyzer/generator da matriz runtime.
+- Declarada propriedade MSBuild `DapperPackageVersion` para restaurar versoes
+  especificas na matriz.
+- Confirmado por `git ls-remote` que as tags atuais de GitHub Actions usadas no
+  workflow existem (`checkout@v7`, `setup-dotnet@v6`, `upload-artifact@v7`).
 
 ## Em andamento
 
-- Nenhuma implementacao em andamento. Este prompt foi limitado a auditoria,
-  especificacao, decisoes e status.
+- Nenhuma implementacao em andamento.
 
 ## Proximos passos
 
-1. Criar compatibility matrix formal por pacote, TFM, Dapper, Dommel e provider.
-2. Adicionar baseline e tooling de API/binary compatibility.
-3. Endurecer metadata de pacote, README de pacote, repository metadata,
+1. Adicionar baseline e tooling de API/binary compatibility.
+2. Endurecer metadata de pacote, README de pacote, repository metadata,
    SourceLink, symbols e package validation.
-4. Ajustar CI para matriz minima e validar pack/trimming/compatibility.
-5. Documentar migration guide, support policy e provider certification.
-6. Definir e validar release candidate antes de stable.
-7. Fazer auditoria final de release blockers.
+3. Documentar migration guide, support policy e provider certification.
+4. Definir e validar release candidate antes de stable.
+5. Fazer auditoria final de release blockers.
 
 ## Release blockers
 
@@ -59,7 +63,7 @@ SourceLink/reproducibilidade e CI de release.
 - High: NuGet metadata ainda aponta para o repositorio upstream original.
 - High: nao ha SourceLink, repository metadata, symbols ou deterministic CI
   policy.
-- High: CI nao valida matriz de provider/Dapper/SDK nem smokes trimming/AOT.
+- High: CI ainda nao valida matriz de provider/SDK nem smokes trimming/AOT.
 - High: Dapper TypeHandler interoperability depende de internal shape por
   reflection.
 - Medium: nao ha `global.json`, package lock ou Central Package Management.
@@ -68,7 +72,8 @@ SourceLink/reproducibilidade e CI de release.
 ## Compatibility decisions
 
 - Manter `netstandard2.0` como TFM minimo dos pacotes publicos.
-- Tratar `Dapper >= 2.1.79` como minimo atual e validar matriz antes de release.
+- Tratar `Dapper [2.1.79,3.0.0)` como faixa suportada atual, com `2.1.79`
+  validado como minimo e latest stable no Prompt 12.2.
 - Tratar `Dommel >= 3.5.3` como minimo atual do pacote Dommel.
 - Separar provider support de provider certification.
 - Exigir API/binary compatibility formal antes de stable.
@@ -99,13 +104,12 @@ SourceLink/reproducibilidade e CI de release.
   code.
 - Native AOT nao foi validado por execucao em ambiente com linker nativo.
 - Pacotes novos ainda nao possuem historico publico no NuGet.org.
-- CI atual pode estar fragil por versoes de GitHub Actions que precisam
-  confirmacao antes de release.
 
 ## Arquivos importantes
 
 - `.sdd/etapa-12/01-release-readiness-audit.md`
 - `.sdd/etapa-12/02-compatibility-spec.md`
+- `.sdd/etapa-12/03-compatibility-matrix.md`
 - `.sdd/etapa-12/DECISIONS.md`
 - `.sdd/etapa-12/STATUS.md`
 - `README.md`
@@ -139,6 +143,44 @@ Resultados:
   README ausente em core e Dommel.
 - Vulnerability audit: nenhum pacote vulneravel encontrado nas fontes atuais.
 
+## Validacao do Prompt 12.2
+
+Executada localmente em 2026-07-29:
+
+```bash
+dotnet restore ./Dapper.FluentMap.sln -p:DapperPackageVersion=2.1.79
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:DapperPackageVersion=2.1.79
+dotnet test ./test/Dapper.FluentMap.Tests/Dapper.FluentMap.Tests.csproj --configuration Release --no-build
+dotnet test ./test/Dapper.FluentMap.GeneratedRegistration.Tests/Dapper.FluentMap.GeneratedRegistration.Tests.csproj --configuration Release --no-build
+dotnet test ./test/Dapper.FluentMap.DependencyInjection.Tests/Dapper.FluentMap.DependencyInjection.Tests.csproj --configuration Release --no-build
+dotnet test ./test/Dapper.FluentMap.Dommel.Tests/Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build
+dotnet test ./test/Dapper.FluentMap.Analyzers.Tests/Dapper.FluentMap.Analyzers.Tests.csproj --configuration Release
+dotnet test ./test/Dapper.FluentMap.Generators.Tests/Dapper.FluentMap.Generators.Tests.csproj --configuration Release
+dotnet restore ./Dapper.FluentMap.sln
+dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore
+dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
+dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages
+```
+
+Resultados:
+
+- Restore da matriz Dapper `2.1.79`: sucesso.
+- Build Release da matriz Dapper `2.1.79`: sucesso, 0 warnings, 0 errors.
+- Runtime compatibility tests:
+  - Core: 370 aprovados.
+  - Generated registration: 6 aprovados.
+  - DependencyInjection: 9 aprovados.
+  - Dommel: 23 aprovados.
+- Analyzer tests: 19 aprovados.
+- Generator tests: 26 aprovados.
+- Restore/build/test padrao da solution com range default: sucesso; 453 testes
+  aprovados.
+- Pack solution: sucesso; warnings conhecidos `NU5125` em core/Dommel por
+  `licenseUrl` obsoleto e aviso de README ausente nesses pacotes.
+- Inspecao do nuspec:
+  - `Dapper.FluentMap`: `Dapper` `[2.1.79, 3.0.0)`.
+  - `Dapper.FluentMap.Dommel`: `Dapper` `[2.1.79, 3.0.0)`, `Dommel` `3.5.3`.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 12.1
+Ultimo prompt executado: 12.2
