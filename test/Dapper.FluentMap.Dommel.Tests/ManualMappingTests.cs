@@ -220,6 +220,7 @@ namespace Dapper.FluentMap.Dommel.Tests
         {
             FluentMapper.EntityMaps.Clear();
             FluentMapper.TypeConventions.Clear();
+            FluentMapper.Initialize(_ => { });
         }
 
         private class MapWithCustomIdPropertyMap : DommelEntityMap<CustomIdEntity>

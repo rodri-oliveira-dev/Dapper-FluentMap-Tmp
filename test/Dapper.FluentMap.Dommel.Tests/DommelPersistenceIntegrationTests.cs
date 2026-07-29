@@ -339,6 +339,7 @@ CREATE TABLE write_conversion_boundary_entities (
         {
             FluentMapper.EntityMaps.Clear();
             FluentMapper.TypeConventions.Clear();
+            FluentMapper.Initialize(_ => { });
             DommelMapper.LogReceived = null;
         }
 

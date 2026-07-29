@@ -256,3 +256,57 @@ singleton por um `MappingRegistry` injetado internamente.
 A etapa fica aditiva e preserva `Initialize`. O builder consegue reutilizar
 extensoes existentes via `Configure(Action<FluentMapConfiguration>)`, enquanto
 o snapshot evita expor maps/conventions mutaveis como configuracao efetiva.
+
+## ADR-14 - Static compatibility bridge publication
+
+### Contexto
+
+Depois do runtime isolado, a API estatica ainda precisava deixar de ser a
+implementacao primaria. Ao mesmo tempo, `Initialize` aditivo, type maps Dapper
+globais e campos publicos legados precisavam continuar existindo.
+
+### Decisao
+
+`FluentMapper.Initialize(...)` escreve em um builder default legado, cria um
+`ImmutableFluentMapConfiguration`, publica um `FluentMapRuntime` default e
+instala type maps Dapper que consultam esse runtime. `FluentMapper.Runtime` e
+`FluentMapper.Configuration` expoem o estado publicado.
+
+### Alternativas consideradas
+
+- Manter o `MappingRegistry` global como runtime principal.
+- Transformar os campos publicos em propriedades/proxies.
+- Usar `AsyncLocal` para selecionar configuracao.
+
+### Consequencias
+
+Consultas estaticas e diagnostics estruturados usam o mesmo runtime que a API
+isolada. Os campos publicos continuam existindo por compatibilidade, mas sao
+colecoes legadas do builder default e nao o mecanismo recomendado para codigo
+novo.
+
+## ADR-15 - Dommel remains a legacy process-wide bridge
+
+### Contexto
+
+Os snapshots imutaveis do core preservam metadata do core, mas nao podem
+recriar tipos especificos de `Dapper.FluentMap.Dommel`, como
+`DommelEntityMap` e `DommelPropertyMap`, sem acoplar o core ao pacote Dommel.
+
+### Decisao
+
+Dommel permanece usando as colecoes legadas process-wide nesta etapa. Nao foi
+prometido isolamento por runtime para Dommel.
+
+### Alternativas consideradas
+
+- Fazer os resolvers Dommel lerem `FluentMapper.GetEntityMaps()`.
+- Adicionar tipos de snapshot Dommel no core.
+- Usar estado ambiente para escolher runtime por operacao Dommel.
+
+### Consequencias
+
+O core avanca para runtime isolado sem transformar Dommel em parte da
+configuracao imutavel do core. Multiplas configuracoes Dommel no mesmo processo
+continuam fora do contrato ate design especifico dos extension points globais de
+`DommelMapper`.

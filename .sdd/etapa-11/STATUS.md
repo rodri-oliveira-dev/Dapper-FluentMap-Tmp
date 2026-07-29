@@ -41,20 +41,25 @@ e preparando configuracoes imutaveis com runtime isolado.
 - Criados testes de runtime isolado para duas configuracoes da mesma entidade, mesmo profile type em configuracoes diferentes, generated materializers, converters, nested mappings, cache isolation, `ReadMapped`, unbuffered, async streaming, diagnostics e concorrencia.
 - Benchmarks existentes foram estendidos com cenarios `RuntimeQueryMapped*` comparaveis aos helpers estaticos.
 - `README.md` atualizado para documentar `FluentMapRuntime` e os limites restantes de `FluentMapper`, Dapper puro e Dommel.
+- Criado `06-compatibility-bridge.md`.
+- `ImmutableFluentMapConfiguration.CreateRuntime()` foi adicionado como entry point ergonomico para runtime isolado.
+- `FluentMapper.Configuration` e `FluentMapper.Runtime` foram expostos para o runtime/configuracao default publicados pela bridge estatica.
+- `FluentMapper.Initialize(...)` agora publica um runtime default criado de snapshot imutavel e serializa inicializacoes concorrentes.
+- A bridge estatica preserva `Initialize` aditivo e reinstala type maps Dapper para maps/conventions default.
+- `GetEntityMaps()` e `GetTypeConventions()` continuam retornando snapshots das colecoes historicas registradas, preservando instancias de maps/conventions.
+- Dommel foi mantido como bridge process-wide sobre as colecoes legadas porque depende de metadata especifica de `DommelEntityMap` e `DommelPropertyMap`.
+- Criados testes de compatibility bridge para runtime default, API configuration-aware, equivalencia legacy/new, repeated Initialize, Initialize concorrente, colecoes legadas, generated materializers, profiles e converters.
 
 ## Em andamento
 
-- Restore/build/test completos.
-- Revisao final de diff.
-- Commit semantico do prompt 11.3.
+- Nenhum item em andamento para o prompt 11.4.
 
 ## Proximos passos
 
-1. Expandir overloads publicos configuration-aware se a API desejada for extension methods em vez de metodos de instancia.
-2. Projetar DI em incremento separado.
-3. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
-4. Avaliar full benchmark antes de release.
-5. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
+1. Projetar DI em incremento separado.
+2. Endurecer Dommel em design proprio, mantendo honestos os limites process-wide de `DommelMapper`.
+3. Avaliar full benchmark antes de release.
+4. Migrar gradualmente testes antigos de isolamento/concurrencia para runtime instanciado quando isso reduzir dependencia de reset global.
 
 ## Decisoes relevantes
 
@@ -67,13 +72,16 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `FluentMapper` delega ao runtime default para diagnostics e query helpers estaticos.
 - `Initialize` deve continuar aditivo inicialmente.
 - `Reset` nao e solucao arquitetural principal.
+- `FluentMapper.Configuration` e `FluentMapper.Runtime` representam a configuracao/runtime default publicados.
+- `ImmutableFluentMapConfiguration.CreateRuntime()` e o caminho ergonomico para criar runtime isolado.
 - DI deve registrar configuracao e runtime como singleton.
 - Dommel permanece bridge process-wide ate design especifico.
 - Native AOT nao deve ser prometido alem do que os smokes validam.
 
 ## Estado global identificado
 
-- `FluentMapper._registry`.
+- `FluentMapper._builderRegistry`.
+- `FluentMapper._runtime`.
 - `FluentMapper._configuration`.
 - `FluentMapper.EntityMaps`.
 - `FluentMapper.TypeConventions`.
@@ -135,6 +143,9 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `.sdd/etapa-11/01-historical-configuration-issues.md`
 - `.sdd/etapa-11/02-configuration-isolation-spec.md`
 - `.sdd/etapa-11/03-configuration-model.md`
+- `.sdd/etapa-11/04-isolated-runtime.md`
+- `.sdd/etapa-11/05-performance-impact.md`
+- `.sdd/etapa-11/06-compatibility-bridge.md`
 - `.sdd/etapa-11/DECISIONS.md`
 - `.sdd/etapa-11/STATUS.md`
 - `README.md`
@@ -150,6 +161,7 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `src/Dapper.FluentMap/QueryMappedExtensions.cs`
 - `test/Dapper.FluentMap.Tests/ImmutableConfigurationModelTests.cs`
 - `test/Dapper.FluentMap.Tests/IsolatedRuntimeTests.cs`
+- `test/Dapper.FluentMap.Tests/CompatibilityBridgeTests.cs`
 - `benchmarks/Dapper.FluentMap.Benchmarks/Program.cs`
 
 ## Validacao do Prompt 11.1
@@ -180,6 +192,22 @@ e preparando configuracoes imutaveis com runtime isolado.
 - `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 429 testes aprovados.
 - `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; criou `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`; warning existente `NU5125` sobre `licenseUrl` obsoleto.
 
+## Validacao do Prompt 11.4
+
+- Detectado runner de testes como VSTest: SDK `10.0.302`, sem `global.json`, sem `Directory.Build.props`/`Directory.Packages.props` e projetos de teste com `Microsoft.NET.Test.Sdk` + xUnit runner.
+- `dotnet build .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet build .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~CompatibilityBridgeTests"`: sucesso, 5 testes aprovados.
+- `dotnet build .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\test\Dapper.FluentMap.Dommel.Tests\Dapper.FluentMap.Dommel.Tests.csproj --configuration Release --no-build`: sucesso, 22 testes aprovados.
+- `dotnet test .\test\Dapper.FluentMap.Tests\Dapper.FluentMap.Tests.csproj --configuration Release --no-build`: sucesso, 362 testes aprovados.
+- `dotnet restore .\Dapper.FluentMap.sln`: sucesso.
+- `dotnet build .\Dapper.FluentMap.sln --configuration Release --no-restore`: sucesso, 0 warnings, 0 errors.
+- `dotnet test .\Dapper.FluentMap.sln --configuration Release --no-build`: sucesso, 434 testes aprovados no total.
+- `dotnet pack .\src\Dapper.FluentMap\Dapper.FluentMap.csproj --configuration Release --no-build --output .\artifacts\packages`: sucesso; criou `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`; warning existente `NU5125` sobre `licenseUrl` obsoleto.
+- Inspecionado `artifacts\packages\Dapper.FluentMap.2.0.0.nupkg`: contem nuspec/metadados e `lib/netstandard2.0/Dapper.FluentMap.dll` + XML; nao contem projetos de teste.
+- Ferramenta dedicada de API compatibility nao foi encontrada no projeto atual; ha referencias planejadas para Etapa 12, mas sem `ApiCompat`, `PublicApiAnalyzers` ou package validation configurados nesta etapa.
+
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 11.3
+Ultimo prompt executado: 11.4

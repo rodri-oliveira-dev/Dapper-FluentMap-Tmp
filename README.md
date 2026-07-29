@@ -338,7 +338,7 @@ var configuration = new FluentMapConfigurationBuilder()
     .Configure(config => config.AddGeneratedMappings())
     .Build();
 
-var runtime = new FluentMapRuntime(configuration);
+var runtime = configuration.CreateRuntime();
 ```
 
 `Build()` validates the same invariants used by `FluentMapper.Validate()` and
@@ -347,7 +347,9 @@ profiles, conventions, naming policies, persistence metadata, converters and
 generated materializer registrations. The builder is sealed after `Build()`.
 Create a `FluentMapRuntime` from the immutable configuration when multiple
 configuration-specific `QueryMapped*` pipelines must coexist in the same
-process. `FluentMapper.Initialize(...)` remains the global compatibility layer.
+process. `FluentMapper.Initialize(...)` remains the global compatibility layer,
+with `FluentMapper.Configuration` and `FluentMapper.Runtime` exposing the
+currently published default configuration and runtime.
 
 ## Conventions and Naming Policies
 
@@ -593,7 +595,7 @@ var configuration = new FluentMapConfigurationBuilder()
     .AddMap<CustomerMap>()
     .Build();
 
-var runtime = new FluentMapRuntime(configuration);
+var runtime = configuration.CreateRuntime();
 var customers = runtime.QueryMapped<Customer>(
     connection,
     "SELECT 7 AS customer_id, 'Ada' AS Name;");
@@ -1099,7 +1101,7 @@ var configuration = new FluentMapConfigurationBuilder()
     .Configure(config => config.AddGeneratedMappings())
     .Build();
 
-var runtime = new FluentMapRuntime(configuration);
+var runtime = configuration.CreateRuntime();
 ```
 
 `Build()` valida os mesmos invariants usados por `FluentMapper.Validate()` e
@@ -1109,7 +1111,8 @@ generated materializer registrations. O builder fica selado depois de `Build()`.
 Crie um `FluentMapRuntime` a partir da configuracao imutavel quando multiplos
 pipelines `QueryMapped*` especificos por configuracao precisarem coexistir no
 mesmo processo. `FluentMapper.Initialize(...)` continua sendo a camada global de
-compatibilidade.
+compatibilidade, com `FluentMapper.Configuration` e `FluentMapper.Runtime`
+expondo a configuracao e o runtime default publicados.
 
 ## Convenções e Políticas de Nomenclatura
 
@@ -1355,7 +1358,7 @@ var configuration = new FluentMapConfigurationBuilder()
     .AddMap<CustomerMap>()
     .Build();
 
-var runtime = new FluentMapRuntime(configuration);
+var runtime = configuration.CreateRuntime();
 var customers = runtime.QueryMapped<Customer>(
     connection,
     "SELECT 7 AS customer_id, 'Ada' AS Name;");

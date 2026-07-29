@@ -27,7 +27,7 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         /// <param name="convention">The convention.</param>
         public FluentConventionConfiguration(Convention convention)
-            : this(convention, FluentMapper.Registry, ensureMutable: null)
+            : this(convention, FluentMapper.ConfigurationRegistry, ensureMutable: null)
         {
         }
 

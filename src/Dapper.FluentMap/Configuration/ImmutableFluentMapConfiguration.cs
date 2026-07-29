@@ -51,6 +51,15 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         public IReadOnlyList<GeneratedMaterializerConfiguration> GeneratedMaterializers { get; }
 
+        /// <summary>
+        /// Creates a runtime that uses this immutable configuration and owns its derived caches.
+        /// </summary>
+        /// <returns>A FluentMap runtime bound to this configuration.</returns>
+        public FluentMapRuntime CreateRuntime()
+        {
+            return new FluentMapRuntime(this);
+        }
+
         internal static ImmutableFluentMapConfiguration Create(MappingRegistry registry)
         {
             if (registry == null)

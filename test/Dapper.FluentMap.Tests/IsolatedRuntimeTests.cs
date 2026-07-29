@@ -267,7 +267,7 @@ namespace Dapper.FluentMap.Tests
         {
             var builder = new FluentMapConfigurationBuilder();
             configure(builder);
-            return new FluentMapRuntime(builder.Build());
+            return builder.Build().CreateRuntime();
         }
 
         private static GeneratedMaterializerColumn[] CustomerGeneratedColumns()

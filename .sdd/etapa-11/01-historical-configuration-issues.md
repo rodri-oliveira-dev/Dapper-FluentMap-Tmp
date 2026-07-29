@@ -18,6 +18,14 @@ O fork possui um `FluentMapper.Reset(params Type[])` interno usado pelos testes.
 
 O estado atual melhora o isolamento de testes internos, mas nao resolve a causa estrutural. Caches e resolvers ainda dependem do registry global, e `QueryMapped*`, type maps Dapper e Dommel ainda leem esse estado global.
 
+Atualizacao do prompt 11.4: `QueryMapped*`, `ReadMapped*`, generated
+materializers e diagnostics `Explain` agora usam o `FluentMapRuntime` default
+publicado pela bridge estatica. `FluentMapper.Initialize(...)` reconstroi esse
+runtime a partir de uma configuracao imutavel. `Dapper.Query<T>()` continua
+process-wide por causa de `SqlMapper.SetTypeMap`, e Dommel continua bridge
+process-wide por depender de metadata especifica de `DommelEntityMap` e
+`DommelPropertyMap`.
+
 ### Solução simples possível
 
 Uma API publica como `FluentMapper.Reset()` ou `ClearConfiguration()` poderia:
@@ -44,6 +52,11 @@ A API estatica deve virar camada de compatibilidade que possui um runtime defaul
 ### Decisão para Etapa 11
 
 Na Etapa 11, a direcao e especificar e implementar incrementalmente configuracoes imutaveis e runtime isolado. `FluentMapper.Initialize(...)` deve continuar funcionando, mas como bridge para o runtime default. Nao remover a API estatica e nao promover `Reset()` como API principal.
+
+Decisao do prompt 11.4: nao criar `Reset()` publico. A solucao para novos
+consumidores e `FluentMapConfigurationBuilder -> Build() ->
+configuration.CreateRuntime()`. O reset interno permanece para testes e
+compatibilidade.
 
 ## Issue #79
 

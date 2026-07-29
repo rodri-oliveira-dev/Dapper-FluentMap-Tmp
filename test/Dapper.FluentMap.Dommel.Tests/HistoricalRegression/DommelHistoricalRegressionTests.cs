@@ -250,6 +250,7 @@ CREATE TABLE historical_default_entities (
         {
             FluentMapper.EntityMaps.Clear();
             FluentMapper.TypeConventions.Clear();
+            FluentMapper.Initialize(_ => { });
             DommelMapper.LogReceived = null;
         }
 

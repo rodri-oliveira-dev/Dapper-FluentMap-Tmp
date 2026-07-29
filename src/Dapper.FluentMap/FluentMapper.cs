@@ -2,10 +2,12 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.TypeMaps;
 
 namespace Dapper.FluentMap
 {
@@ -18,9 +20,10 @@ namespace Dapper.FluentMap
             DynamicallyAccessedMemberTypes.PublicConstructors |
             DynamicallyAccessedMemberTypes.PublicProperties;
 
-        private static readonly MappingRegistry _registry = new MappingRegistry();
-        private static readonly FluentMapRuntime _runtime = new FluentMapRuntime(_registry);
-        private static readonly FluentMapConfiguration _configuration = new FluentMapConfiguration();
+        private static readonly object _syncRoot = new object();
+        private static readonly MappingRegistry _builderRegistry = new MappingRegistry(installDapperTypeMaps: false);
+        private static readonly FluentMapConfiguration _configuration = new FluentMapConfiguration(_builderRegistry, ensureMutable: null);
+        private static volatile FluentMapRuntime _runtime = CreateRuntime(_builderRegistry);
 
         /// <summary>
         /// Gets the dictionary containing the entity mapping per entity type.
@@ -30,7 +33,7 @@ namespace Dapper.FluentMap
         /// through <see cref="Initialize(Action{FluentMapConfiguration})"/> and use <see cref="GetEntityMaps"/>
         /// for read-only inspection.
         /// </remarks>
-        public static readonly ConcurrentDictionary<Type, IEntityMap> EntityMaps = _registry.EntityMaps;
+        public static readonly ConcurrentDictionary<Type, IEntityMap> EntityMaps = _builderRegistry.EntityMaps;
 
         /// <summary>
         /// Gets the dictionary containing the conventions per entity type.
@@ -40,11 +43,21 @@ namespace Dapper.FluentMap
         /// through <see cref="Initialize(Action{FluentMapConfiguration})"/> and use <see cref="GetTypeConventions"/>
         /// for read-only inspection.
         /// </remarks>
-        public static readonly ConcurrentDictionary<Type, IList<Convention>> TypeConventions = _registry.TypeConventions;
+        public static readonly ConcurrentDictionary<Type, IList<Convention>> TypeConventions = _builderRegistry.TypeConventions;
 
-        internal static MappingRegistry Registry => _registry;
+        /// <summary>
+        /// Gets the immutable configuration currently used by the default compatibility runtime.
+        /// </summary>
+        public static ImmutableFluentMapConfiguration Configuration => Runtime.Configuration;
 
-        internal static FluentMapRuntime Runtime => _runtime;
+        /// <summary>
+        /// Gets the default compatibility runtime used by the historical static APIs.
+        /// </summary>
+        public static FluentMapRuntime Runtime => _runtime;
+
+        internal static MappingRegistry Registry => Runtime.Registry;
+
+        internal static MappingRegistry ConfigurationRegistry => _builderRegistry;
 
         /// <summary>
         /// Initializes Dapper.FluentMap with the specified configuration.
@@ -53,7 +66,24 @@ namespace Dapper.FluentMap
         /// <param name="configure">A callback containing the configuration of Dapper.FluentMap.</param>
         public static void Initialize(Action<FluentMapConfiguration> configure)
         {
-            configure(_configuration);
+            if (configure == null)
+            {
+                throw new ArgumentNullException(nameof(configure));
+            }
+
+            lock (_syncRoot)
+            {
+                try
+                {
+                    configure(_configuration);
+                    PublishDefaultRuntime();
+                }
+                catch
+                {
+                    PublishDefaultRuntime();
+                    throw;
+                }
+            }
         }
 
         /// <summary>
@@ -64,7 +94,8 @@ namespace Dapper.FluentMap
         /// </exception>
         public static void Validate()
         {
-            _runtime.Validate();
+            _builderRegistry.ValidateConfiguration();
+            Runtime.Validate();
         }
 
         /// <summary>
@@ -73,7 +104,7 @@ namespace Dapper.FluentMap
         /// <returns>A read-only snapshot of the registered default entity maps.</returns>
         public static IReadOnlyDictionary<Type, IEntityMap> GetEntityMaps()
         {
-            return _registry.GetEntityMapsSnapshot();
+            return _builderRegistry.GetEntityMapsSnapshot();
         }
 
         /// <summary>
@@ -82,7 +113,7 @@ namespace Dapper.FluentMap
         /// <returns>A read-only snapshot of the registered type conventions.</returns>
         public static IReadOnlyDictionary<Type, IReadOnlyList<Convention>> GetTypeConventions()
         {
-            return _registry.GetTypeConventionsSnapshot();
+            return _builderRegistry.GetTypeConventionsSnapshot();
         }
 
         /// <summary>
@@ -94,7 +125,7 @@ namespace Dapper.FluentMap
             [DynamicallyAccessedMembers(EntityMemberTypes)]
             TEntity>()
         {
-            return _runtime.Explain<TEntity>();
+            return Runtime.Explain<TEntity>();
         }
 
         /// <summary>
@@ -109,7 +140,7 @@ namespace Dapper.FluentMap
             TProfile>()
             where TProfile : IMappingProfile
         {
-            return _runtime.Explain<TEntity, TProfile>();
+            return Runtime.Explain<TEntity, TProfile>();
         }
 
         /// <summary>
@@ -118,7 +149,7 @@ namespace Dapper.FluentMap
         /// <typeparam name="TEntity">The type of the entity.</typeparam>
         internal static void AddTypeMap<TEntity>()
         {
-            _registry.ResetDapperTypeMap<TEntity>();
+            SetDapperTypeMap(typeof(TEntity));
         }
 
         /// <summary>
@@ -127,7 +158,7 @@ namespace Dapper.FluentMap
         /// <param name="entityType">The type of the entity.</param>
         internal static void AddTypeMap(Type entityType)
         {
-            _registry.ResetDapperTypeMap(entityType);
+            SetDapperTypeMap(entityType);
         }
 
         /// <summary>
@@ -150,7 +181,49 @@ namespace Dapper.FluentMap
 
         internal static void Reset(params Type[] dapperTypes)
         {
-            _registry.Reset(dapperTypes);
+            lock (_syncRoot)
+            {
+                _builderRegistry.Reset(dapperTypes);
+                _runtime = CreateRuntime(_builderRegistry);
+            }
+        }
+
+        private static FluentMapRuntime CreateRuntime(MappingRegistry registry)
+        {
+            var configuration = ImmutableFluentMapConfiguration.Create(registry);
+            return configuration.CreateRuntime();
+        }
+
+        private static void PublishDefaultRuntime()
+        {
+            var runtime = CreateRuntime(_builderRegistry);
+            _runtime = runtime;
+            InstallDefaultDapperTypeMaps(runtime.Configuration);
+        }
+
+        private static void InstallDefaultDapperTypeMaps(ImmutableFluentMapConfiguration configuration)
+        {
+            foreach (var entityType in GetDefaultDapperMappedTypes(configuration))
+            {
+                SetDapperTypeMap(entityType);
+            }
+        }
+
+        private static IEnumerable<Type> GetDefaultDapperMappedTypes(ImmutableFluentMapConfiguration configuration)
+        {
+            return configuration.EntityMaps.Keys
+                .Concat(configuration.TypeConventions.Keys)
+                .Distinct();
+        }
+
+        private static void SetDapperTypeMap(Type entityType)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            SqlMapper.SetTypeMap(entityType, new FluentMapTypeMap(entityType));
         }
     }
 }

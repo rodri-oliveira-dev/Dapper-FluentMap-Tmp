@@ -26,7 +26,7 @@ namespace Dapper.FluentMap.Configuration
         /// Initializes a new instance of the <see cref="FluentMapConfiguration"/> class.
         /// </summary>
         public FluentMapConfiguration()
-            : this(FluentMapper.Registry, ensureMutable: null)
+            : this(FluentMapper.ConfigurationRegistry, ensureMutable: null)
         {
         }
 
