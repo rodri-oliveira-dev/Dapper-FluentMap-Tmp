@@ -58,6 +58,14 @@ jobs:
             throw "Version 2.0.0 already exists for historical package IDs and must not be used by this fork."
           }
 
+          if ($version -eq '3.0.0') {
+            throw "Stable version 3.0.0 is disabled during the 3.0.0-rc.1 release freeze."
+          }
+
+          if ($version -notmatch '-') {
+            throw "Release freeze requires an explicit prerelease package version."
+          }
+
       - name: Guard disabled publish path
         if: ${{ inputs.publish }}
         shell: pwsh
@@ -75,13 +83,13 @@ jobs:
         run: dotnet list ./Dapper.FluentMap.sln package --vulnerable --include-transitive
 
       - name: Build Release
-        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:VersionPrefix=${{ inputs.package-version }}
+        run: dotnet build ./Dapper.FluentMap.sln --configuration Release --no-restore -p:Version=${{ inputs.package-version }}
 
       - name: Test Release
         run: dotnet test ./Dapper.FluentMap.sln --configuration Release --no-build
 
       - name: Pack Release
-        run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:VersionPrefix=${{ inputs.package-version }}
+        run: dotnet pack ./Dapper.FluentMap.sln --configuration Release --no-build --output ./artifacts/packages -p:Version=${{ inputs.package-version }}
 
       - name: Validate package artifact set
         shell: pwsh

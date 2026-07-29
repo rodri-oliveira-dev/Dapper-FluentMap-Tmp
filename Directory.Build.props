@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
-    <FluentMapPackageVersionPrefix>2.0.0</FluentMapPackageVersionPrefix>
+    <FluentMapPackageVersionPrefix Condition="'$(FluentMapPackageVersionPrefix)' == ''">3.0.0</FluentMapPackageVersionPrefix>
+    <FluentMapPackageVersionSuffix Condition="'$(Version)' == '' and '$(VersionSuffix)' == '' and '$(FluentMapPackageVersionPrefix)' == '3.0.0'">dev</FluentMapPackageVersionSuffix>
+    <VersionSuffix Condition="'$(FluentMapPackageVersionSuffix)' != '' and '$(VersionSuffix)' == ''">$(FluentMapPackageVersionSuffix)</VersionSuffix>
     <DapperMinimumSupportedVersion>2.1.79</DapperMinimumSupportedVersion>
     <DapperLatestStableVersion>2.1.79</DapperLatestStableVersion>
     <DapperPackageVersion Condition="'$(DapperPackageVersion)' == ''">[$(DapperMinimumSupportedVersion),3.0.0)</DapperPackageVersion>

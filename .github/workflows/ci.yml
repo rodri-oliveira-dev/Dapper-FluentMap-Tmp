@@ -158,6 +158,11 @@ jobs:
             throw "Unexpected test/benchmark artifacts: $($unexpected.Name -join ', ')"
           }
 
+          $unsafe = @($nupkgs + $snupkgs | Where-Object { $_.Name -match '\.(2\.0\.0|3\.0\.0)\.(nupkg|snupkg)$' })
+          if ($unsafe.Count -gt 0) {
+            throw "Unsafe package versions produced by default CI pack: $($unsafe.Name -join ', ')"
+          }
+
       - name: Write release metadata
         shell: pwsh
         run: |

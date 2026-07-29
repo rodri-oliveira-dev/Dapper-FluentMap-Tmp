@@ -276,7 +276,7 @@ Resultados:
 
 ## Ultimo prompt executado
 
-Ultimo prompt executado: 12.6
+Ultimo prompt executado: 12.7
 
 ## Validacao do Prompt 12.3
 
