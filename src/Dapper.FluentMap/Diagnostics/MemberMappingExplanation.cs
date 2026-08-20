@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
+using Dapper.FluentMap.Mapping;
 
 namespace Dapper.FluentMap.Diagnostics
 {
@@ -21,7 +22,9 @@ namespace Dapper.FluentMap.Diagnostics
             Type inheritedFrom,
             Type conventionType,
             IEnumerable<ConstructorParameterExplanation> constructorParameters,
-            MappingMaterialization materialization)
+            MappingMaterialization materialization,
+            PropertyPersistenceMetadata persistence,
+            PropertyConversionMetadata conversion)
         {
             if (string.IsNullOrEmpty(memberPath))
             {
@@ -44,6 +47,8 @@ namespace Dapper.FluentMap.Diagnostics
             ConstructorParameters = new ReadOnlyCollection<ConstructorParameterExplanation>(
                 (constructorParameters ?? Enumerable.Empty<ConstructorParameterExplanation>()).ToList());
             Materialization = materialization;
+            Persistence = persistence ?? PropertyPersistenceMetadata.Default;
+            Conversion = conversion ?? PropertyConversionMetadata.Default;
         }
 
         /// <summary>
@@ -95,5 +100,15 @@ namespace Dapper.FluentMap.Diagnostics
         /// Gets how this member is materialized.
         /// </summary>
         public MappingMaterialization Materialization { get; }
+
+        /// <summary>
+        /// Gets the persistence metadata associated with this member mapping.
+        /// </summary>
+        public PropertyPersistenceMetadata Persistence { get; }
+
+        /// <summary>
+        /// Gets the conversion metadata associated with this member mapping.
+        /// </summary>
+        public PropertyConversionMetadata Conversion { get; }
     }
 }

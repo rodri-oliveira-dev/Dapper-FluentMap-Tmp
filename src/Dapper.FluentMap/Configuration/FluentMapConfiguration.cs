@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Mapping;
+using Dapper.FluentMap.Materialization;
 using Dapper.FluentMap.Naming;
 
 namespace Dapper.FluentMap.Configuration
@@ -17,6 +18,23 @@ namespace Dapper.FluentMap.Configuration
     {
         private const string AssemblyScanningRequiresUnreferencedCodeMessage =
             "Assembly scanning discovers entity maps by reflection. Register maps explicitly with AddMap<TMap>() when publishing trimmed or Native AOT applications.";
+
+        private readonly MappingRegistry _registry;
+        private readonly Action _ensureMutable;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FluentMapConfiguration"/> class.
+        /// </summary>
+        public FluentMapConfiguration()
+            : this(FluentMapper.ConfigurationRegistry, ensureMutable: null)
+        {
+        }
+
+        internal FluentMapConfiguration(MappingRegistry registry, Action ensureMutable)
+        {
+            _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+            _ensureMutable = ensureMutable;
+        }
 
         /// <summary>
         /// Adds the specified <see cref="T:Dapper.FluentMap.Mapping.EntityMap"/> to the configuration of Dapper.FluentMap.
@@ -33,7 +51,8 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(mapper));
             }
 
-            FluentMapper.Registry.AddEntityMap(mapper);
+            EnsureCanMutate();
+            _registry.AddEntityMap(mapper);
         }
 
         /// <summary>
@@ -50,7 +69,8 @@ namespace Dapper.FluentMap.Configuration
             var entityType = GetMappedEntityType(mapType);
             var mapper = CreateEntityMap<TMap>();
 
-            FluentMapper.Registry.AddEntityMap(entityType, mapper);
+            EnsureCanMutate();
+            _registry.AddEntityMap(entityType, mapper);
             return this;
         }
 
@@ -69,7 +89,60 @@ namespace Dapper.FluentMap.Configuration
             var profileType = GetMappedProfileType(mapType);
             var mapper = CreateEntityMap<TMap>();
 
-            FluentMapper.Registry.AddProfileMap(entityType, profileType, mapper);
+            EnsureCanMutate();
+            _registry.AddProfileMap(entityType, profileType, mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// Registers a generated materializer for the default mapping of the specified entity type.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <param name="columns">The ordered column shape and member bindings expected by the materializer.</param>
+        /// <param name="materializer">The generated row materializer.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity>(
+            IEnumerable<GeneratedMaterializerColumn> columns,
+            GeneratedRowMaterializer<TEntity> materializer)
+            where TEntity : class
+        {
+            return AddGeneratedMaterializer(new GeneratedMaterializerDescriptor<TEntity>(columns, materializer));
+        }
+
+        /// <summary>
+        /// Registers a generated materializer for the specified entity type and mapping profile.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <typeparam name="TProfile">The mapping profile marker type used by the materializer.</typeparam>
+        /// <param name="columns">The ordered column shape and member bindings expected by the materializer.</param>
+        /// <param name="materializer">The generated row materializer.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity, TProfile>(
+            IEnumerable<GeneratedMaterializerColumn> columns,
+            GeneratedRowMaterializer<TEntity> materializer)
+            where TEntity : class
+            where TProfile : IMappingProfile
+        {
+            return AddGeneratedMaterializer(new GeneratedMaterializerDescriptor<TEntity>(typeof(TProfile), columns, materializer));
+        }
+
+        /// <summary>
+        /// Registers a generated materializer descriptor.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type produced by the materializer.</typeparam>
+        /// <param name="descriptor">The generated materializer descriptor.</param>
+        /// <returns>The current instance of <see cref="T:Dapper.FluentMap.Configuration.FluentMapConfiguration"/>.</returns>
+        public FluentMapConfiguration AddGeneratedMaterializer<TEntity>(
+            GeneratedMaterializerDescriptor<TEntity> descriptor)
+            where TEntity : class
+        {
+            if (descriptor == null)
+            {
+                throw new ArgumentNullException(nameof(descriptor));
+            }
+
+            EnsureCanMutate();
+            _registry.AddGeneratedMaterializer(descriptor);
             return this;
         }
 
@@ -87,6 +160,7 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(assembly));
             }
 
+            EnsureCanMutate();
             var definitions = FindEntityMapDefinitions(assembly, namespaces).ToList();
             EnsureNoDuplicateEntityMaps(definitions);
 
@@ -99,7 +173,7 @@ namespace Dapper.FluentMap.Configuration
 
             foreach (var registration in OrderByIncludedBaseMaps(registrations))
             {
-                FluentMapper.Registry.AddEntityMap(registration.EntityType, registration.Map);
+                _registry.AddEntityMap(registration.EntityType, registration.Map);
             }
 
             return this;
@@ -128,7 +202,8 @@ namespace Dapper.FluentMap.Configuration
         /// </returns>
         public FluentConventionConfiguration AddConvention<TConvention>() where TConvention : Convention, new()
         {
-            return new FluentConventionConfiguration(new TConvention());
+            EnsureCanMutate();
+            return new FluentConventionConfiguration(new TConvention(), _registry, EnsureCanMutate);
         }
 
         /// <summary>
@@ -147,7 +222,8 @@ namespace Dapper.FluentMap.Configuration
                 throw new ArgumentNullException(nameof(namingPolicy));
             }
 
-            return new FluentConventionConfiguration(new NamingPolicyConvention(namingPolicy, caseSensitive));
+            EnsureCanMutate();
+            return new FluentConventionConfiguration(new NamingPolicyConvention(namingPolicy, caseSensitive), _registry, EnsureCanMutate);
         }
 
         /// <summary>
@@ -289,6 +365,11 @@ namespace Dapper.FluentMap.Configuration
                     $"Entity map type '{typeof(TMap).FullName}' could not be created. Ensure it has a public parameterless constructor and the constructor completes successfully.",
                     ex);
             }
+        }
+
+        private void EnsureCanMutate()
+        {
+            _ensureMutable?.Invoke();
         }
 
         private static void EnsureNoDuplicateEntityMaps(IList<EntityMapDefinition> definitions)

@@ -17,7 +17,9 @@ namespace Dapper.FluentMap.Configuration
         private const string AssemblyScanningRequiresUnreferencedCodeMessage =
             "Convention assembly scanning discovers entity types and properties by reflection. Register conventions with ForEntity<TEntity>() when publishing trimmed or Native AOT applications.";
 
+        private readonly MappingRegistry _registry;
         private readonly Convention _convention;
+        private readonly Action _ensureMutable;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FluentConventionConfiguration"/> class,
@@ -25,13 +27,20 @@ namespace Dapper.FluentMap.Configuration
         /// </summary>
         /// <param name="convention">The convention.</param>
         public FluentConventionConfiguration(Convention convention)
+            : this(convention, FluentMapper.ConfigurationRegistry, ensureMutable: null)
+        {
+        }
+
+        internal FluentConventionConfiguration(Convention convention, MappingRegistry registry, Action ensureMutable)
         {
             if (convention == null)
             {
                 throw new ArgumentNullException(nameof(convention));
             }
 
+            _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _convention = convention;
+            _ensureMutable = ensureMutable;
         }
 
         /// <summary>
@@ -43,10 +52,11 @@ namespace Dapper.FluentMap.Configuration
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
             T>()
         {
+            EnsureCanMutate();
             var type = typeof(T);
             MapProperties(type);
 
-            FluentMapper.Registry.AddConvention(type, _convention);
+            _registry.AddConvention(type, _convention);
             return this;
         }
 
@@ -62,6 +72,7 @@ namespace Dapper.FluentMap.Configuration
         [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInCurrentAssembly(params string[] namespaces)
         {
+            EnsureCanMutate();
             foreach (var type in Assembly.GetCallingAssembly().GetExportedTypes())
             {
                 if (namespaces != null &&
@@ -73,7 +84,7 @@ namespace Dapper.FluentMap.Configuration
                 }
 
                 MapProperties(type);
-                FluentMapper.Registry.AddConvention(type, _convention);
+                _registry.AddConvention(type, _convention);
             }
 
             return this;
@@ -92,6 +103,7 @@ namespace Dapper.FluentMap.Configuration
         [RequiresUnreferencedCode(AssemblyScanningRequiresUnreferencedCodeMessage)]
         public FluentConventionConfiguration ForEntitiesInAssembly(Assembly assembly, params string[] namespaces)
         {
+            EnsureCanMutate();
             foreach (var type in assembly.GetExportedTypes())
             {
                 if (namespaces != null &&
@@ -103,10 +115,15 @@ namespace Dapper.FluentMap.Configuration
                 }
 
                 MapProperties(type);
-                FluentMapper.Registry.AddConvention(type, _convention);
+                _registry.AddConvention(type, _convention);
             }
 
             return this;
+        }
+
+        private void EnsureCanMutate()
+        {
+            _ensureMutable?.Invoke();
         }
 
         private void MapProperties(

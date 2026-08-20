@@ -150,7 +150,256 @@ namespace Dapper.FluentMap
                     $"Property path '{memberPath}' on entity '{FormatType(entityType)}' has an empty column name.");
             }
 
+            ValidatePersistenceMetadata(entityType, map, memberPath, sourceKind, sourceType);
+            ValidateConversionMetadata(entityType, map, memberPath, sourceKind, sourceType);
+
             return new MapDescriptor(map, memberPath);
+        }
+
+        private static void ValidateConversionMetadata(Type entityType, IPropertyMap map, MemberPath memberPath, string sourceKind, Type sourceType)
+        {
+            var conversion = PropertyMapConversion.GetConversion(map);
+            if (conversion == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Conversion metadata cannot be null.");
+            }
+
+            if (conversion.HasReadConverter)
+            {
+                ValidateConverterDescriptor(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    conversion.ReadConverter,
+                    PropertyConversionDirection.Read);
+            }
+
+            if (conversion.HasWriteConverter)
+            {
+                ValidateConverterDescriptor(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    conversion.WriteConverter,
+                    PropertyConversionDirection.Write);
+            }
+
+            var persistence = PropertyMapPersistence.GetPersistence(map);
+            if (persistence == null)
+            {
+                return;
+            }
+
+            if (persistence.IgnoredByFluentMap && conversion.HasReadConverter)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Ignored properties are never materialized by FluentMap and cannot use read converters.");
+            }
+
+            if (conversion.HasWriteConverter &&
+                persistence.IgnoredByFluentMap)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Ignored properties are never persisted and cannot use write converters.");
+            }
+
+            if (conversion.HasWriteConverter &&
+                !persistence.ParticipatesInInsert &&
+                !persistence.ParticipatesInUpdate &&
+                !persistence.IsKey)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "The write converter is configured for a property that never participates in insert, update or key persistence.");
+            }
+        }
+
+        private static void ValidateConverterDescriptor(
+            Type entityType,
+            MemberPath memberPath,
+            string sourceKind,
+            Type sourceType,
+            PropertyConverterMetadata converter,
+            PropertyConversionDirection expectedDirection)
+        {
+            if (converter == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    $"The {expectedDirection.ToString().ToLowerInvariant()} converter descriptor cannot be null.");
+            }
+
+            if (converter.Direction != expectedDirection)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    $"The converter descriptor direction is '{converter.Direction}' but '{expectedDirection}' was expected.");
+            }
+
+            if (converter.ConverterType == null ||
+                converter.DatabaseType == null ||
+                converter.PropertyType == null)
+            {
+                throw InvalidConversionMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Converter type, database type and property type must all be present.");
+            }
+        }
+
+        private static FluentMapConfigurationException InvalidConversionMetadata(Type entityType, MemberPath memberPath, string sourceKind, Type sourceType, string reason)
+        {
+            return new FluentMapConfigurationException(
+                $"Property path '{memberPath}' on entity '{FormatType(entityType)}' has invalid conversion metadata in {sourceKind} '{FormatType(sourceType)}'. {reason}");
+        }
+
+        private static void ValidatePersistenceMetadata(Type entityType, IPropertyMap map, MemberPath memberPath, string sourceKind, Type sourceType)
+        {
+            var persistence = PropertyMapPersistence.GetPersistence(map);
+            if (persistence == null)
+            {
+                throw InvalidPersistenceMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Persistence metadata cannot be null.");
+            }
+
+            if (map.Ignored != persistence.IgnoredByFluentMap)
+            {
+                throw InvalidPersistenceMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "The Ignored flag and persistence metadata disagree.");
+            }
+
+            if (persistence.IgnoredByFluentMap)
+            {
+                if (persistence.ParticipatesInMaterialization ||
+                    persistence.ParticipatesInInsert ||
+                    persistence.ParticipatesInUpdate ||
+                    persistence.IsKey ||
+                    persistence.IsIdentity ||
+                    persistence.IsGenerated ||
+                    persistence.IsComputed ||
+                    persistence.HasDatabaseDefaultOnInsert)
+                {
+                    throw InvalidPersistenceMetadata(
+                        entityType,
+                        memberPath,
+                        sourceKind,
+                        sourceType,
+                        "Ignored properties cannot participate in materialization, insert, update, key or generated persistence behavior.");
+                }
+
+                return;
+            }
+
+            if (!persistence.ParticipatesInMaterialization)
+            {
+                throw InvalidPersistenceMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Only ignored properties may opt out of FluentMap materialization.");
+            }
+
+            if (persistence.IsComputed)
+            {
+                if (!persistence.IsGenerated ||
+                    persistence.ParticipatesInInsert ||
+                    persistence.ParticipatesInUpdate ||
+                    persistence.HasDatabaseDefaultOnInsert ||
+                    persistence.IsKey ||
+                    persistence.IsIdentity)
+                {
+                    throw InvalidPersistenceMetadata(
+                        entityType,
+                        memberPath,
+                        sourceKind,
+                        sourceType,
+                        "Computed properties must be generated read-only values and cannot also be key, identity or database-default properties.");
+                }
+            }
+
+            if (persistence.IsIdentity)
+            {
+                if (!persistence.IsGenerated ||
+                    !persistence.IsKey ||
+                    persistence.ParticipatesInInsert ||
+                    persistence.ParticipatesInUpdate ||
+                    persistence.HasDatabaseDefaultOnInsert)
+                {
+                    throw InvalidPersistenceMetadata(
+                        entityType,
+                        memberPath,
+                        sourceKind,
+                        sourceType,
+                        "Identity properties must be generated keys and cannot participate in insert, update or database-default-on-insert behavior.");
+                }
+            }
+
+            if (persistence.IsKey && persistence.ParticipatesInUpdate)
+            {
+                throw InvalidPersistenceMetadata(
+                    entityType,
+                    memberPath,
+                    sourceKind,
+                    sourceType,
+                    "Key properties cannot participate in generated UPDATE SET behavior.");
+            }
+
+            if (persistence.HasDatabaseDefaultOnInsert)
+            {
+                if (!persistence.IsGenerated ||
+                    persistence.ParticipatesInInsert ||
+                    persistence.IsComputed ||
+                    persistence.IsIdentity)
+                {
+                    throw InvalidPersistenceMetadata(
+                        entityType,
+                        memberPath,
+                        sourceKind,
+                        sourceType,
+                        "Database-default-on-insert properties must be generated values omitted from insert and cannot also be computed or identity properties.");
+                }
+            }
+        }
+
+        private static FluentMapConfigurationException InvalidPersistenceMetadata(Type entityType, MemberPath memberPath, string sourceKind, Type sourceType, string reason)
+        {
+            return new FluentMapConfigurationException(
+                $"Property path '{memberPath}' on entity '{FormatType(entityType)}' has invalid persistence metadata in {sourceKind} '{FormatType(sourceType)}'. {reason}");
         }
 
         private static void ValidateDuplicateMemberPaths(Type entityType, IList<MapDescriptor> maps, string sourceKind, Type sourceType)

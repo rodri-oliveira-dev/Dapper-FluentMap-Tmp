@@ -20,10 +20,14 @@ namespace Dapper.FluentMap.Analyzers
         public const string InvalidGenericMapRegistrationDiagnosticId = "DFM005";
         public const string InvalidGenericProfileRegistrationDiagnosticId = "DFM009";
         public const string DuplicateProfileRegistrationDiagnosticId = "DFM010";
+        public const string InvalidPersistenceBehaviorDiagnosticId = "DFM013";
+        public const string InvalidPropertyConverterDiagnosticId = "DFM014";
+        public const string DuplicatePropertyConverterDiagnosticId = "DFM015";
 
         private const string Category = "Dapper.FluentMap.Configuration";
         private const string MappingNamespace = "Dapper.FluentMap.Mapping";
         private const string ConfigurationNamespace = "Dapper.FluentMap.Configuration";
+        private const string DommelMappingNamespace = "Dapper.FluentMap.Dommel.Mapping";
 
         private static readonly DiagnosticDescriptor InvalidMapExpressionRule = new DiagnosticDescriptor(
             InvalidMapExpressionDiagnosticId,
@@ -91,6 +95,33 @@ namespace Dapper.FluentMap.Analyzers
             description: "The same entity/profile pair must not be registered more than once.",
             customTags: WellKnownDiagnosticTags.CompilationEnd);
 
+        private static readonly DiagnosticDescriptor InvalidPersistenceBehaviorRule = new DiagnosticDescriptor(
+            InvalidPersistenceBehaviorDiagnosticId,
+            "Persistence mapping behavior is invalid",
+            "Property path '{0}' has invalid persistence behavior: {1}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Persistence mapping calls such as Ignore, Computed, DatabaseDefaultOnInsert, key and identity must not be combined in contradictory ways.");
+
+        private static readonly DiagnosticDescriptor InvalidPropertyConverterRule = new DiagnosticDescriptor(
+            InvalidPropertyConverterDiagnosticId,
+            "Property converter is invalid",
+            "Property path '{0}' has invalid {1} converter '{2}': {3}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Type-based FluentMap property converters must implement a compatible read or write converter contract for the mapped property path.");
+
+        private static readonly DiagnosticDescriptor DuplicatePropertyConverterRule = new DiagnosticDescriptor(
+            DuplicatePropertyConverterDiagnosticId,
+            "Property converter is configured more than once",
+            "Property path '{0}' configures more than one {1} converter in this fluent chain",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "A single FluentMap property mapping can have at most one read converter and at most one write converter.");
+
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(
                 InvalidMapExpressionRule,
@@ -99,7 +130,10 @@ namespace Dapper.FluentMap.Analyzers
                 InvalidIncludeBaseRule,
                 InvalidGenericMapRegistrationRule,
                 InvalidGenericProfileRegistrationRule,
-                DuplicateProfileRegistrationRule);
+                DuplicateProfileRegistrationRule,
+                InvalidPersistenceBehaviorRule,
+                InvalidPropertyConverterRule,
+                DuplicatePropertyConverterRule);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -191,6 +225,7 @@ namespace Dapper.FluentMap.Analyzers
                     invocation,
                     context.SemanticModel,
                     memberPath,
+                    context,
                     context.CancellationToken,
                     out var mapInvocation))
             {
@@ -418,6 +453,7 @@ namespace Dapper.FluentMap.Analyzers
             InvocationExpressionSyntax mapInvocation,
             SemanticModel semanticModel,
             MemberPathInfo memberPath,
+            SyntaxNodeAnalysisContext context,
             System.Threading.CancellationToken cancellationToken,
             out MapInvocation result)
         {
@@ -442,6 +478,8 @@ namespace Dapper.FluentMap.Analyzers
             var caseSensitive = true;
             var ignored = false;
             var columnLocation = mapInvocation.GetLocation();
+            var persistenceState = new PersistenceChainState();
+            var conversionState = new ConversionChainState();
 
             SyntaxNode current = mapInvocation;
             while (current.Parent is MemberAccessExpressionSyntax memberAccess &&
@@ -465,6 +503,42 @@ namespace Dapper.FluentMap.Analyzers
                 else if (IsIgnoreInvocation(chainedMethod))
                 {
                     ignored = true;
+                    persistenceState.ApplyIgnore();
+                }
+                else if (TryGetPersistenceAction(chainedMethod, chainedInvocation, semanticModel, cancellationToken, out var persistenceAction))
+                {
+                    if (!persistenceState.TryApply(persistenceAction, out var reason))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            InvalidPersistenceBehaviorRule,
+                            GetInvocationNameLocation(chainedInvocation),
+                            memberPath.Display,
+                            reason));
+                    }
+                }
+                else if (TryGetConversionAction(chainedMethod, out var conversionAction))
+                {
+                    foreach (var direction in conversionAction.Directions)
+                    {
+                        if (!conversionState.TryApply(direction))
+                        {
+                            context.ReportDiagnostic(Diagnostic.Create(
+                                DuplicatePropertyConverterRule,
+                                GetInvocationNameLocation(chainedInvocation),
+                                memberPath.Display,
+                                FormatDirection(direction)));
+                        }
+                    }
+
+                    if (IsTypeBasedConversionInvocation(chainedMethod))
+                    {
+                        ValidateTypeBasedConverter(
+                            context,
+                            chainedInvocation,
+                            chainedMethod,
+                            memberPath,
+                            conversionAction);
+                    }
                 }
 
                 current = chainedInvocation;
@@ -665,6 +739,249 @@ namespace Dapper.FluentMap.Analyzers
             return method.Name == "Ignore" && method.Parameters.Length == 0;
         }
 
+        private static bool TryGetPersistenceAction(
+            IMethodSymbol method,
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            System.Threading.CancellationToken cancellationToken,
+            out PersistenceAction action)
+        {
+            action = PersistenceAction.None;
+
+            if (method == null || !IsPersistenceMethod(method))
+            {
+                return false;
+            }
+
+            if (method.Parameters.Length == 0)
+            {
+                switch (method.Name)
+                {
+                    case "ExcludeFromInsert":
+                        action = PersistenceAction.ExcludeFromInsert;
+                        return true;
+                    case "ExcludeFromUpdate":
+                        action = PersistenceAction.ExcludeFromUpdate;
+                        return true;
+                    case "ReadOnly":
+                        action = PersistenceAction.ReadOnly;
+                        return true;
+                    case "Computed":
+                        action = PersistenceAction.Computed;
+                        return true;
+                    case "DatabaseDefaultOnInsert":
+                        action = PersistenceAction.DatabaseDefaultOnInsert;
+                        return true;
+                    case "IsKey":
+                        action = PersistenceAction.Key;
+                        return true;
+                    case "IsIdentity":
+                        action = PersistenceAction.Identity;
+                        return true;
+                }
+            }
+
+            if (method.Name == "SetGeneratedOption" &&
+                method.Parameters.Length == 1 &&
+                invocation.ArgumentList.Arguments.Count == 1)
+            {
+                var option = semanticModel.GetConstantValue(
+                    invocation.ArgumentList.Arguments[0].Expression,
+                    cancellationToken);
+                if (!option.HasValue || !(option.Value is int optionValue))
+                {
+                    return false;
+                }
+
+                switch (optionValue)
+                {
+                    case 0:
+                        action = PersistenceAction.GeneratedNone;
+                        return true;
+                    case 1:
+                        action = PersistenceAction.GeneratedIdentity;
+                        return true;
+                    case 2:
+                        action = PersistenceAction.GeneratedComputed;
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPersistenceMethod(IMethodSymbol method)
+        {
+            var containingType = method.ContainingType;
+            if (IsType(containingType, DommelMappingNamespace, "DommelPropertyMap"))
+            {
+                return true;
+            }
+
+            for (var current = containingType; current != null; current = current.BaseType)
+            {
+                if (IsType(current.OriginalDefinition, MappingNamespace, "PropertyMapBase`1"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetConversionAction(IMethodSymbol method, out ConversionAction action)
+        {
+            action = null;
+
+            if (method == null || !IsPropertyMapMethod(method))
+            {
+                return false;
+            }
+
+            switch (method.Name)
+            {
+                case "ConvertFromDatabaseUsing":
+                    action = ConversionAction.Read;
+                    return true;
+                case "ConvertToDatabaseUsing":
+                    action = ConversionAction.Write;
+                    return true;
+                case "ConvertUsing":
+                    action = ConversionAction.ReadWrite;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsTypeBasedConversionInvocation(IMethodSymbol method)
+        {
+            return method.IsGenericMethod &&
+                   method.TypeArguments.Length == 2 &&
+                   method.Parameters.Length == 0;
+        }
+
+        private static void ValidateTypeBasedConverter(
+            SyntaxNodeAnalysisContext context,
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method,
+            MemberPathInfo memberPath,
+            ConversionAction action)
+        {
+            var converterType = method.TypeArguments[0] as INamedTypeSymbol;
+            var databaseType = method.TypeArguments[1];
+            if (converterType == null || databaseType == null)
+            {
+                return;
+            }
+
+            foreach (var direction in action.Directions)
+            {
+                if (TryFindCompatibleConverterContract(
+                    context.Compilation,
+                    converterType,
+                    databaseType,
+                    memberPath.TerminalType,
+                    direction,
+                    out var reason))
+                {
+                    continue;
+                }
+
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InvalidPropertyConverterRule,
+                    GetInvocationNameLocation(invocation),
+                    memberPath.Display,
+                    FormatDirection(direction),
+                    FormatSymbol(converterType),
+                    reason));
+            }
+        }
+
+        private static bool TryFindCompatibleConverterContract(
+            Compilation compilation,
+            INamedTypeSymbol converterType,
+            ITypeSymbol databaseType,
+            ITypeSymbol mappedPropertyType,
+            PropertyConversionDirection direction,
+            out string reason)
+        {
+            reason = null;
+            var interfaceName = direction == PropertyConversionDirection.Read
+                ? "IReadPropertyConverter`2"
+                : "IWritePropertyConverter`2";
+
+            var databaseMatches = converterType.AllInterfaces
+                .Where(type => IsType(type.OriginalDefinition, MappingNamespace, interfaceName))
+                .Where(type =>
+                {
+                    var converterDatabaseType = direction == PropertyConversionDirection.Read
+                        ? type.TypeArguments[0]
+                        : type.TypeArguments[1];
+
+                    return IsSameOrNullableEquivalent(converterDatabaseType, databaseType);
+                })
+                .ToList();
+
+            if (databaseMatches.Count == 0)
+            {
+                reason = direction == PropertyConversionDirection.Read
+                    ? $"it does not implement IReadPropertyConverter<{FormatSymbol(databaseType)}, TProperty>"
+                    : $"it does not implement IWritePropertyConverter<TProperty, {FormatSymbol(databaseType)}>";
+                return false;
+            }
+
+            var matches = databaseMatches
+                .Where(type =>
+                {
+                    var converterPropertyType = direction == PropertyConversionDirection.Read
+                        ? type.TypeArguments[1]
+                        : type.TypeArguments[0];
+
+                    return direction == PropertyConversionDirection.Read
+                        ? CanAssignValue(compilation, mappedPropertyType, converterPropertyType)
+                        : CanAssignValue(compilation, converterPropertyType, mappedPropertyType);
+                })
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                var converterPropertyType = databaseMatches[0].TypeArguments[
+                    direction == PropertyConversionDirection.Read ? 1 : 0];
+                reason = direction == PropertyConversionDirection.Read
+                    ? $"it returns '{FormatSymbol(converterPropertyType)}', which cannot be assigned to mapped property type '{FormatSymbol(mappedPropertyType)}'"
+                    : $"it accepts '{FormatSymbol(converterPropertyType)}', which is not compatible with mapped property type '{FormatSymbol(mappedPropertyType)}'";
+                return false;
+            }
+
+            if (matches.Count > 1)
+            {
+                reason = $"it matches more than one compatible {interfaceName.Replace("`2", "<,>")} contract";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsPropertyMapMethod(IMethodSymbol method)
+        {
+            var containingType = method.ContainingType;
+            if (IsType(containingType, DommelMappingNamespace, "DommelPropertyMap"))
+            {
+                return true;
+            }
+
+            for (var current = containingType; current != null; current = current.BaseType)
+            {
+                if (IsType(current.OriginalDefinition, MappingNamespace, "PropertyMapBase`1"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static Location GetInvocationNameLocation(InvocationExpressionSyntax invocation)
         {
             var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
@@ -707,6 +1024,37 @@ namespace Dapper.FluentMap.Analyzers
                    type.ContainingNamespace.ToDisplayString() == namespaceName;
         }
 
+        private static bool CanAssignValue(Compilation compilation, ITypeSymbol targetType, ITypeSymbol valueType)
+        {
+            if (IsSameOrNullableEquivalent(targetType, valueType))
+            {
+                return true;
+            }
+
+            var conversion = compilation.ClassifyConversion(valueType, targetType);
+            return conversion.IsImplicit;
+        }
+
+        private static bool IsSameOrNullableEquivalent(ITypeSymbol left, ITypeSymbol right)
+        {
+            return SymbolEqualityComparer.Default.Equals(left, right) ||
+                   SymbolEqualityComparer.Default.Equals(GetNullableUnderlyingType(left), right) ||
+                   SymbolEqualityComparer.Default.Equals(GetNullableUnderlyingType(right), left);
+        }
+
+        private static ITypeSymbol GetNullableUnderlyingType(ITypeSymbol type)
+        {
+            var namedType = type as INamedTypeSymbol;
+            if (namedType == null ||
+                namedType.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T ||
+                namedType.TypeArguments.Length != 1)
+            {
+                return null;
+            }
+
+            return namedType.TypeArguments[0];
+        }
+
         private static bool TryGetEntityMapInterface(INamedTypeSymbol mapType, out INamedTypeSymbol entityType)
         {
             entityType = null;
@@ -743,6 +1091,16 @@ namespace Dapper.FluentMap.Analyzers
         private static string FormatSymbol(ISymbol symbol)
         {
             return symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+        }
+
+        private static string FormatSymbol(ITypeSymbol symbol)
+        {
+            return symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+        }
+
+        private static string FormatDirection(PropertyConversionDirection direction)
+        {
+            return direction == PropertyConversionDirection.Read ? "read" : "write";
         }
 
         private sealed class MapInvocation
@@ -786,11 +1144,12 @@ namespace Dapper.FluentMap.Analyzers
 
         private sealed class MemberPathInfo
         {
-            private MemberPathInfo(string key, string display, string terminalName)
+            private MemberPathInfo(string key, string display, string terminalName, ITypeSymbol terminalType)
             {
                 Key = key;
                 Display = display;
                 TerminalName = terminalName;
+                TerminalType = terminalType;
             }
 
             internal string Key { get; }
@@ -799,6 +1158,8 @@ namespace Dapper.FluentMap.Analyzers
 
             internal string TerminalName { get; }
 
+            internal ITypeSymbol TerminalType { get; }
+
             internal static MemberPathInfo Create(IEnumerable<IPropertySymbol> properties)
             {
                 var propertyList = properties.ToList();
@@ -806,7 +1167,59 @@ namespace Dapper.FluentMap.Analyzers
                     ".",
                     propertyList.Select(property => property.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + property.MetadataName));
                 var display = string.Join(".", propertyList.Select(property => property.Name));
-                return new MemberPathInfo(key, display, propertyList[propertyList.Count - 1].Name);
+                var terminal = propertyList[propertyList.Count - 1];
+                return new MemberPathInfo(key, display, terminal.Name, terminal.Type);
+            }
+        }
+
+        private enum PropertyConversionDirection
+        {
+            Read,
+            Write
+        }
+
+        private sealed class ConversionAction
+        {
+            internal static readonly ConversionAction Read =
+                new ConversionAction(new[] { PropertyConversionDirection.Read });
+            internal static readonly ConversionAction Write =
+                new ConversionAction(new[] { PropertyConversionDirection.Write });
+            internal static readonly ConversionAction ReadWrite =
+                new ConversionAction(new[] { PropertyConversionDirection.Read, PropertyConversionDirection.Write });
+
+            private ConversionAction(IEnumerable<PropertyConversionDirection> directions)
+            {
+                Directions = directions.ToArray();
+            }
+
+            internal IReadOnlyList<PropertyConversionDirection> Directions { get; }
+        }
+
+        private sealed class ConversionChainState
+        {
+            private bool _read;
+            private bool _write;
+
+            internal bool TryApply(PropertyConversionDirection direction)
+            {
+                if (direction == PropertyConversionDirection.Read)
+                {
+                    if (_read)
+                    {
+                        return false;
+                    }
+
+                    _read = true;
+                    return true;
+                }
+
+                if (_write)
+                {
+                    return false;
+                }
+
+                _write = true;
+                return true;
             }
         }
 
@@ -831,6 +1244,120 @@ namespace Dapper.FluentMap.Analyzers
             internal INamedTypeSymbol ProfileType { get; }
 
             internal Location Location { get; }
+        }
+
+        private enum PersistenceAction
+        {
+            None,
+            ExcludeFromInsert,
+            ExcludeFromUpdate,
+            ReadOnly,
+            Computed,
+            DatabaseDefaultOnInsert,
+            Key,
+            Identity,
+            GeneratedNone,
+            GeneratedComputed,
+            GeneratedIdentity
+        }
+
+        private sealed class PersistenceChainState
+        {
+            private bool _ignored;
+            private bool _computed;
+            private bool _databaseDefaultOnInsert;
+            private bool _key;
+            private bool _identity;
+
+            internal void ApplyIgnore()
+            {
+                _ignored = true;
+            }
+
+            internal bool TryApply(PersistenceAction action, out string reason)
+            {
+                reason = null;
+
+                if (_ignored)
+                {
+                    reason = "Ignore() disables materialization and persistence metadata; write persistence calls cannot be applied after Ignore().";
+                    return false;
+                }
+
+                switch (action)
+                {
+                    case PersistenceAction.Computed:
+                    case PersistenceAction.GeneratedComputed:
+                        if (_databaseDefaultOnInsert)
+                        {
+                            reason = "computed values cannot also be configured with DatabaseDefaultOnInsert().";
+                            return false;
+                        }
+
+                        if (_key)
+                        {
+                            reason = "computed values cannot also be configured as keys.";
+                            return false;
+                        }
+
+                        if (_identity)
+                        {
+                            reason = "computed values cannot also be configured as identity values.";
+                            return false;
+                        }
+
+                        _computed = true;
+                        return true;
+                    case PersistenceAction.DatabaseDefaultOnInsert:
+                        if (_computed)
+                        {
+                            reason = "DatabaseDefaultOnInsert() cannot be combined with computed persistence semantics.";
+                            return false;
+                        }
+
+                        if (_identity)
+                        {
+                            reason = "DatabaseDefaultOnInsert() cannot be combined with identity persistence semantics.";
+                            return false;
+                        }
+
+                        _databaseDefaultOnInsert = true;
+                        return true;
+                    case PersistenceAction.Key:
+                        if (_computed)
+                        {
+                            reason = "key persistence semantics cannot be combined with computed values.";
+                            return false;
+                        }
+
+                        _key = true;
+                        return true;
+                    case PersistenceAction.Identity:
+                    case PersistenceAction.GeneratedIdentity:
+                        if (_computed)
+                        {
+                            reason = "identity persistence semantics cannot be combined with computed values.";
+                            return false;
+                        }
+
+                        if (_databaseDefaultOnInsert)
+                        {
+                            reason = "identity persistence semantics cannot be combined with DatabaseDefaultOnInsert().";
+                            return false;
+                        }
+
+                        _key = true;
+                        _identity = true;
+                        return true;
+                    case PersistenceAction.GeneratedNone:
+                        _identity = false;
+                        _computed = false;
+                        _databaseDefaultOnInsert = false;
+                        return true;
+                    default:
+                        return true;
+                }
+            }
         }
     }
 }

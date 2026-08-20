@@ -33,6 +33,37 @@ namespace Dapper.FluentMap.Dommel.Mapping
         /// </summary>
         public DatabaseGeneratedOption? GeneratedOption { get; set; }
 
+        internal DatabaseGeneratedOption EffectiveUpdateGeneratedOption
+        {
+            get
+            {
+                if (Persistence.IsIdentity)
+                {
+                    return DatabaseGeneratedOption.Identity;
+                }
+
+                if (!Persistence.ParticipatesInUpdate)
+                {
+                    return DatabaseGeneratedOption.Computed;
+                }
+
+                return DatabaseGeneratedOption.None;
+            }
+        }
+
+        internal DatabaseGeneratedOption EffectiveKeyGeneratedOption
+        {
+            get
+            {
+                if (GeneratedOption.HasValue)
+                {
+                    return GeneratedOption.Value;
+                }
+
+                return Key ? DatabaseGeneratedOption.Identity : DatabaseGeneratedOption.None;
+            }
+        }
+
         /// <summary>
         /// Specifies the current property as key for the entity.
         /// </summary>
@@ -40,6 +71,7 @@ namespace Dapper.FluentMap.Dommel.Mapping
         public DommelPropertyMap IsKey()
         {
             Key = true;
+            MarkAsKey();
             return this;
         }
 
@@ -50,6 +82,8 @@ namespace Dapper.FluentMap.Dommel.Mapping
         public DommelPropertyMap IsIdentity()
         {
             Identity = true;
+            Key = true;
+            MarkAsIdentity();
             return this;
         }
 
@@ -59,6 +93,26 @@ namespace Dapper.FluentMap.Dommel.Mapping
         public DommelPropertyMap SetGeneratedOption(DatabaseGeneratedOption option)
         {
             GeneratedOption = option;
+
+            switch (option)
+            {
+                case DatabaseGeneratedOption.None:
+                    Identity = false;
+                    MarkAsNotGenerated();
+                    break;
+                case DatabaseGeneratedOption.Identity:
+                    Identity = true;
+                    Key = true;
+                    MarkAsIdentity();
+                    break;
+                case DatabaseGeneratedOption.Computed:
+                    MarkAsComputed();
+                    break;
+                default:
+                    MarkAsNotGenerated();
+                    break;
+            }
+
             return this;
         }
     }

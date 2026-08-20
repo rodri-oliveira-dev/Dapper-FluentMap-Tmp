@@ -2,10 +2,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Dapper.FluentMap.Configuration;
 using Dapper.FluentMap.Conventions;
 using Dapper.FluentMap.Diagnostics;
 using Dapper.FluentMap.Mapping;
@@ -16,11 +18,16 @@ namespace Dapper.FluentMap
 {
     internal sealed class MappingRegistry
     {
+        private readonly bool _installDapperTypeMaps;
+
         private readonly ConcurrentDictionary<MappingCacheKey, MappingCacheEntry> _propertyMapCache =
             new ConcurrentDictionary<MappingCacheKey, MappingCacheEntry>();
 
         private readonly ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan> _materializationPlanCache =
             new ConcurrentDictionary<MaterializationPlanCacheKey, NestedMaterializationPlan>();
+
+        private readonly ConcurrentDictionary<MaterializationPlanCacheKey, GeneratedMaterializerEntry> _generatedMaterializers =
+            new ConcurrentDictionary<MaterializationPlanCacheKey, GeneratedMaterializerEntry>();
 
         internal ConcurrentDictionary<Type, IEntityMap> EntityMaps { get; } =
             new ConcurrentDictionary<Type, IEntityMap>();
@@ -31,9 +38,16 @@ namespace Dapper.FluentMap
         internal ConcurrentDictionary<Type, IList<Convention>> TypeConventions { get; } =
             new ConcurrentDictionary<Type, IList<Convention>>();
 
+        internal MappingRegistry(bool installDapperTypeMaps = true)
+        {
+            _installDapperTypeMaps = installDapperTypeMaps;
+        }
+
         internal int CacheEntryCount => _propertyMapCache.Count;
 
         internal int MaterializationPlanCacheEntryCount => _materializationPlanCache.Count;
+
+        internal int GeneratedMaterializerCount => _generatedMaterializers.Count;
 
         internal IReadOnlyDictionary<Type, IEntityMap> GetEntityMapsSnapshot()
         {
@@ -53,6 +67,20 @@ namespace Dapper.FluentMap
                     conventions => (IReadOnlyList<Convention>)new ReadOnlyCollection<Convention>(conventions.Value.ToList()));
 
             return new ReadOnlyDictionary<Type, IReadOnlyList<Convention>>(snapshot);
+        }
+
+        internal IReadOnlyList<GeneratedMaterializerRegistrationSnapshot> GetGeneratedMaterializerSnapshots()
+        {
+            return _generatedMaterializers
+                .OrderBy(materializer => materializer.Key.Type.FullName, StringComparer.Ordinal)
+                .ThenBy(materializer => materializer.Key.ProfileType == null ? string.Empty : materializer.Key.ProfileType.FullName, StringComparer.Ordinal)
+                .ThenBy(materializer => string.Join("|", materializer.Key.ColumnNames), StringComparer.Ordinal)
+                .Select(materializer => new GeneratedMaterializerRegistrationSnapshot(
+                    materializer.Key.Type,
+                    materializer.Key.ProfileType,
+                    materializer.Value.Columns,
+                    materializer.Value.Materialize))
+                .ToList();
         }
 
         internal void AddEntityMap<TEntity>(IEntityMap<TEntity> mapper)
@@ -231,16 +259,106 @@ namespace Dapper.FluentMap
                 throw new ArgumentNullException(nameof(columnNames));
             }
 
-            if (profileType != null && !ProfileMaps.ContainsKey(new MappingProfileKey(type, profileType)))
-            {
-                throw new FluentMapConfigurationException(
-                    $"Entity '{type.FullName}' does not have a registered mapping profile '{profileType.FullName}'.");
-            }
+            EnsureProfileRegistered(type, profileType);
 
             var cacheKey = new MaterializationPlanCacheKey(type, profileType, columnNames);
             return _materializationPlanCache.GetOrAdd(
                 cacheKey,
                 key => NestedMaterializationPlan.Create(key.Type, key.ProfileType, key.ColumnNames, this));
+        }
+
+        internal void AddGeneratedMaterializer<TEntity>(GeneratedMaterializerDescriptor<TEntity> descriptor)
+            where TEntity : class
+        {
+            if (descriptor == null)
+            {
+                throw new ArgumentNullException(nameof(descriptor));
+            }
+
+            var key = new MaterializationPlanCacheKey(
+                descriptor.EntityType,
+                descriptor.ProfileType,
+                descriptor.Columns.Select(column => column.ColumnName));
+            var entry = GeneratedMaterializerEntry.Create(descriptor);
+
+            if (!_generatedMaterializers.TryAdd(key, entry))
+            {
+                var profileContext = descriptor.ProfileType == null
+                    ? string.Empty
+                    : $" and profile '{descriptor.ProfileType.FullName}'";
+
+                throw new FluentMapConfigurationException(
+                    $"Entity '{descriptor.EntityType.FullName}' already has a generated materializer registered for the same column shape{profileContext}.");
+            }
+        }
+
+        internal void AddGeneratedMaterializer(
+            Type entityType,
+            Type profileType,
+            IReadOnlyList<GeneratedMaterializerColumn> columns,
+            Func<IDataRecord, object> materializer)
+        {
+            if (entityType == null)
+            {
+                throw new ArgumentNullException(nameof(entityType));
+            }
+
+            if (columns == null)
+            {
+                throw new ArgumentNullException(nameof(columns));
+            }
+
+            if (materializer == null)
+            {
+                throw new ArgumentNullException(nameof(materializer));
+            }
+
+            var key = new MaterializationPlanCacheKey(
+                entityType,
+                profileType,
+                columns.Select(column => column.ColumnName));
+            var entry = GeneratedMaterializerEntry.Create(columns, materializer);
+
+            if (!_generatedMaterializers.TryAdd(key, entry))
+            {
+                var profileContext = profileType == null
+                    ? string.Empty
+                    : $" and profile '{profileType.FullName}'";
+
+                throw new FluentMapConfigurationException(
+                    $"Entity '{entityType.FullName}' already has a generated materializer registered for the same column shape{profileContext}.");
+            }
+        }
+
+        internal bool TryGetGeneratedMaterializer(
+            Type type,
+            Type profileType,
+            string[] columnNames,
+            out Func<IDataRecord, object> materializer)
+        {
+            if (type == null)
+            {
+                throw new ArgumentNullException(nameof(type));
+            }
+
+            if (columnNames == null)
+            {
+                throw new ArgumentNullException(nameof(columnNames));
+            }
+
+            EnsureProfileRegistered(type, profileType);
+
+            var cacheKey = new MaterializationPlanCacheKey(type, profileType, columnNames);
+            GeneratedMaterializerEntry entry;
+            if (!_generatedMaterializers.TryGetValue(cacheKey, out entry) ||
+                !GeneratedMaterializerMatchesEffectiveMapping(type, profileType, entry.Columns))
+            {
+                materializer = null;
+                return false;
+            }
+
+            materializer = entry.Materialize;
+            return true;
         }
 
         internal void ValidateConfiguration()
@@ -343,7 +461,7 @@ namespace Dapper.FluentMap
 
             if (hasEntityMap)
             {
-                entityMapType = entityMap.GetType();
+                entityMapType = GetEntityMapType(entityMap);
 
                 foreach (var descriptor in ComposeExplicitPropertyMapDescriptors(type, entityMap, profileType))
                 {
@@ -368,6 +486,15 @@ namespace Dapper.FluentMap
                 diagnostics.Add("No FluentMap entity map or convention is registered for this entity. Dapper default mapping is used.");
             }
 
+            var generatedMaterializerCount = CountGeneratedMaterializers(type, profileType);
+            if (generatedMaterializerCount > 0)
+            {
+                diagnostics.Add(
+                    generatedMaterializerCount == 1
+                        ? "One generated QueryMapped materializer descriptor is registered for this entity/profile. QueryMapped selects it only when the reader column order and effective mapping still match; otherwise it uses the runtime materializer fallback."
+                        : generatedMaterializerCount + " generated QueryMapped materializer descriptors are registered for this entity/profile. QueryMapped selects one only when the reader column order and effective mapping still match; otherwise it uses the runtime materializer fallback.");
+            }
+
             return new MappingExplanation(
                 type,
                 profileType,
@@ -377,6 +504,11 @@ namespace Dapper.FluentMap
                 diagnostics);
         }
 
+        private int CountGeneratedMaterializers(Type type, Type profileType)
+        {
+            return _generatedMaterializers.Keys.Count(key => key.Type == type && key.ProfileType == profileType);
+        }
+
         internal void Reset(params Type[] dapperTypes)
         {
             EntityMaps.Clear();
@@ -384,6 +516,7 @@ namespace Dapper.FluentMap
             TypeConventions.Clear();
             _propertyMapCache.Clear();
             _materializationPlanCache.Clear();
+            _generatedMaterializers.Clear();
 
             if (dapperTypes == null)
             {
@@ -398,8 +531,110 @@ namespace Dapper.FluentMap
 
         private void SetDapperTypeMap(Type type)
         {
+            if (!_installDapperTypeMaps)
+            {
+                return;
+            }
+
             var instance = new FluentMapTypeMap(type);
             SqlMapper.SetTypeMap(type, instance);
+        }
+
+        private void EnsureProfileRegistered(Type type, Type profileType)
+        {
+            if (profileType != null && !ProfileMaps.ContainsKey(new MappingProfileKey(type, profileType)))
+            {
+                throw new FluentMapConfigurationException(
+                    $"Entity '{type.FullName}' does not have a registered mapping profile '{profileType.FullName}'.");
+            }
+        }
+
+        private bool GeneratedMaterializerMatchesEffectiveMapping(
+            Type type,
+            Type profileType,
+            IReadOnlyList<GeneratedMaterializerColumn> columns)
+        {
+            var defaultTypeMap = new DefaultTypeMap(type);
+
+            foreach (var column in columns)
+            {
+                var fluentMap = GetProfilePropertyMap(type, profileType, column.ColumnName);
+                if (fluentMap != null)
+                {
+                    if (column.Ignored)
+                    {
+                        if (!fluentMap.Ignored)
+                        {
+                            return false;
+                        }
+
+                        continue;
+                    }
+
+                    if (fluentMap.Ignored)
+                    {
+                        return false;
+                    }
+
+                    if (!GeneratedReadConverterMatchesEffectiveMapping(
+                        PropertyMapConversion.GetConversion(fluentMap),
+                        column))
+                    {
+                        return false;
+                    }
+
+                    var memberPath = PropertyMapIdentity.GetMemberPath(fluentMap).ToString();
+                    if (!string.Equals(memberPath, column.MemberPath, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (column.Ignored)
+                {
+                    return false;
+                }
+
+                var defaultMember = defaultTypeMap.GetMember(column.ColumnName);
+                var defaultMemberPath = defaultMember == null
+                    ? null
+                    : defaultMember.Property != null
+                        ? defaultMember.Property.Name
+                        : defaultMember.Field != null
+                            ? defaultMember.Field.Name
+                            : null;
+
+                if (!string.Equals(defaultMemberPath, column.MemberPath, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                if (column.ReadConverterType != null)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool GeneratedReadConverterMatchesEffectiveMapping(
+            PropertyConversionMetadata conversion,
+            GeneratedMaterializerColumn column)
+        {
+            if (conversion == null || !conversion.HasReadConverter)
+            {
+                return column.ReadConverterType == null &&
+                       column.ReadConverterDatabaseType == null &&
+                       column.ReadConverterPropertyType == null;
+            }
+
+            var readConverter = conversion.ReadConverter;
+            return column.ReadConverterType == readConverter.ConverterType &&
+                   column.ReadConverterDatabaseType == readConverter.DatabaseType &&
+                   column.ReadConverterPropertyType == readConverter.PropertyType;
         }
 
         private void InvalidateType(Type type)
@@ -468,7 +703,7 @@ namespace Dapper.FluentMap
                 return new Type[0];
             }
 
-            return conventions.Select(c => c.GetType()).ToList();
+            return conventions.Select(GetConventionType).ToList();
         }
 
         private void ValidateIncludedBaseMaps(Type type, IEntityMap entityMap, Type profileType)
@@ -562,6 +797,29 @@ namespace Dapper.FluentMap
             return mapWithIncludedBases.IncludedBaseTypes;
         }
 
+        private static Type GetEntityMapType(IEntityMap entityMap)
+        {
+            var runtimeMetadata = entityMap as IRuntimeEntityMapMetadata;
+            return runtimeMetadata == null ? entityMap.GetType() : runtimeMetadata.MapType;
+        }
+
+        private static Type GetConventionType(Convention convention)
+        {
+            var runtimeMetadata = convention as IRuntimeConventionMetadata;
+            return runtimeMetadata == null ? convention.GetType() : runtimeMetadata.ConventionType;
+        }
+
+        private static bool IsNamingPolicyConvention(Convention convention)
+        {
+            if (convention is NamingPolicyConvention)
+            {
+                return true;
+            }
+
+            var runtimeMetadata = convention as IRuntimeConventionMetadata;
+            return runtimeMetadata != null && runtimeMetadata.ConventionType == typeof(NamingPolicyConvention);
+        }
+
         private IEnumerable<MappingDiagnosticDescriptor> GetConventionPropertyMapDescriptors(Type type, IList<MemberPath> configuredPaths)
         {
             if (!TypeConventions.TryGetValue(type, out var conventions))
@@ -615,7 +873,9 @@ namespace Dapper.FluentMap
                     inheritedFrom: null,
                     conventionType: null,
                     constructorParameters: constructorParameters,
-                    materialization: MappingMaterialization.Dapper));
+                    materialization: MappingMaterialization.Dapper,
+                    persistence: PropertyPersistenceMetadata.Default,
+                    conversion: PropertyConversionMetadata.Default));
                 configuredPaths.Add(memberPath);
             }
         }
@@ -643,7 +903,9 @@ namespace Dapper.FluentMap
                 descriptor.InheritedFrom,
                 descriptor.ConventionType,
                 constructorParameters,
-                materialization));
+                materialization,
+                PropertyMapPersistence.GetPersistence(descriptor.Map),
+                PropertyMapConversion.GetConversion(descriptor.Map)));
             configuredPaths.Add(memberPath);
         }
 
@@ -786,6 +1048,36 @@ namespace Dapper.FluentMap
             internal PropertyInfo PropertyInfo { get; }
         }
 
+        private sealed class GeneratedMaterializerEntry
+        {
+            private GeneratedMaterializerEntry(
+                IReadOnlyList<GeneratedMaterializerColumn> columns,
+                Func<IDataRecord, object> materialize)
+            {
+                Columns = columns;
+                Materialize = materialize;
+            }
+
+            internal static GeneratedMaterializerEntry Create<TEntity>(GeneratedMaterializerDescriptor<TEntity> descriptor)
+                where TEntity : class
+            {
+                return new GeneratedMaterializerEntry(
+                    descriptor.Columns,
+                    record => descriptor.Materializer(record));
+            }
+
+            internal static GeneratedMaterializerEntry Create(
+                IReadOnlyList<GeneratedMaterializerColumn> columns,
+                Func<IDataRecord, object> materialize)
+            {
+                return new GeneratedMaterializerEntry(columns, materialize);
+            }
+
+            internal IReadOnlyList<GeneratedMaterializerColumn> Columns { get; }
+
+            internal Func<IDataRecord, object> Materialize { get; }
+        }
+
         private sealed class MappingDiagnosticDescriptor
         {
             private MappingDiagnosticDescriptor(IPropertyMap map, MappingSource source, Type inheritedFrom, Type conventionType)
@@ -811,11 +1103,11 @@ namespace Dapper.FluentMap
 
             internal static MappingDiagnosticDescriptor Convention(IPropertyMap map, Convention convention)
             {
-                var source = convention is NamingPolicyConvention
+                var source = IsNamingPolicyConvention(convention)
                     ? MappingSource.NamingPolicy
                     : MappingSource.Convention;
 
-                return new MappingDiagnosticDescriptor(map, source, null, convention.GetType());
+                return new MappingDiagnosticDescriptor(map, source, null, GetConventionType(convention));
             }
 
             internal MappingDiagnosticDescriptor AsInheritedFrom(Type baseType)

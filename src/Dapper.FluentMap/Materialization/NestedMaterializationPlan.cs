@@ -51,7 +51,13 @@ namespace Dapper.FluentMap.Materialization
                     }
 
                     var memberPath = PropertyMapIdentity.GetMemberPath(fluentMap);
-                    rootNode.AddPropertyPath(memberPath, i, columnName);
+                    rootNode.AddPropertyPath(
+                        memberPath,
+                        i,
+                        columnName,
+                        entityType,
+                        profileType,
+                        PropertyMapConversion.GetConversion(fluentMap));
                     continue;
                 }
 
@@ -63,11 +69,22 @@ namespace Dapper.FluentMap.Materialization
 
                 if (defaultMember.Property != null)
                 {
-                    rootNode.AddRootProperty(defaultMember.Property, i, columnName);
+                    rootNode.AddRootProperty(
+                        defaultMember.Property,
+                        i,
+                        columnName,
+                        entityType,
+                        profileType,
+                        PropertyConversionMetadata.Default);
                 }
                 else if (defaultMember.Field != null)
                 {
-                    rootNode.AddRootField(defaultMember.Field, i, columnName);
+                    rootNode.AddRootField(
+                        defaultMember.Field,
+                        i,
+                        columnName,
+                        entityType,
+                        profileType);
                 }
             }
 
@@ -146,7 +163,29 @@ namespace Dapper.FluentMap.Materialization
             return Expression.Lambda<Action<object, object>>(body, target, value).Compile();
         }
 
-        private static Func<object, object> CreateConverter(Type targetType)
+        private static Func<object, object> CreateConverter(
+            Type entityType,
+            Type profileType,
+            Type targetType,
+            string memberPath,
+            string columnName,
+            PropertyConversionMetadata conversion)
+        {
+            if (conversion != null && conversion.HasReadConverter)
+            {
+                return CreatePropertyReadConverter(
+                    entityType,
+                    profileType,
+                    targetType,
+                    memberPath,
+                    columnName,
+                    conversion.ReadConverter);
+            }
+
+            return CreateDefaultConverter(targetType);
+        }
+
+        private static Func<object, object> CreateDefaultConverter(Type targetType)
         {
             var conversionType = Nullable.GetUnderlyingType(targetType) ?? targetType;
             if (DapperTypeHandlerAdapter.HasTypeHandler(conversionType))
@@ -155,6 +194,113 @@ namespace Dapper.FluentMap.Materialization
             }
 
             return value => ConvertValue(value, targetType);
+        }
+
+        private static Func<object, object> CreatePropertyReadConverter(
+            Type entityType,
+            Type profileType,
+            Type targetType,
+            string memberPath,
+            string columnName,
+            PropertyConverterMetadata converter)
+        {
+            var invokeConverter = CreateReadConverterInvoker(converter);
+
+            return value =>
+            {
+                if (value == null || value == DBNull.Value)
+                {
+                    return GetDefaultValue(targetType);
+                }
+
+                try
+                {
+                    var converterInput = ConvertConverterInput(value, converter.DatabaseType);
+                    var converted = invokeConverter(converterInput);
+                    if (converted == null && !CanAssignNull(targetType))
+                    {
+                        throw new InvalidOperationException(
+                            $"Read converter '{converter.ConverterType.FullName}' returned null for non-nullable target type '{targetType.FullName}'.");
+                    }
+
+                    return converted;
+                }
+                catch (Exception exception) when (!(exception is FluentMapConfigurationException))
+                {
+                    throw CreateReadConverterException(
+                        entityType,
+                        profileType,
+                        memberPath,
+                        columnName,
+                        converter,
+                        value,
+                        targetType,
+                        exception);
+                }
+            };
+        }
+
+        private static Func<object, object> CreateReadConverterInvoker(PropertyConverterMetadata converter)
+        {
+            var value = Expression.Parameter(typeof(object), "value");
+            var converterValue = Expression.Constant(converter.Converter);
+            var input = Expression.Convert(value, converter.DatabaseType);
+            Expression call;
+
+            if (converter.Converter is Delegate)
+            {
+                var delegateType = typeof(ReadPropertyConverter<,>).MakeGenericType(
+                    converter.DatabaseType,
+                    converter.PropertyType);
+                call = Expression.Invoke(Expression.Convert(converterValue, delegateType), input);
+            }
+            else
+            {
+                var interfaceType = typeof(IReadPropertyConverter<,>).MakeGenericType(
+                    converter.DatabaseType,
+                    converter.PropertyType);
+                call = Expression.Call(
+                    Expression.Convert(converterValue, interfaceType),
+                    interfaceType.GetMethod(nameof(IReadPropertyConverter<object, object>.ConvertFromDatabase)),
+                    input);
+            }
+
+            return Expression.Lambda<Func<object, object>>(
+                Expression.Convert(call, typeof(object)),
+                value).Compile();
+        }
+
+        private static object ConvertConverterInput(object value, Type databaseType)
+        {
+            var conversionType = Nullable.GetUnderlyingType(databaseType) ?? databaseType;
+            if (conversionType == typeof(object) || conversionType.IsInstanceOfType(value))
+            {
+                return value;
+            }
+
+            return ConvertValue(value, databaseType);
+        }
+
+        private static FluentMapConfigurationException CreateReadConverterException(
+            Type entityType,
+            Type profileType,
+            string memberPath,
+            string columnName,
+            PropertyConverterMetadata converter,
+            object sourceValue,
+            Type targetType,
+            Exception innerException)
+        {
+            var profileContext = profileType == null
+                ? string.Empty
+                : $" Profile: '{FormatType(profileType)}'.";
+            var sourceType = sourceValue == null || sourceValue == DBNull.Value
+                ? null
+                : sourceValue.GetType();
+
+            return new FluentMapConfigurationException(
+                $"Read converter failed for entity '{FormatType(entityType)}'.{profileContext} Member path: '{memberPath}'. Column: '{columnName}'. Converter: '{FormatType(converter.ConverterType)}'. Source type: '{FormatType(sourceType)}'. Converter database type: '{FormatType(converter.DatabaseType)}'. Converter property type: '{FormatType(converter.PropertyType)}'. Target type: '{FormatType(targetType)}'. See the inner exception for the converter failure.",
+                innerException);
         }
 
         private static object ConvertValue(object value, Type targetType)
@@ -287,12 +433,18 @@ namespace Dapper.FluentMap.Materialization
                 return new MaterializationNode(type, null, type.Name, isRoot: true);
             }
 
-            internal void AddPropertyPath(MemberPath memberPath, int columnIndex, string columnName)
+            internal void AddPropertyPath(
+                MemberPath memberPath,
+                int columnIndex,
+                string columnName,
+                Type entityType,
+                Type profileType,
+                PropertyConversionMetadata conversion)
             {
                 var properties = memberPath.Properties;
                 if (!memberPath.IsNested)
                 {
-                    AddRootProperty(properties[0], columnIndex, columnName);
+                    AddRootProperty(properties[0], columnIndex, columnName, entityType, profileType, conversion);
                     return;
                 }
 
@@ -302,17 +454,42 @@ namespace Dapper.FluentMap.Materialization
                     node = node.FindOrAddChild(properties[i]);
                 }
 
-                node._leaves.Add(NestedLeaf.ForProperty(properties[properties.Count - 1], columnIndex, columnName, memberPath.ToString()));
+                node._leaves.Add(NestedLeaf.ForProperty(
+                    properties[properties.Count - 1],
+                    columnIndex,
+                    columnName,
+                    memberPath.ToString(),
+                    entityType,
+                    profileType,
+                    conversion));
             }
 
-            internal void AddRootProperty(PropertyInfo property, int columnIndex, string columnName)
+            internal void AddRootProperty(
+                PropertyInfo property,
+                int columnIndex,
+                string columnName,
+                Type entityType,
+                Type profileType,
+                PropertyConversionMetadata conversion)
             {
-                _leaves.Add(NestedLeaf.ForProperty(property, columnIndex, columnName, property.Name));
+                _leaves.Add(NestedLeaf.ForProperty(
+                    property,
+                    columnIndex,
+                    columnName,
+                    property.Name,
+                    entityType,
+                    profileType,
+                    conversion));
             }
 
-            internal void AddRootField(FieldInfo field, int columnIndex, string columnName)
+            internal void AddRootField(
+                FieldInfo field,
+                int columnIndex,
+                string columnName,
+                Type entityType,
+                Type profileType)
             {
-                _leaves.Add(NestedLeaf.ForField(field, columnIndex, columnName, field.Name));
+                _leaves.Add(NestedLeaf.ForField(field, columnIndex, columnName, field.Name, entityType, profileType));
             }
 
             internal void Seal(Type entityType)
@@ -571,7 +748,10 @@ namespace Dapper.FluentMap.Materialization
                 string columnName,
                 string memberPath,
                 Type targetType,
-                Action<object, object> setter)
+                Action<object, object> setter,
+                Type entityType,
+                Type profileType,
+                PropertyConversionMetadata conversion)
             {
                 Property = property;
                 Field = field;
@@ -580,7 +760,7 @@ namespace Dapper.FluentMap.Materialization
                 MemberPath = memberPath;
                 TargetType = targetType;
                 _setter = setter;
-                _converter = CreateConverter(targetType);
+                _converter = CreateConverter(entityType, profileType, targetType, memberPath, columnName, conversion);
             }
 
             internal PropertyInfo Property { get; }
@@ -597,7 +777,14 @@ namespace Dapper.FluentMap.Materialization
 
             internal bool CanAssign => _setter != null;
 
-            internal static NestedLeaf ForProperty(PropertyInfo property, int columnIndex, string columnName, string memberPath)
+            internal static NestedLeaf ForProperty(
+                PropertyInfo property,
+                int columnIndex,
+                string columnName,
+                string memberPath,
+                Type entityType,
+                Type profileType,
+                PropertyConversionMetadata conversion)
             {
                 return new NestedLeaf(
                     property,
@@ -606,10 +793,19 @@ namespace Dapper.FluentMap.Materialization
                     columnName,
                     memberPath,
                     property.PropertyType,
-                    CreatePropertySetter(property));
+                    CreatePropertySetter(property),
+                    entityType,
+                    profileType,
+                    conversion ?? PropertyConversionMetadata.Default);
             }
 
-            internal static NestedLeaf ForField(FieldInfo field, int columnIndex, string columnName, string memberPath)
+            internal static NestedLeaf ForField(
+                FieldInfo field,
+                int columnIndex,
+                string columnName,
+                string memberPath,
+                Type entityType,
+                Type profileType)
             {
                 return new NestedLeaf(
                     null,
@@ -618,7 +814,10 @@ namespace Dapper.FluentMap.Materialization
                     columnName,
                     memberPath,
                     field.FieldType,
-                    CreateFieldSetter(field));
+                    CreateFieldSetter(field),
+                    entityType,
+                    profileType,
+                    PropertyConversionMetadata.Default);
             }
 
             internal object GetValue(IDataRecord record)
